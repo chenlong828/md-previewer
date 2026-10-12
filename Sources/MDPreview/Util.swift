@@ -89,20 +89,6 @@ enum ImagePathRewriter {
 
     // MARK: helpers
 
-    private static func pathPart(of match: NSTextCheckingResult, in line: String) -> String {
-        guard let r = Range(match.range(at: 2), in: line) else { return "" }
-        var p = String(line[r])
-        if p.hasPrefix("<") && p.hasSuffix(">") { p = String(p.dropFirst().dropLast()) }
-        return p
-    }
-
-    private static func titlePart(of match: NSTextCheckingResult, in line: String) -> String {
-        guard let r = Range(match.range(at: 3), in: line) else { return "" }
-        var t = String(line[r])
-        if t.hasPrefix("\"") && t.hasSuffix("\"") { t = String(t.dropFirst().dropLast()) }
-        return t
-    }
-
     private static func wrappedIfNeeded(_ path: String) -> String {
         path.contains(" ") || path.contains("(") || path.contains(")")
             ? "<\(path)>" : path

@@ -14,21 +14,13 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
     /// 保存确认弹窗进行中(防止重复弹窗)
     private var isConfirmingClose = false
 
-    /// 诊断:内部状态摘要
-    func debugSummary() -> String {
-        "url=\(fileURL?.lastPathComponent ?? "nil") ready=\(isReady) loading=\(isLoadingContent) dirty=\(isDirty)"
-    }
-
     private var webView: EditorWebView!
     var webViewIfNeeded: EditorWebView? { webView }
     private var statusLabel: NSTextField!
     private var stateLabel: NSTextField!
     private var fileMonitor: DispatchSourceFileSystemObject?
     private var lastKnownFileAttributes: (modificationDate: Date, size: Int)?
-    private var savedEncodingName = "UTF-8"
     private var pendingExportPDF = false
-
-    static let markdownExtensions = ["md", "markdown", "mdown", "mkdn", "mdown", "mdtext", "mdwn", "txt"]
 
     // MARK: - 初始化
 
@@ -163,7 +155,8 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
             alert.alertStyle = .warning
             if alert.runModal() != .alertFirstButtonReturn { return }
         }
-        guard let (text, encodingName) = TextFile.read(at: url) else {
+        // 读取编码仅用于探测显示;输出恒定 UTF-8(承诺见 README 已知边界)
+        guard let (text, _) = TextFile.read(at: url) else {
             let alert = NSAlert()
             alert.messageText = "无法读取文件"
             alert.informativeText = url.path
@@ -171,7 +164,6 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
             return
         }
         fileURL = url.standardizedFileURL
-        savedEncodingName = encodingName
         isDirty = false
         updateTitle()
         updateStateLabel()
@@ -627,8 +619,7 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
     }
 
     private func forceReload(from url: URL) {
-        guard let (text, encodingName) = TextFile.read(at: url) else { return }
-        savedEncodingName = encodingName
+        guard let (text, _) = TextFile.read(at: url) else { return }
         isLoadingContent = true
         let rewritten = ImagePathRewriter.forLoad(text, baseURL: url.deletingLastPathComponent())
         callJS("window.mdbridge.setMarkdown(\(JSArgs.string(rewritten)))") { [weak self] _ in
@@ -767,10 +758,6 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
 
     // MARK: - 拖放文件
 
-    func setSourceModeCached(_ value: Bool) {
-        sourceModeCached = value
-        updateStateLabel()
-    }
 }
 
 // MARK: - 拖放支持

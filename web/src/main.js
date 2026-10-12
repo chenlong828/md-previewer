@@ -2,7 +2,6 @@ import {
     Editor,
     rootCtx,
     editorViewCtx,
-    editorStateCtx,
     editorViewOptionsCtx,
     remarkStringifyOptionsCtx,
 } from '@milkdown/core'
@@ -19,35 +18,20 @@ import {
     wrapInOrderedListCommand,
     insertHrCommand,
     createCodeBlockCommand,
-    insertHardbreakCommand,
-    updateCodeBlockLanguageCommand,
-    liftListItemCommand,
-    sinkListItemCommand,
-    updateImageCommand,
 } from '@milkdown/preset-commonmark'
 import {
     gfm,
     insertTableCommand,
     toggleStrikethroughCommand,
-    addRowAfterCommand,
-    addRowBeforeCommand,
-    addColAfterCommand,
-    addColBeforeCommand,
-    goToNextTableCellCommand,
-    goToPrevTableCellCommand,
-    setAlignCommand,
-    deleteSelectedCellsCommand,
 } from '@milkdown/preset-gfm'
 
-// 命令注册表:名字 → 预设导出的命令插件对象(注册后带 .run(payload) 方法)
+// 命令注册表:名字 → 预设导出的命令插件对象(注册后带 .run(payload) 方法)。
+// 只登记 Swift 侧(@objc 动作)实际转发的命令名——表格行列命令由 tableCommand 自实现,不经此表。
 const commandRegistry = {
     toggleStrongCommand, toggleEmphasisCommand, toggleInlineCodeCommand, toggleLinkCommand,
     wrapInBlockquoteCommand, wrapInBulletListCommand, wrapInOrderedListCommand,
     insertHrCommand, createCodeBlockCommand, turnIntoTextCommand,
-    updateCodeBlockLanguageCommand, liftListItemCommand, sinkListItemCommand, updateImageCommand,
-    insertTableCommand, toggleStrikethroughCommand, setAlignCommand,
-    addRowAfterCommand, addRowBeforeCommand, addColAfterCommand, addColBeforeCommand,
-    goToNextTableCellCommand, goToPrevTableCellCommand, deleteSelectedCellsCommand,
+    insertTableCommand, toggleStrikethroughCommand,
 }
 import { history } from '@milkdown/plugin-history'
 import { listener, listenerCtx } from '@milkdown/plugin-listener'
@@ -56,7 +40,7 @@ import { prism, prismConfig } from '@milkdown/plugin-prism'
 import { diagram, diagramSchema } from '@milkdown/plugin-diagram'
 import { clipboard } from '@milkdown/plugin-clipboard'
 import { trailing } from '@milkdown/plugin-trailing'
-import { getMarkdown, replaceAll, getHTML, callCommand, insert, $view, $prose } from '@milkdown/utils'
+import { getMarkdown, replaceAll, getHTML, insert, $view, $prose } from '@milkdown/utils'
 import { Plugin, PluginKey, TextSelection } from '@milkdown/prose/state'
 import { Decoration, DecorationSet } from '@milkdown/prose/view'
 import { isInTable } from '@milkdown/prose/tables'
@@ -225,9 +209,6 @@ function createMermaidView() {
             }
             event.stopPropagation()
         })
-        srcArea.addEventListener('input', () => {
-            // 编辑中先不重绘,失焦时统一提交
-        })
         dom.addEventListener('mousedown', () => {
             if (editing) return
             editing = true
@@ -266,7 +247,6 @@ const extraLanguages = [dart, docker, graphql, scala, toml, powershell, haskell,
 
 async function createEditor() {
     applyMermaidTheme()
-    window.__mdStage = 'config-start'
 
     const pluginSet = state.pluginSet || 'full'
     const useDiagram = pluginSet === 'full'
@@ -315,7 +295,6 @@ async function createEditor() {
         .use(findProsePlugin)
         .use(selInfoProse)
         .create()
-    window.__mdStage = 'created'
 
     editor.action((ctx) => {
         ctx.get(listenerCtx).markdownUpdated((_ctx, markdown, _prev) => {
@@ -366,7 +345,6 @@ async function createEditor() {
         })
     })
 
-    window.__mdStage = 'listener-done'
     state.editor = editor
     state.ready = true
     return editor
@@ -519,7 +497,6 @@ function insertRowInTable(view, after) {
     if (cellD < 0) return false
     const rowD = cellD - 1
     const row = $from.node(rowD)
-    const table = $from.node(rowD - 1)
     const rowPos = $from.before(rowD)
     const isHeader = row.type.name === 'table_header_row'
     // 新行:沿用所在行单元格内容/对齐;表头行的单元格转为 body 单元格
@@ -923,8 +900,6 @@ window.mdbridge = {
         }
     },
 
-    getTheme() { return state.theme },
-
     setZoom(scale) {
         const s = Math.min(3, Math.max(0.5, scale))
         state.zoom = s
@@ -1036,14 +1011,15 @@ window.mdbridge = {
         return {
             active: document.body.classList.contains('finding'),
             query: findUI.query,
+            // count 恒为数字;-1 表示编辑器未就绪
             count: state.sourceMode ? findUI.srcMatches.length : (state.ready ? (() => {
                 try {
                     return state.editor.action((ctx) => {
                         const st = findKey.getState(ctx.get(editorViewCtx).state)
                         return st ? st.matches.length : 0
                     })
-                } catch (e) { return 0 }
-            })() : 'not-ready'),
+                } catch (e) { return -1 }
+            })() : -1),
         }
     },
     isSourceMode() { return state.sourceMode },
@@ -1118,42 +1094,6 @@ window.mdbridge = {
 
     requestStats() {
         post({ op: 'stats', ...computeStats(state.sourceMode ? document.getElementById('source-editor').value : state.lastMarkdown) })
-    },
-
-    getZoomInfo() { return { zoom: state.zoom } },
-
-    debugParse(md) {
-        try {
-            return state.editor.action((ctx) => {
-                const parser = ctx.get('parser')
-                const doc = parser(md)
-                return doc ? { ok: true, json: doc.toJSON(), size: doc.content.size } : { ok: false }
-            })
-        } catch (e) {
-            return { ok: false, error: String(e && e.message ? e.message : e) }
-        }
-    },
-
-    debugView() {
-        return state.editor.action((ctx) => {
-            const view = ctx.get(editorViewCtx)
-            return {
-                docSize: view.state.doc.content.size,
-                docFirstChild: view.state.doc.firstChild ? view.state.doc.firstChild.type.name : 'none',
-                domHTML: view.dom.innerHTML.slice(0, 120),
-                domIsPM: view.dom === document.querySelector('.ProseMirror'),
-                hasFocus: view.hasFocus(),
-            }
-        })
-    },
-
-    debugState() {
-        return {
-            stage: window.__mdStage || 'none',
-            ready: state.ready,
-            hasEditor: !!state.editor,
-            pluginSet: state.pluginSet,
-        }
     },
 
     exportStandaloneHTML,

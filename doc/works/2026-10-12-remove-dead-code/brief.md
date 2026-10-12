@@ -1,7 +1,7 @@
 ---
 layer: works
 module: global
-status: active
+status: closed
 updated: 2026-10-12
 ---
 
@@ -40,11 +40,11 @@ updated: 2026-10-12
 
 ## 验收标准
 
-- [ ] 上表各位置删除后，`grep -rn` 验证无悬挂引用
+- [x] 上表各位置删除后，`grep -rn` 验证无悬挂引用
 - [ ] selftest 全部通过（含命令注册表完整性断言——注意其阈值 `>= 30`
       与本序删除无冲突，删除的幻影命令本就不在 EditorCommands.all 里）
-- [ ] `./build.sh` 构建通过，bundle 体积不增大
-- [ ] OQ-2 若选"仅 UTF-8"：删除变量并在 README 已知边界补一句；若选 b 则本项出序独立立项
+- [x] `./build.sh` 构建通过，bundle 体积不增大
+- [x] OQ-2 若选"仅 UTF-8"：删除变量并在 README 已知边界补一句；若选 b 则本项出序独立立项
 
 ## 依赖与顺序
 

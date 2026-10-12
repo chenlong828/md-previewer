@@ -298,7 +298,6 @@ func greet() -> String {
         }
 
         // ── 表格行列操作(断言光标所在表格的 doc 几何)
-        evaluate("window.webkit.messageHandlers.mdbridge.postMessage({op:'jslog', msg:'DIRECT-TEST-OK'})") { _ in }
         func expectTableGeo(_ rows: Int, _ cols: Int, _ name: String) {
             evaluate("JSON.stringify(window.mdbridge.tableInfo())") { r in
                 if let json = r as? String,

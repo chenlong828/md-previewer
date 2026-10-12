@@ -87,10 +87,10 @@ enum EditorCommands {
         return item
     }
 
-    /// 把一组命令追加到菜单(自动跳过缺失项)
-    static func append(_ actions: [EditorAction], to menu: NSMenu, contextTarget: AnyObject? = nil) {
+    /// 把一组命令追加到菜单(自动跳过缺失项);菜单栏调用,target 由响应链路由
+    static func append(_ actions: [EditorAction], to menu: NSMenu) {
         for action in actions {
-            if let item = menuItem(for: action, contextTarget: contextTarget) {
+            if let item = menuItem(for: action) {
                 menu.addItem(item)
             }
         }
