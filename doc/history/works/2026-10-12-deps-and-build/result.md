@@ -1,7 +1,7 @@
 ---
-layer: works
+layer: history
 module: global
-status: closed
+status: frozen
 updated: 2026-10-14
 ---
 
@@ -28,9 +28,9 @@ updated: 2026-10-14
 
 | 活结论 | 落点 |
 |---|---|
-| milkdown 版本策略与重验条件 | `web/package.json` `//milkdown-versions` + [risks.md R4](../../plan/risks.md) |
+| milkdown 版本策略与重验条件 | `web/package.json` `//milkdown-versions` + [risks.md R4](../../../plan/risks.md) |
 | ProseMirror 单一来源契约与校验 | `web/check-deps.mjs`（postinstall）、`web/src/bridge.js`、`web/src/main.js` 导入注释 |
-| bundle 策略（OQ-4=a） | `web/build.mjs` 注释、`build.sh` map 剔除 + [open-questions.md OQ-4](../../plan/open-questions.md) 回写 |
+| bundle 策略（OQ-4=a） | `web/build.mjs` 注释、`build.sh` map 剔除 + [open-questions.md OQ-4](../../../plan/open-questions.md) 回写 |
 | 版本号维护方式 | `resources/Info.plist` 版本键注释 |
 
 ## 遗留

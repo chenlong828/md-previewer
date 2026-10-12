@@ -1,7 +1,7 @@
 ---
-layer: works
+layer: history
 module: global
-status: closed
+status: frozen
 updated: 2026-10-14
 ---
 
@@ -47,7 +47,7 @@ updated: 2026-10-14
 
 | 活结论 | 落点 |
 |---|---|
-| main.js 拆分粒度（11 模块 + 依赖方向） | `web/src/`（上表）+ [open-questions.md OQ-5](../../plan/open-questions.md) |
+| main.js 拆分粒度（11 模块 + 依赖方向） | `web/src/`（上表）+ [open-questions.md OQ-5](../../../plan/open-questions.md) |
 | 菜单 identifier 常量与三态联动表 | `Sources/MDPreview/AppDelegate.swift` `MenuID` / `appearanceItems` / `appendSubmenu` |
 | ESLint 门禁与仓库约定（catch 绑定豁免、下划线占位形参） | `web/eslint.config.js`、`web/package.json` lint script |
 

@@ -1,14 +1,14 @@
 ---
-layer: works
+layer: history
 module: global
-status: closed
+status: frozen
 updated: 2026-10-12
 ---
 
 # 工序：依赖、构建与许可卫生
 
 小项合集，各项互相独立，可拆可合执行。涉及策略取舍的两项见
-[open-questions.md](../../plan/open-questions.md)。
+[open-questions.md](../../../plan/open-questions.md)。
 
 ## 问题清单
 
@@ -35,7 +35,7 @@ updated: 2026-10-12
 
 - 位置：web/build.mjs:16-17 `minify:false, sourcemap:false`——生产 9.1MB 未压缩，
   jserror 栈又因无 map 难定位（index.html:22-32）。
-- 动作：按 [OQ-4](../../plan/open-questions.md) 结论执行（默认方向：minify:true +
+- 动作：按 [OQ-4](../../../plan/open-questions.md) 结论执行（默认方向：minify:true +
   本地 sourcemap 不随包分发）。
 
 ### H5 构建脚本小刺（审计 #33）

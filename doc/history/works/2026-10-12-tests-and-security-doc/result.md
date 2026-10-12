@@ -1,7 +1,7 @@
 ---
-layer: works
+layer: history
 module: global
-status: closed
+status: frozen
 updated: 2026-10-14
 ---
 
@@ -31,9 +31,9 @@ updated: 2026-10-14
 
 | 活结论 | 落点 |
 |---|---|
-| 安全与行为取舍（决策/理由/失效条件） | [design/architecture.md](../../design/architecture.md) |
-| 诊断面三入口统一风格（OQ-3=a） | [design/architecture.md](../../design/architecture.md) §3 |
-| 全盘读授权收窄评估结论（暂不收窄） | [design/architecture.md](../../design/architecture.md) §1.1 |
+| 安全与行为取舍（决策/理由/失效条件） | [design/architecture.md](../../../design/architecture.md) |
+| 诊断面三入口统一风格（OQ-3=a） | [design/architecture.md](../../../design/architecture.md) §3 |
+| 全盘读授权收窄评估结论（暂不收窄） | [design/architecture.md](../../../design/architecture.md) §1.1 |
 | selftest 可信门禁（超时必 FAIL、条件轮询） | `Sources/MDPreview/Selftest.swift` |
 
 ## 遗留

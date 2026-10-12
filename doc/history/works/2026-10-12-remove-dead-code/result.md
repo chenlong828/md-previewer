@@ -1,7 +1,7 @@
 ---
-layer: works
+layer: history
 module: global
-status: closed
+status: frozen
 updated: 2026-10-14
 ---
 
@@ -27,7 +27,7 @@ updated: 2026-10-14
 
 | 活结论 | 落点 |
 |---|---|
-| OQ-2 定案 a：承诺仅 UTF-8 输出，不做原编码保存 | 结论回写 [open-questions.md OQ-2](../../plan/open-questions.md)；承诺落 `README.md` 已知边界 |
+| OQ-2 定案 a：承诺仅 UTF-8 输出，不做原编码保存 | 结论回写 [open-questions.md OQ-2](../../../plan/open-questions.md)；承诺落 `README.md` 已知边界 |
 | 命令注册表只登记 Swift 实际转发的命令名（表格行列命令不经此表） | `web/src/main.js` `commandRegistry` 注释 |
 
 ## 遗留

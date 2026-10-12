@@ -1,7 +1,7 @@
 ---
-layer: works
+layer: history
 module: global
-status: closed
+status: frozen
 updated: 2026-10-12
 ---
 
@@ -34,7 +34,7 @@ updated: 2026-10-12
 - 位置：main.swift:27-79，0.8s→5.6s 定时器链 + `print` 人工判读。
 - 动作（最小改）：轮询断言替代固定延时（等 `inTableCached` 翻转而非盲等），
   输出加统一前缀与 PASS/FAIL 判定；结构性剥离（独立测试 target）按
-  [OQ-3](../../plan/open-questions.md) 结论执行。
+  [OQ-3](../../../plan/open-questions.md) 结论执行。
 
 ### Q4 测试/诊断代码随生产发布（审计 #16）
 
@@ -55,7 +55,7 @@ updated: 2026-10-12
 - ImagePathRewriter 正则改写的覆盖边界（Util.swift:34-36：引用式图片、
   嵌套括号、转义不覆盖；失败静默）。
 - TextFile.write 无条件补尾换行（Util.swift:22-26）——工具修改用户文件尾的隐式行为。
-- 保存恒定 UTF-8（与 [OQ-2](../../plan/open-questions.md) 结论联动）。
+- 保存恒定 UTF-8（与 [OQ-2](../../../plan/open-questions.md) 结论联动）。
 
 ## 验收标准
 

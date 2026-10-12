@@ -1,7 +1,7 @@
 ---
 layer: design
 module: global
-status: active
+status: current
 updated: 2026-10-14
 ---
 

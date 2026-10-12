@@ -1,14 +1,14 @@
 ---
-layer: works
+layer: history
 module: global
-status: closed
+status: frozen
 updated: 2026-10-12
 ---
 
 # 工序：结构治理（main.js 拆分 + Swift 菜单表驱动 + lint）
 
 前提是 W1–W3 的内容变更已收口——先让内容稳定，再动结构，避免拆分时搬运
-注定要删/合的代码。拆分粒度与是否引 TS 见 [OQ-5](../../plan/open-questions.md)。
+注定要删/合的代码。拆分粒度与是否引 TS 见 [OQ-5](../../../plan/open-questions.md)。
 
 ## 问题清单
 

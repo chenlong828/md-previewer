@@ -1,7 +1,7 @@
 ---
-layer: works
+layer: history
 module: global
-status: closed
+status: frozen
 updated: 2026-10-14
 ---
 
@@ -41,7 +41,7 @@ updated: 2026-10-14
 | 活结论 | 落点 |
 |---|---|
 | 关闭/退出异步确认契约(sheet 回调 + 串行队列 + 复位条件) | `Sources/MDPreview/DocumentWindowController.swift` `beginConfirmClose` 头注释、`AppDelegate.beginTerminateConfirmation` |
-| 同步基线 + 过期过滤的单一脏机制 | `web/src/editor.js` listener 注释、`web/src/bridge.js` `setMarkdown` 注释、[risks.md R2](../../plan/risks.md) |
+| 同步基线 + 过期过滤的单一脏机制 | `web/src/editor.js` listener 注释、`web/src/bridge.js` `setMarkdown` 注释、[risks.md R2](../../../plan/risks.md) |
 | 非魔力延时的命名常量与依据 | `DocumentWindowController.Timing`、`Selftest.Polling` |
 
 ## 遗留

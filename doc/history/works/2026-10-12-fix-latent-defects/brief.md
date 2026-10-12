@@ -1,7 +1,7 @@
 ---
-layer: works
+layer: history
 module: global
-status: closed
+status: frozen
 updated: 2026-10-12
 ---
 
@@ -9,7 +9,7 @@ updated: 2026-10-12
 
 承接 2026-10-12 技术债审计中 3 个"疑似真缺陷"级发现。修复前先在 selftest
 写出可复现断言（红→绿），修复后断言留作回归守门。风险定性见
-[risks.md R1](../../plan/risks.md)。
+[risks.md R1](../../../plan/risks.md)。
 
 ## 问题清单
 
@@ -38,7 +38,7 @@ updated: 2026-10-12
 - 现象：`createEditor()`（main.js:257-306）先跑，`opts` 后解析（main.js:854-867）：
   首帧主题按默认 light 应用后再纠正（深色系统用户开窗瞬间 mermaid 按浅色初始化，
   靠 `setTheme` 二次 `replaceAll` 重绘兜底，多一次全文档重排）；
-  `opts.plugins`（pluginSet）同样因此从未生效——见 [OQ-1](../../plan/open-questions.md)。
+  `opts.plugins`（pluginSet）同样因此从未生效——见 [OQ-1](../../../plan/open-questions.md)。
 - 方向：`_init` 先解析 opts（theme/zoom/plugins/title）再创建编辑器；
   pluginSet 修复 or 删除按 OQ-1 结论执行。
 
