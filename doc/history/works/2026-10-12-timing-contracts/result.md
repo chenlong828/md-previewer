@@ -24,7 +24,7 @@ updated: 2026-10-14
 | T1 | `DocumentWindowController.beginConfirmClose/closeCompletion/finishCloseRequest`、`AppDelegate.applicationShouldTerminate/beginTerminateConfirmation` | 确认弹窗改 sheet 回调；windowShouldClose 返回 false + 回调续做 `performClose`；退出走 `.terminateLater` + `reply(toApplicationShouldTerminate:)`。**顺带修一个真隐患**：移除退出流程中 windowShouldClose 的 `isTerminating` 旁路——异步队列等待期间手动 ⌘W 脏窗口原本会静默丢改动 |
 | T2 | `Timing` 常量组、`waitForWebViewGeometrySettled` | PDF 拉高后轮询 web 端 scrollHeight 连续一致即收敛；缩放盲等已在 W3 删除；文件监听防抖保留但命名 |
 | T3 | `web/src/state.js`、`editor.js` listener、`bridge.js setMarkdown` | `setMarkdown` 后同步序列化落定基线（与保存取回同口径）；listener 回调先比 `markdown === currentMarkdown()` 过期过滤再报 dirty。**查证依据**：milkdown listener 插件对 `addToHistory===false` 事务跳过、但 `replaceAll` 未设该 meta（`@milkdown/utils/lib/index.es.js:470-484`），故拉高 WebView 后的旧防抖回调必然可能迟到——同步基线 + 过期过滤是唯一确定性收敛 |
-| T4 | `DocumentWindowController.openDocument` | `!isReady || isLoadingContent` 守卫**先于** `TextFile.read`；读文件动作只在就绪补载时发生一次（TOCTOU/双读消除） |
+| T4 | `DocumentWindowController.openDocument` | `!isReady \|\| isLoadingContent` 守卫**先于** `TextFile.read`；读文件动作只在就绪补载时发生一次（TOCTOU/双读消除） |
 | T5 | `AppDelegate` argv 注释块 + `cliOpenedURLs` + `Selftest` 启动矩阵说明 | 不变量显式成文：`openFile` 由 LaunchServices 晚于 `didFinishLaunching` 送达；防御按标准化 URL 去重 |
 | T6 | `DocumentWindowController` 状态栏三字段、`EditorWebView.eventMonitors` | 词数区/缩放区/状态区拆分，`renderStatusBar()` 单点落值（缩放占比改为**持久驻留**字段，消灭"临时显示再恢复"时序补丁）；监视器句柄入数组、`deinit` 成对移除；`allowsBackForwardNavigationGestures` 漂移注释修正为实际动机 |
 

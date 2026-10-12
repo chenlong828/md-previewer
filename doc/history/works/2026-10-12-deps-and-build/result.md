@@ -14,7 +14,7 @@ updated: 2026-10-14
 | package.json 混版有注释；独立 prosemirror-* 依赖移除或 alias 归一且有校验 | ✅ | `//milkdown-versions` 注释字段（策略+兼容依据+重验要求）；`prosemirror-history/tables/view` 三个独立依赖移除，undo/redo 改 `@milkdown/prose/history`、样式改 `@milkdown/prose/{view,tables}/style/*`（exports 映射已查证）；`web/check-deps.mjs` 双规则校验（禁独立 prosemirror-*、嵌套拷贝白名单制）挂 postinstall |
 | LICENSE 文件存在且与 README/Info.plist 声明一致 | ✅ | `LICENSE`（MIT，Copyright (c) 2026 chenlong）；README 徽章 MIT、Info.plist `NSHumanReadableCopyright` MIT 一致 |
 | bundle 策略按 OQ-4 落地；产物可运行、selftest 通过 | ✅ | `minify: true, sourcemap: 'external'`（本地 .map 生成但不留 sourceMappingURL 引用）；bundle.js 9.59MB → **4.0MB**；build.sh 组装 .app 时 `find -name '*.map' -delete`；61 PASS |
-| codesign 失败会中断构建；registry 可环境变量覆盖 | ✅ | `|| true` 与 `2>/dev/null` 移除，签名失败即断；`NPM_REGISTRY="${NPM_REGISTRY:-…}"` 可覆盖 |
+| codesign 失败会中断构建；registry 可环境变量覆盖 | ✅ | `\|\| true` 与 `2>/dev/null` 移除，签名失败即断；`NPM_REGISTRY="${NPM_REGISTRY:-…}"` 可覆盖 |
 | `scripts/` 已删；版本号来源唯一或注明 | ✅ | 空目录已删；Info.plist 双键加注释"同源手改、发版一起改"（单机工具构建注入属过度工程，决策成文） |
 
 ## 决策记录

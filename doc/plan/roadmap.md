@@ -14,7 +14,7 @@ updated: 2026-10-14
 ## 工序总览（全部已完成，2026-10-14 归档至 history/works/）
 
 | 工序 | 主题 | 优先级 | 工程量 | 依赖 | 状态 |
-|---|---|---|---|---|
+|---|---|---|---|---|---|
 | [2026-10-12-fix-latent-defects](../history/works/2026-10-12-fix-latent-defects/brief.md) | 3 个疑似缺陷（正确性） | P0 | M | 无 | ✅ 已完成 |
 | [2026-10-12-remove-dead-code](../history/works/2026-10-12-remove-dead-code/brief.md) | 死代码与不可达分支清理 | P1 | S | 建议在 W1 后（同文件区域） | ✅ 已完成 |
 | [2026-10-12-consolidate-duplication](../history/works/2026-10-12-consolidate-duplication/brief.md) | 重复知识与重复实现收敛 | P1 | M | W2（先删死再合并，避免合并死物） | ✅ 已完成 |
@@ -38,8 +38,3 @@ updated: 2026-10-14
 - W1 修复前先在 selftest 写出可复现断言（红→绿），防止"修了但没守住"。
 - 三个疑似缺陷的定性见 [risks.md](risks.md)；跨工序决策见 [open-questions.md](open-questions.md)。
 
-## 执行记录
-
-- 2026-10-14：批次一至批次四（W1–W7）全部收口并归档至 [history/works/](../history/works/)；
-  各工序验收实证见各目录 result.md；跨工序决策结论见 [open-questions.md](open-questions.md)，
-  风险消除实证见 [risks.md](risks.md)。

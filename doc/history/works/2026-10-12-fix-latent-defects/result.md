@@ -25,7 +25,7 @@ updated: 2026-10-14
 | D1 衍生语义：退出源码模式时，若 textarea 内容未偏离基线，以注入后的序列化结果重设基线（源码原文与序列化产物的尾换行差异不算修改；已偏离则由 listener 按旧基线上报脏） | `web/src/main.js` `toggleSource(false)` 分支 |
 | D2 导出标题来源：Swift 在 `pushInitialContent` opts 携带文件名；此后文件名变化经 `updateTitle()` 推送 `mdbridge.setTitle` 同步 web 层 document.title；无文件名时 web 层兜底 `"MDPreview"` | `Sources/MDPreview/DocumentWindowController.swift` `pushInitialContent`/`updateTitle`；`web/src/main.js` `mdbridge.setTitle()` |
 | D3 `_init` 先解析 opts（theme/zoom/plugins/title）再创建编辑器；`applyMermaidTheme` 由 createEditor 按已解析主题执行一次 | `web/src/main.js` `mdbridge._init()` |
-| OQ-1 定案 a：pluginSet 保留并修复生效（'full' | 'no-diagram'） | 结论回写 [open-questions.md OQ-1](../../../plan/open-questions.md)；实现见 `web/src/main.js` `_init` + `createEditor` |
+| OQ-1 定案 a：pluginSet 保留并修复生效（'full' \| 'no-diagram'） | 结论回写 [open-questions.md OQ-1](../../../plan/open-questions.md)；实现见 `web/src/main.js` `_init` + `createEditor` |
 
 ## 坑记录（移交坑档案候选）
 
