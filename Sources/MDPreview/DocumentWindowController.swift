@@ -205,7 +205,8 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
         let opts: [String: Any] = [
             "theme": AppDelegate.shared?.currentThemeJS() ?? "light",
             "zoom": UserDefaults.standard.double(forKey: "editorZoom").takingIfPositive() ?? 1.0,
-            "title": "",
+            // 文件名传给 web 层作为 document.title(HTML 导出标题的来源);无文件名时 web 层兜底 "MDPreview"
+            "title": fileURL?.lastPathComponent ?? "",
         ]
         let optsJSON = (try? JSONSerialization.data(withJSONObject: opts))
             .flatMap { String(data: $0, encoding: .utf8) } ?? "{}"
@@ -552,6 +553,11 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
         window.title = name
         window.representedURL = fileURL
         window.isDocumentEdited = isDirty
+        // web 层 document.title 与文件名保持同步(导出 HTML 的 <title> 取自它);
+        // web 未就绪时不推送,初始标题由 pushInitialContent 的 opts 携带
+        if isReady {
+            callJS("window.mdbridge.setTitle(\(JSArgs.string(fileURL?.lastPathComponent ?? "")))")
+        }
     }
 
     private func updateStateLabel() {

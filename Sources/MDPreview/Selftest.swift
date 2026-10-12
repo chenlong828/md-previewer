@@ -13,6 +13,12 @@ final class SelftestRunner: NSObject {
     private var window: NSWindow!
     private var bootReceived = false
     private var readyReceived = false
+    /// 桥消息观测:changed 上报计数(D1 误报守门用)
+    private var changedTrueCount = 0
+    private var changedTotalCount = 0
+    /// 轻量模式检查页(OQ-1)的加载标志
+    private var lightBootReceived = false
+    private var lightReadyReceived = false
 
     static let sampleMarkdown = #"""
 # 自检文档 Heading One
@@ -86,6 +92,10 @@ func greet() -> String {
             guard let self else { return }
             if op == "boot" { self.bootReceived = true }
             if op == "ready" { self.readyReceived = true }
+            if op == "changed" {
+                changedTotalCount += 1
+                if (payload["dirty"] as? Bool) ?? true { changedTrueCount += 1 }
+            }
             if op == "jserror" {
                 let msg = payload["message"] as? String ?? "?"
                 let stack = payload["stack"] as? String ?? ""
@@ -193,6 +203,81 @@ func greet() -> String {
             }
         }
         if editOK { pass("源码模式编辑回写") } else { fail("源码模式编辑回写") }
+
+        // ── D1 单一真相源:源码模式下"模拟保存"取回的内容必须与 textarea 一致
+        //    (红→绿守门:修复前 getMarkdown 只读编辑器 doc,追加行取不到)
+        var d1a = false
+        waitForCollect("D1 源码模式保存取一致内容", timeout: 10) { done in
+            self.evaluate("window.mdbridge.toggleSource(true)") { _ in
+                self.evaluate(#"(function(){var t=document.getElementById('source-editor');t.value=t.value+"\nsave-consistency-marker";var md=window.mdbridge.getMarkdown();return JSON.stringify({eq:md===t.value,has:md.indexOf("save-consistency-marker")>=0});})()"#) { r in
+                    if let json = r as? String,
+                       let data = json.data(using: .utf8),
+                       let d = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] {
+                        d1a = (d["eq"] as? Bool) == true && (d["has"] as? Bool) == true
+                    }
+                    done()
+                }
+            }
+        }
+        if d1a { pass("D1 源码模式保存取一致内容") } else { fail("D1 源码模式保存取一致内容") }
+
+        // ── D1 markClean 基线 = 所见:清理后退出源码模式不得误报脏;随后的真实编辑必须恰上报一次 dirty=true。
+        //    listener 回调经 200ms debounce 异步到达,先用"桥消息静止"等旧事务尾窗排空,再分段观测。
+        var d1b = false
+        waitForCollect("D1 markClean 基线等于所见", timeout: 20) { done in
+            self.settleBridge(quiet: 1.2, timeout: 8) // 排空 markClean 之前旧事务的延迟回调
+            self.changedTrueCount = 0
+            self.changedTotalCount = 0
+            self.evaluate("window.mdbridge.markClean()") { _ in
+                self.evaluate("window.mdbridge.toggleSource(false)") { _ in
+                    self.settleBridge(quiet: 1.2, timeout: 8) // 观测窗:退出源码模式的全部上报到齐
+                    let misreport = self.changedTrueCount
+                    self.changedTrueCount = 0
+                    self.changedTotalCount = 0
+                    self.evaluate("window.mdbridge.insertMarkdown('清理后编辑')") { _ in
+                        self.evaluate("window.mdbridge.getMarkdown()") { md in
+                            let deadline = Date().addingTimeInterval(5)
+                            while Date() < deadline && self.changedTotalCount == 0 { self.pumpRunLoop(for: 0.05) }
+                            if let s = md as? String,
+                               s.contains("save-consistency-marker"), s.contains("清理后编辑"),
+                               misreport == 0,
+                               self.changedTotalCount == 1, self.changedTrueCount == 1 {
+                                d1b = true
+                            }
+                            done()
+                        }
+                    }
+                }
+            }
+        }
+        if d1b { pass("D1 markClean 基线等于所见") } else { fail("D1 markClean 基线等于所见(误报=\(changedTrueCount)/总=\(changedTotalCount))") }
+
+        // ── D2 导出 HTML 标题接文件名:init/setTitle 传入的值必须出现在 <title>
+        //    (exportStandaloneHTML 为 async,页面内 await 后由原生轮询取回)
+        var d2 = false
+        waitForCollect("D2 导出 HTML 标题", timeout: 10) { done in
+            self.evaluate("window.mdbridge.setTitle('SelftestDoc.md')") { _ in
+                self.evaluate("void window.mdbridge.exportStandaloneHTML().then(function(html){window.__exportedHTML=html})") { _ in
+                    let deadline = Date().addingTimeInterval(5)
+                    while Date() < deadline {
+                        var html: String?
+                        var done2 = false
+                        self.webview.evaluateJavaScript("window.__exportedHTML || ''") { result, _ in
+                            html = result as? String
+                            done2 = true
+                        }
+                        while !done2 { self.pumpRunLoop(for: 0.05) }
+                        if let h = html, h.contains("<title>SelftestDoc.md</title>") {
+                            d2 = true
+                            break
+                        }
+                        self.pumpRunLoop(for: 0.1)
+                    }
+                    done()
+                }
+            }
+        }
+        if d2 { pass("D2 导出 HTML 标题") } else { fail("D2 导出 HTML 标题") }
 
         // ── 主题切换
         evaluate("window.mdbridge.setTheme('dark')") { _ in }
@@ -357,8 +442,61 @@ func greet() -> String {
         // ── Swift 侧图片路径改写
         testPathRewriter()
 
+        // ── OQ-1/pluginSet 配置可达性:_init 必须先解析 opts 再建编辑器,
+        //    no-diagram 轻量模式真正生效(mermaid 围栏保持代码块、math 仍加载)。
+        //    修复前 opts 在创建之后才赋值,条件分支不可达,这里恒红。
+        runPluginSetCheck()
+
         print("SELFTEST \(failed ? "FAILED" : "PASSED")")
         exit(failed ? 1 : 0)
+    }
+
+    /// 第二个页面实例验证 plugins 配置真实生效(OQ-1 选 a:保留轻量模式能力)
+    private func runPluginSetCheck() {
+        guard let pageURL = WebLocator.indexURL() else {
+            fail("OQ-1 轻量模式检查(找不到页面资源)")
+            return
+        }
+        let lightWindow = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 800, height: 600),
+            styleMask: [.borderless],
+            backing: .buffered,
+            defer: false
+        )
+        let lightWebview = EditorWebView(configuration: EditorWebView.makeConfiguration())
+        lightWebview.frame = NSRect(x: 0, y: 0, width: 800, height: 600)
+        lightWebview.autoresizingMask = [.width, .height]
+        lightWindow.contentView?.addSubview(lightWebview)
+        lightWindow.orderFrontRegardless()
+        lightWebview.onBridgeMessage = { [weak self] op, _ in
+            guard let self else { return }
+            if op == "boot" { self.lightBootReceived = true }
+            if op == "ready" { self.lightReadyReceived = true }
+        }
+        lightWebview.loadFileURL(pageURL, allowingReadAccessTo: URL(fileURLWithPath: "/"))
+
+        waitFor("OQ-1 轻量页脚本加载", timeout: 30) { self.lightBootReceived }
+        let lightMD = "# 轻量\n\n```mermaid\ngraph LR\n  A --> B\n```\n\n$E = mc^2$\n"
+        let lightOpts = "{\"theme\":\"light\",\"zoom\":1,\"plugins\":\"no-diagram\"}"
+        evaluate("void window.mdbridge.init(\(JSArgs.string(lightMD)), \(lightOpts))", on: lightWebview) { _ in }
+        waitFor("OQ-1 轻量初始化(ready)", timeout: 30) { self.lightReadyReceived }
+
+        var diagramOff = false
+        var mathOn = false
+        evaluate(#"(function(){return JSON.stringify({dg:!!document.querySelector('[data-type=diagram]'),k:document.querySelectorAll('.katex').length})})()"#, on: lightWebview) { r in
+            if let json = r as? String,
+               let data = json.data(using: .utf8),
+               let d = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] {
+                diagramOff = (d["dg"] as? Bool) == false
+                mathOn = (d["k"] as? Int ?? 0) >= 1
+            }
+        }
+        if diagramOff && mathOn {
+            pass("OQ-1 pluginSet 轻量模式生效")
+        } else {
+            fail("OQ-1 pluginSet 轻量模式生效(关闭图表=\(diagramOff),公式=\(mathOn))")
+        }
+        lightWindow.close()
     }
 
     private static let checksJS = """
@@ -419,10 +557,10 @@ func greet() -> String {
 
     // MARK: - 基础设施(全部走 RunLoop 泵送)
 
-    private func evaluate(_ js: String, completion: ((Any?) -> Void)? = nil) {
+    private func evaluate(_ js: String, on target: EditorWebView? = nil, completion: ((Any?) -> Void)? = nil) {
         var finished = false
         var output: Any?
-        webview.evaluateJavaScript(js) { result, error in
+        (target ?? webview).evaluateJavaScript(js) { result, error in
             if let error { print("SELFTEST-JS-ERR:", error.localizedDescription, js.prefix(200)) }
             output = result
             finished = true
@@ -450,7 +588,23 @@ func greet() -> String {
         while !finished && Date() < deadline {
             pumpRunLoop(for: 0.05)
         }
-        _ = name
+        if !finished { fail(name) }
+    }
+
+    /// 等待桥消息静止:changed 上报经 web 端 200ms debounce 异步到达,
+    /// 断言前用"连续 quiet 秒无新上报"确认旧事务尾窗已排空(条件等待,非纯睡)。
+    private func settleBridge(quiet: TimeInterval, timeout: TimeInterval) {
+        let deadline = Date().addingTimeInterval(timeout)
+        var lastCount = changedTotalCount
+        var lastChange = Date()
+        while Date() < deadline {
+            pumpRunLoop(for: 0.05)
+            if changedTotalCount != lastCount {
+                lastCount = changedTotalCount
+                lastChange = Date()
+            }
+            if Date().timeIntervalSince(lastChange) >= quiet { return }
+        }
     }
 
     private func sleepOrUntil(timeout: TimeInterval, condition: @escaping () -> Bool) {

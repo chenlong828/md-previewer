@@ -93,6 +93,17 @@ const state = {
     baselineMarkdown: '',
     // listener 为异步触发:加载后置位,下一次 listener 回调的内容即新基线
     pendingBaseline: false,
+    // 插件档位:'full' | 'no-diagram'(由 init opts 传入,_init 先解析再建编辑器)
+    pluginSet: 'full',
+}
+
+// 当前文档内容的单一真相源:渲染模式读编辑器 doc,源码模式读 textarea。
+// 保存取回(getMarkdown)与干净基线(markClean)必须走同一口径,否则源码模式下
+// ⌘S 会把编辑前的旧内容写盘。
+function currentMarkdown() {
+    if (state.sourceMode) return document.getElementById('source-editor').value
+    if (!state.ready || !state.editor) return ''
+    return state.editor.action(getMarkdown())
 }
 
 const post = (msg) => {
@@ -371,8 +382,13 @@ function toggleSource(force) {
         ta.value = state.editor.action(getMarkdown())
         document.body.classList.add('source-mode')
     } else {
+        // 退出源码模式 = 注入 textarea 内容。若内容未偏离基线(未编辑或已保存),
+        // 以注入后的序列化结果重设基线——源码原文与序列化产物的尾换行等差异不算修改;
+        // 若已偏离基线,交由 listener 按旧基线比对上报脏状态。
+        const wasClean = ta.value === state.baselineMarkdown
         document.body.classList.remove('source-mode')
         state.editor.action(replaceAll(ta.value))
+        if (wasClean) state.baselineMarkdown = state.editor.action(getMarkdown())
     }
     state.sourceMode = target
     post({ op: 'sourceMode', value: target })
@@ -852,16 +868,17 @@ window.mdbridge = {
     },
 
     async _init(markdown, opts = {}) {
-        if (!state.editor) await createEditor()
+        // 先解析配置(theme/zoom/plugins/title)再创建编辑器:
+        // 首帧 DOM 与 mermaid 都按目标主题初始化,pluginSet 条件加载真正可达。
         state.pluginSet = opts.plugins || 'full'
         state.theme = opts.theme === 'dark' ? 'dark' : 'light'
         applyThemeDom()
-        applyMermaidTheme()
+        if (!state.editor) await createEditor()
         if (opts.zoom) this.setZoom(opts.zoom)
+        this.setTitle(opts.title || '')
         if (markdown) {
             this.setMarkdown(markdown)
         }
-        document.title = opts.title || 'MDPreview'
         post({ op: 'ready' })
         return 'ok'
     },
@@ -877,16 +894,21 @@ window.mdbridge = {
         }
     },
 
-    /** 保存成功后由原生调用:以当前内容为新基线 */
+    /** 保存成功后由原生调用:以当前所见内容为新基线(源码模式下即 textarea 内容) */
     markClean() {
-        if (state.ready) state.baselineMarkdown = state.editor.action(getMarkdown())
+        if (state.ready) state.baselineMarkdown = currentMarkdown()
         state.pendingBaseline = false
         return true
     },
 
     getMarkdown() {
-        if (!state.ready) return ''
-        return state.editor.action(getMarkdown())
+        return currentMarkdown()
+    },
+
+    /** 原生在文件名变化时同步 web 层 document.title(HTML 导出标题的来源) */
+    setTitle(title) {
+        document.title = title || 'MDPreview'
+        return true
     },
 
     setTheme(mode) {

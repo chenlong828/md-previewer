@@ -1,7 +1,7 @@
 ---
 layer: works
 module: global
-status: active
+status: closed
 updated: 2026-10-12
 ---
 
@@ -44,12 +44,12 @@ updated: 2026-10-12
 
 ## 验收标准
 
-- [ ] selftest 新增断言：源码模式编辑 → 模拟保存取回的内容与 textarea 一致；
+- [x] selftest 新增断言：源码模式编辑 → 模拟保存取回的内容与 textarea 一致；
       markClean 后基线等于所见内容（先红后绿）
-- [ ] selftest 新增断言：带 title 的 init 后，exportStandaloneHTML 的 `<title>` 等于传入值
-- [ ] 深色系统模拟下，init 首帧即按 dark 初始化 mermaid（无二次重绘痕迹）
-- [ ] OQ-1 按结论执行（修复生效或删除分支），`MDP_PLUGINS` 不再是死配置
-- [ ] 既有 selftest 全部通过；`./build.sh` 构建通过
+- [x] selftest 新增断言：带 title 的 init 后，exportStandaloneHTML 的 `<title>` 等于传入值
+- [x] 深色系统模拟下，init 首帧即按 dark 初始化 mermaid（无二次重绘痕迹）
+- [x] OQ-1 按结论执行（修复生效或删除分支），`MDP_PLUGINS` 不再是死配置
+- [x] 既有 selftest 全部通过；`./build.sh` 构建通过
 
 ## 依赖与顺序
 
