@@ -13,12 +13,13 @@
    4 个结构性风险的存续条件与承接工序。
 3. **要领取一个任务** → `works/<工序ID>/brief.md`，从 roadmap 表进入对应工序目录；
    跨工序决策先查 [plan/open-questions.md](plan/open-questions.md)。
-4. **要了解系统现状** → 暂见仓库根 [README](../README.md)（架构图与桥协议）；
-   design/ 现行文档随
+4. **要了解系统现状** → 仓库根 [README](../README.md)（架构图与桥协议）；
+   跨模块设计取舍见 [design/architecture.md](design/architecture.md)
+   （安全/行为取舍、诊断面、桥协议，由
    [2026-10-12-tests-and-security-doc](works/2026-10-12-tests-and-security-doc/brief.md)
-   收口诞生（architecture.md，安全与行为取舍落点）。
+   收口诞生）。
 
 ## 约定
 
 - 工序目录名即工序ID：`YYYY-MM-DD-<短名>`，立项日命名，归档不改名。
-- `design/` 与 `history/` 按反占位纪律在内容诞生时创建，当前尚无内容。
+- `history/` 按反占位纪律在内容诞生时创建，当前尚无内容。

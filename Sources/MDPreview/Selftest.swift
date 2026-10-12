@@ -121,7 +121,10 @@ func greet() -> String {
         let optsJSON = "{\"theme\":\"light\",\"zoom\":1,\"plugins\":\"\(pluginSet)\"}"
         evaluate("void window.mdbridge.init(\(JSArgs.string(SelftestRunner.sampleMarkdown)), \(optsJSON))") { _ in }
         waitFor("编辑器初始化(ready)", timeout: 30) { self.readyReceived }
-        sleepOrUntil(timeout: 2.5) { false } // 给 mermaid 一点异步渲染时间
+        // 条件轮询替代纯睡:mermaid 异步渲染以 svg 挂载为准
+        waitForValue("mermaid svg 异步渲染就绪", timeout: 10,
+                     script: "document.querySelectorAll('[data-type=diagram] svg').length",
+                     test: { ($0 as? Int ?? 0) >= 1 })
 
         // ── 任务列表与表格诊断
         self.evaluate("(function(){var li=document.querySelector('li[data-item-type=task]');return li?JSON.stringify({outer:li.outerHTML.slice(0,200),attrs:JSON.stringify(li.dataset)}):'no-task-li'})()") { r in
@@ -330,9 +333,12 @@ func greet() -> String {
         evaluate("window.mdbridge.insertTable(2,2)") { r in
             if (r as? Bool) == true { self.pass("命令桥 insertTableCommand") } else { self.fail("命令桥 insertTableCommand → \(String(describing: r))") }
         }
-        sleepOrUntil(timeout: 1.0) { false }
+        // 条件轮询替代纯睡:insertTable 命令生效以 DOM 表格数为准
+        waitForValue("插入表格生效", timeout: 10,
+                     script: "document.querySelectorAll('table').length",
+                     test: { ($0 as? Int ?? 0) >= 2 })
         evaluate("document.querySelectorAll('table').length") { r in
-            if (r as? Int ?? 0) >= 2 { self.pass("插入表格生效") } else { self.fail("插入表格生效") }
+            if (r as? Int ?? 0) >= 2 { print("SELFTEST table count:", r ?? 0) } else { self.fail("插入表格生效(DOM 复核)") }
         }
 
         // ── 表格行列操作(断言光标所在表格的 doc 几何)
@@ -381,6 +387,7 @@ func greet() -> String {
         evaluate("window.mdbridge.undo()") { _ in }
 
         // ── 命令注册表完整性(菜单栏与右键菜单共用同一份定义)
+        let actionSet = Set(EditorAction.allCases)
         var registryOK = true
         for spec in EditorCommands.all {
             // responderChain 型命令由响应链处理(WKWebView 实现系统编辑动作),其余由控制器实现
@@ -389,10 +396,14 @@ func greet() -> String {
                 : DocumentWindowController.instancesRespond(to: spec.selector)
             if !ok { registryOK = false }
         }
-        if EditorCommands.all.count >= 30, registryOK {
+        // 结构完整性:规格数与 EditorAction case 数一致(不重不漏),不锚定具体数字
+        let specActions = EditorCommands.all.map { $0.action }
+        let noDup = Set(specActions).count == specActions.count
+        let noMiss = actionSet == Set(specActions)
+        if noDup && noMiss && registryOK {
             pass("命令注册表完整(\(EditorCommands.all.count) 条)")
         } else {
-            fail("命令注册表完整(\(EditorCommands.all.count) 条,响应缺失)")
+            fail("命令注册表完整(\(EditorCommands.all.count) 条,缺失/重复/响应缺失)")
         }
 
         // ── 桥命令名双端一致性:Swift 注册表携带的 JS 命令名必须存在于 web 注册表且可运行
@@ -444,7 +455,10 @@ func greet() -> String {
         // ── 文档内查找
         evaluate("window.mdbridge.openFindBar()") { _ in }
         evaluate("(function(){var i=document.getElementById('find-input');i.value='公式';i.dispatchEvent(new Event('input'));return true})()") { _ in }
-        sleepOrUntil(timeout: 1.0) { false }
+        // 条件轮询替代纯睡:查找计数以 find-count 文本出现为准
+        waitForValue("查找计数就绪", timeout: 10,
+                     script: "document.getElementById('find-count').textContent || ''",
+                     test: { ($0 as? String ?? "").contains("/") })
         evaluate("document.getElementById('find-count').textContent") { r in
             let v = (r as? String) ?? ""
             let parts = v.split(separator: "/").compactMap { Int($0) }
@@ -542,6 +556,24 @@ func greet() -> String {
 
         print("SELFTEST \(failed ? "FAILED" : "PASSED")")
         exit(failed ? 1 : 0)
+    }
+
+    /// 轮询一个 JS 取值直到满足判据(条件等待,非纯睡):每拍发起 evaluate 并在本拍
+    /// 内排空其完成回调,判据不满足则下一拍。Q1 纯睡反模式的替换件。
+    private func waitForValue(_ name: String, timeout: TimeInterval, script: String, test: @escaping (Any?) -> Bool) {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            var result: Any?
+            var completed = false
+            webview.evaluateJavaScript(script) { r, _ in
+                result = r
+                completed = true
+            }
+            while !completed && Date() < deadline { pumpRunLoop(for: 0.05) }
+            if completed && test(result) { pass(name); return }
+            pumpRunLoop(for: 0.05)
+        }
+        fail(name)
     }
 
     /// 与生产同口径的几何就绪信号:连续两次测得相同 scrollHeight 视为布局收敛。
@@ -733,13 +765,6 @@ func greet() -> String {
                 lastChange = Date()
             }
             if Date().timeIntervalSince(lastChange) >= quiet { return }
-        }
-    }
-
-    private func sleepOrUntil(timeout: TimeInterval, condition: @escaping () -> Bool) {
-        let deadline = Date().addingTimeInterval(timeout)
-        while Date() < deadline && !condition() {
-            pumpRunLoop(for: 0.1)
         }
     }
 

@@ -1,7 +1,7 @@
 ---
 layer: works
 module: global
-status: active
+status: closed
 updated: 2026-10-12
 ---
 
@@ -59,11 +59,11 @@ updated: 2026-10-12
 
 ## 验收标准
 
-- [ ] waitForCollect 超时必 FAIL；三处纯睡替换为条件轮询
-- [ ] 断言不再锚定具体计数；README 与断言解耦
-- [ ] multiwindow-test 输出 PASS/FAIL 自判定
-- [ ] design/architecture.md 存在且含上述取舍条目（结论落点表登记）
-- [ ] selftest 全部通过；`./build.sh` 通过
+- [x] waitForCollect 超时必 FAIL；三处纯睡替换为条件轮询
+- [x] 断言不再锚定具体计数；README 与断言解耦
+- [x] multiwindow-test 输出 PASS/FAIL 自判定
+- [x] design/architecture.md 存在且含上述取舍条目（结论落点表登记）
+- [x] selftest 全部通过；`./build.sh` 通过
 
 ## 依赖与顺序
 

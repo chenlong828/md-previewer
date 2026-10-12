@@ -2,7 +2,7 @@ import AppKit
 
 /// 编辑器动作的唯一标识:菜单栏与右键菜单共用同一份定义(命令模式)。
 /// 新增命令只需:① 在此声明 case;② 在 EditorCommands.all 登记规格;③ 控制器实现 @objc 动作。
-enum EditorAction: Equatable {
+enum EditorAction: Equatable, CaseIterable {
     case undo, redo
     case cut, copy, paste, selectAll
     case find, findNext, findPrev
