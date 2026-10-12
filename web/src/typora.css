@@ -1,0 +1,502 @@
+/* ============================================================
+ * MDPreview — Typora 风格主题
+ * 排版参数参考 Typora github 主题 / base.css (max-width 860px,
+ * 行高 1.6, h1 2.25em 底边线, 引用左侧 4px 竖线, 表格 #dfe2e5 边框等)
+ * ============================================================ */
+
+:root {
+    --app-zoom: 1;
+    --bg-color: #ffffff;
+    --text-color: #333333;
+    --text-secondary: #777777;
+    --link-color: #4183c4;
+    --border-color: #e7e7e7;
+    --table-border: #dfe2e5;
+    --table-bg: #f8f8f8;
+    --code-bg: #f6f6f6;
+    --code-border: #e7eaed;
+    --code-fence-bg: #f8f8f8;
+    --select-bg: #b5d6fc;
+    --hr-bg: #e7e7e7;
+    --monospace: ui-monospace, "SF Mono", "Menlo", "Monaco", "Consolas", "Courier New", monospace;
+    --body-font: -apple-system, BlinkMacSystemFont, "Helvetica Neue", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Segoe UI Emoji", sans-serif;
+    --editor-max-width: 860px;
+    --editor-padding: 30px;
+}
+
+html[data-theme="dark"] {
+    --bg-color: #2b2b2b;
+    --text-color: #d8d8d8;
+    --text-secondary: #9a9a9a;
+    --link-color: #5c9fe8;
+    --border-color: #484848;
+    --table-border: #4a4a4a;
+    --table-bg: #333333;
+    --code-bg: #3a3a3a;
+    --code-border: #4a4a4a;
+    --code-fence-bg: #333333;
+    --select-bg: #2d5a8a;
+    --hr-bg: #484848;
+    color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+
+html {
+    font-size: 16px;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+}
+
+html, body {
+    margin: 0;
+    padding: 0;
+    background: var(--bg-color);
+    color: var(--text-color);
+}
+
+body {
+    font-family: var(--body-font);
+    line-height: 1.6;
+    overflow-x: auto;
+}
+
+::selection { background: var(--select-bg); }
+
+/* ---------- 编辑器主体 ---------- */
+/* 宽度策略:正文 100% 跟随窗体宽度,但收缩下限为 860px(避免窄窗排版爆炸) */
+
+#app {
+    width: 100%;
+    min-width: calc(var(--editor-max-width) / var(--app-zoom)); /* 视觉下限恒为 860px(补偿 zoom 缩放) */
+    max-width: none;
+    margin: 0;
+    padding: var(--editor-padding);
+    padding-bottom: 100px;
+    zoom: var(--app-zoom);
+}
+
+.md-editor-view {
+    outline: none;
+    caret-color: var(--link-color);
+    word-break: break-word;
+    white-space: pre-wrap;
+}
+
+/* ---------- 标题 ---------- */
+
+h1, h2, h3, h4, h5, h6 {
+    position: relative;
+    margin-top: 1.2rem;
+    margin-bottom: 1rem;
+    font-weight: bold;
+    line-height: 1.4;
+    cursor: text;
+    white-space: pre-wrap;
+    break-after: avoid-page;
+}
+
+h1 {
+    font-size: 2.25em;
+    line-height: 1.2;
+    border-bottom: 1px solid var(--border-color);
+    margin-top: 1.6rem;
+}
+
+h2 {
+    font-size: 1.75em;
+    line-height: 1.225;
+    border-bottom: 1px solid var(--border-color);
+    margin-top: 1.4rem;
+}
+
+h3 { font-size: 1.5em; line-height: 1.43; }
+h4 { font-size: 1.25em; }
+h5 { font-size: 1em; }
+h6 { font-size: 1em; color: var(--text-secondary); }
+
+/* ---------- 段落 / 列表 ---------- */
+
+p, blockquote, ul, ol, dl, table { margin: 0.8em 0; }
+
+li > ol, li > ul { margin: 0; }
+
+ul, ol { padding-left: 30px; }
+
+li p { margin: 0.2em 0; }
+
+/* 任务列表 */
+[data-type="task-list-item"] {
+    list-style: none;
+    position: relative;
+}
+.md-editor-view ul li:has(> input[type="checkbox"]) {
+    list-style: none;
+    position: relative;
+}
+.md-editor-view input[type="checkbox"] {
+    position: absolute;
+    left: -1.6em;
+    top: 0.28em;
+    width: 1em;
+    height: 1em;
+    accent-color: var(--link-color);
+    cursor: pointer;
+}
+
+/* ---------- 引用 / 分割线 ---------- */
+
+blockquote {
+    border-left: 4px solid var(--table-border);
+    padding: 0 15px;
+    color: var(--text-secondary);
+    margin: 1rem 0;
+}
+blockquote blockquote { padding-right: 0; }
+blockquote > :first-child { margin-top: 0; }
+blockquote > :last-child { margin-bottom: 0; }
+
+hr {
+    height: 2px;
+    padding: 0;
+    margin: 16px 0;
+    background-color: var(--hr-bg);
+    border: 0 none;
+    overflow: hidden;
+}
+
+/* ---------- 链接 / 图片 ---------- */
+
+a { color: var(--link-color); }
+
+img, [data-type="image"] img {
+    max-width: 100%;
+    vertical-align: middle;
+    margin: 0.4em 0;
+}
+
+/* ---------- 代码 ---------- */
+
+code, tt, pre, kbd {
+    font-family: var(--monospace);
+}
+
+code, tt {
+    border: 1px solid var(--code-border);
+    background-color: var(--code-bg);
+    border-radius: 3px;
+    padding: 1px 4px;
+    font-size: 0.9em;
+}
+
+pre, [data-type="code_block"] {
+    background-color: var(--code-fence-bg);
+    border: 1px solid var(--code-border);
+    border-radius: 4px;
+}
+
+.md-editor-view pre {
+    margin: 15px 0;
+    padding: 10px 14px;
+    overflow-x: auto;
+    line-height: 1.45;
+    font-size: 0.9em;
+    white-space: pre;
+}
+
+.md-editor-view pre code,
+[data-type="code_block"] code {
+    border: none;
+    background: none;
+    padding: 0;
+    font-size: inherit;
+    border-radius: 0;
+}
+
+kbd {
+    margin: 0 0.1em;
+    padding: 0.1em 0.6em;
+    font-size: 0.8em;
+    color: #242729;
+    background: #fff;
+    border: 1px solid #adb3b9;
+    border-radius: 3px;
+    box-shadow: 0 1px 0 rgba(12, 13, 14, 0.2), 0 0 0 2px #fff inset;
+    white-space: nowrap;
+}
+
+html[data-theme="dark"] kbd { color: #ccc; background: #444; border-color: #555; box-shadow: 0 1px 0 rgba(0,0,0,0.4), 0 0 0 2px #333 inset; }
+
+/* ---------- 表格 ---------- */
+
+table {
+    border-collapse: collapse;
+    border-spacing: 0;
+    width: 100%;
+    overflow: auto;
+    text-align: left;
+    padding: 0;
+    word-break: initial;
+    display: table;
+}
+
+table tr { border: 1px solid var(--table-border); margin: 0; padding: 0; }
+
+table tr:nth-child(2n), thead { background-color: var(--table-bg); }
+
+table th, table td {
+    border: 1px solid var(--table-border);
+    margin: 0;
+    padding: 6px 13px;
+}
+
+table th { font-weight: bold; }
+
+.ProseMirror-selectednode { outline: 2px solid rgba(65, 131, 196, 0.45); border-radius: 2px; }
+
+/* ProseMirror 表格编辑控件 (prosemirror-tables) */
+.ProseMirror .tableWrapper { overflow-x: auto; }
+.ProseMirror td, .ProseMirror th { position: relative; }
+.ProseMirror .selectedCell:after {
+    content: "";
+    position: absolute;
+    z-index: 2;
+    inset: 0;
+    background: rgba(65, 131, 196, 0.18);
+    pointer-events: none;
+}
+.ProseMirror .column-resize-handle {
+    position: absolute;
+    right: -2px;
+    top: 0;
+    bottom: -2px;
+    width: 4px;
+    background-color: var(--link-color);
+    pointer-events: none;
+}
+.ProseMirror.resize-cursor { cursor: col-resize; }
+
+/* ---------- 数学公式 ---------- */
+
+.math-inline, [data-type="math_inline"] { white-space: normal; }
+.katex { font-size: 1.06em; }
+.math-block, [data-type="math_block"] {
+    display: block;
+    text-align: center;
+    margin: 1em 0;
+    overflow-x: auto;
+}
+.math-block .katex-display, [data-type="math_block"] .katex-display { margin: 0; }
+.katex-display { overflow-x: auto; overflow-y: hidden; padding: 2px 0; }
+.katex-error { color: #c0392b; font-family: var(--monospace); font-size: 0.9em; }
+
+/* ---------- Mermaid 图表 ---------- */
+
+[data-type="diagram"] {
+    display: block;
+    text-align: center;
+    margin: 1.2em 0;
+    overflow-x: auto;
+}
+[data-type="diagram"] svg { max-width: 100%; height: auto; }
+[data-type="diagram"] .mermaid-error { color: #c0392b; font-size: 0.85em; text-align: left; }
+
+/* ---------- 源码模式 ---------- */
+
+#source-editor {
+    display: none;
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    border: none;
+    outline: none;
+    resize: none;
+    padding: 40px 30px;
+    background: var(--bg-color);
+    color: var(--text-color);
+    font-family: var(--monospace);
+    font-size: 14px;
+    line-height: 1.6;
+    caret-color: var(--link-color);
+}
+
+body.source-mode #app { display: none; }
+body.source-mode #source-editor { display: block; }
+
+/* ---------- 打印 / 导出 ---------- */
+
+@media print {
+    html { font-size: 13px; }
+    #app { max-width: none; padding: 0; zoom: 1; }
+    pre, table, blockquote, h1, h2, h3, h4, h5, h6, svg, [data-type="math_block"] { page-break-inside: avoid; }
+    body { background: #fff; color: #000; }
+    html[data-theme="dark"] { --bg-color: #fff; --text-color: #000; --table-border: #bbb; --border-color: #ccc; --code-fence-bg: #f5f5f5; --code-bg: #f0f0f0; --code-border: #ddd; --table-bg: #f8f8f8; --text-secondary: #555; --hr-bg: #ccc; --link-color: #0645ad; }
+}
+
+/* ---------- 滚动条 ---------- */
+
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-thumb { background: rgba(128, 128, 128, 0.4); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(128, 128, 128, 0.65); }
+::-webkit-scrollbar-corner { background: transparent; }
+
+/* ---------- Prism 代码高亮暗色适配 ---------- */
+
+html[data-theme="dark"] .token.comment,
+html[data-theme="dark"] .token.prolog,
+html[data-theme="dark"] .token.cdata { color: #7f8c98; }
+html[data-theme="dark"] .token.punctuation { color: #c0c5ce; }
+html[data-theme="dark"] .token.keyword,
+html[data-theme="dark"] .token.selector,
+html[data-theme="dark"] .token.important,
+html[data-theme="dark"] .token.atrule { color: #b48ead; }
+html[data-theme="dark"] .token.string,
+html[data-theme="dark"] .token.char,
+html[data-theme="dark"] .token.attr-value,
+html[data-theme="dark"] .token.regex { color: #a3be8c; }
+html[data-theme="dark"] .token.number,
+html[data-theme="dark"] .token.boolean,
+html[data-theme="dark"] .token.constant,
+html[data-theme="dark"] .token.symbol { color: #d08770; }
+html[data-theme="dark"] .token.function,
+html[data-theme="dark"] .token.class-name { color: #88c0d0; }
+html[data-theme="dark"] .token.operator,
+html[data-theme="dark"] .token.entity,
+html[data-theme="dark"] .token.url { color: #81a1c1; }
+html[data-theme="dark"] .token.property,
+html[data-theme="dark"] .token.tag,
+html[data-theme="dark"] .token.deleted { color: #bf616a; }
+html[data-theme="dark"] .token.attr-name,
+html[data-theme="dark"] .token.inserted { color: #a3be8c; }
+
+/* ---------- Mermaid 源码编辑区 ---------- */
+
+[data-type="diagram"] .mermaid-src {
+    font-family: var(--monospace);
+    font-size: 0.9em;
+    text-align: left;
+    background: var(--code-fence-bg);
+    border: 1px solid var(--link-color);
+    border-radius: 4px;
+    padding: 8px 12px;
+    white-space: pre-wrap;
+    outline: none;
+    min-height: 3em;
+}
+
+[data-type="diagram"] .mermaid-empty {
+    color: var(--text-secondary);
+    font-size: 0.9em;
+}
+
+/* ---------- 任务列表复选框(由 data-checked 驱动) ---------- */
+
+.md-editor-view li[data-item-type="task"] {
+    list-style: none;
+    position: relative;
+}
+
+.md-editor-view li[data-item-type="task"]::before {
+    content: "";
+    position: absolute;
+    left: -1.55em;
+    top: 0.3em;
+    width: 0.95em;
+    height: 0.95em;
+    border: 1.5px solid var(--text-secondary);
+    border-radius: 3px;
+    background: var(--bg-color);
+    box-sizing: border-box;
+    cursor: pointer;
+}
+
+.md-editor-view li[data-item-type="task"][data-checked="true"]::before {
+    background-color: var(--link-color);
+    border-color: var(--link-color);
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><path fill='none' stroke='white' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round' d='M3 8.5l3.5 3.5L13 4.5'/></svg>");
+    background-size: 85%;
+    background-position: center;
+    background-repeat: no-repeat;
+}
+
+.md-editor-view li[data-item-type="task"][data-checked="true"] > p {
+    color: var(--text-secondary);
+}
+
+/* ---------- 文档内查找 ---------- */
+
+#find-bar {
+    display: none;
+    position: fixed;
+    top: 10px;
+    right: 18px;
+    z-index: 100;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 10px;
+    background: var(--code-fence-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+}
+
+body.finding #find-bar { display: flex; }
+
+#find-bar input {
+    width: 180px;
+    border: 1px solid var(--border-color);
+    border-radius: 5px;
+    background: var(--bg-color);
+    color: var(--text-color);
+    font-size: 12.5px;
+    padding: 4px 8px;
+    outline: none;
+}
+
+#find-bar input:focus { border-color: var(--link-color); }
+
+#find-bar .find-count {
+    font-size: 11.5px;
+    color: var(--text-secondary);
+    white-space: nowrap;
+    min-width: 54px;
+    text-align: center;
+}
+
+#find-bar button {
+    border: none;
+    background: transparent;
+    color: var(--text-secondary);
+    font-size: 13px;
+    line-height: 1;
+    padding: 3px 6px;
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+#find-bar button:hover {
+    background: var(--code-bg);
+    color: var(--text-color);
+}
+
+/* 匹配高亮 */
+
+.md-find-match {
+    background: rgba(255, 196, 0, 0.35);
+    border-radius: 2px;
+}
+
+.md-find-match.md-find-current {
+    background: rgba(255, 145, 0, 0.75);
+}
+
+html[data-theme="dark"] .md-find-match {
+    background: rgba(255, 196, 0, 0.28);
+}
+
+html[data-theme="dark"] .md-find-match.md-find-current {
+    background: rgba(255, 145, 0, 0.55);
+}
+
+/* 源码模式下的查找高亮(用 mark 包裹不便,textarea 用浏览器原生选中) */

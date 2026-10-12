@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="light dark">
+    <link rel="stylesheet" href="./bundle.css">
+    <title>MDPreview</title>
+</head>
+<body>
+    <div id="app"></div>
+    <textarea id="source-editor" spellcheck="false" aria-label="源码模式"></textarea>
+    <div id="find-bar" role="search">
+        <input id="find-input" type="text" placeholder="查找…" spellcheck="false">
+        <span id="find-count" class="find-count">0/0</span>
+        <button id="find-prev" title="上一个 (Shift+Enter)">↑</button>
+        <button id="find-next" title="下一个 (Enter)">↓</button>
+        <button id="find-close" title="关闭 (Esc)">✕</button>
+    </div>
+    <script>
+        // 把 JS 运行时错误转发给原生壳,便于排查
+        window.onerror = function (msg, src, line, col, err) {
+            try {
+                window.webkit.messageHandlers.mdbridge.postMessage({
+                    op: 'jserror',
+                    message: String(msg),
+                    where: String(src) + ':' + line + ':' + col,
+                    stack: err && err.stack ? String(err.stack) : ''
+                });
+            } catch (e) { /* ignore */ }
+            return false;
+        };
+        (function () {
+            var origError = console.error;
+            console.error = function () {
+                try {
+                    window.webkit.messageHandlers.mdbridge.postMessage({
+                        op: 'jserror',
+                        message: Array.prototype.map.call(arguments, String).join(' ')
+                    });
+                } catch (e) { /* ignore */ }
+                origError.apply(console, arguments);
+            };
+            window.addEventListener('unhandledrejection', function (event) {
+                try {
+                    window.webkit.messageHandlers.mdbridge.postMessage({
+                        op: 'jserror',
+                        message: 'UnhandledRejection: ' + String(event.reason),
+                        stack: event.reason && event.reason.stack ? String(event.reason.stack) : ''
+                    });
+                } catch (e) { /* ignore */ }
+            });
+        })();
+    </script>
+    <script src="./bundle.js"></script>
+</body>
+</html>

@@ -1,0 +1,19 @@
+# Swift Package Manager 构建产物
+.build/
+.modulecache/
+.spm-cache/
+.swiftpm/
+
+# Node / 前端构建
+web/node_modules/
+web/dist/
+.npm-cache/
+
+# 应用打包产物
+dist/
+
+# 第三方参考应用(二进制,不入库)
+reference/
+
+# 系统文件
+.DS_Store
