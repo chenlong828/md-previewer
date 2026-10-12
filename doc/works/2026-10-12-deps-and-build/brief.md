@@ -1,7 +1,7 @@
 ---
 layer: works
 module: global
-status: active
+status: closed
 updated: 2026-10-12
 ---
 
@@ -55,11 +55,11 @@ updated: 2026-10-12
 
 ## 验收标准
 
-- [ ] package.json 混版有注释；独立 prosemirror-* 依赖移除或 alias 归一且有校验
-- [ ] LICENSE 文件存在且与 README/Info.plist 声明一致
-- [ ] bundle 策略按 OQ-4 落地；产物可运行、selftest 通过
-- [ ] codesign 失败会中断构建；registry 可环境变量覆盖
-- [ ] `scripts/` 已删；版本号来源唯一或注明
+- [x] package.json 混版有注释；独立 prosemirror-* 依赖移除或 alias 归一且有校验
+- [x] LICENSE 文件存在且与 README/Info.plist 声明一致
+- [x] bundle 策略按 OQ-4 落地；产物可运行、selftest 通过
+- [x] codesign 失败会中断构建；registry 可环境变量覆盖
+- [x] `scripts/` 已删；版本号来源唯一或注明
 
 ## 依赖与顺序
 

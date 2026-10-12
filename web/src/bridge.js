@@ -3,7 +3,7 @@
 import { editorViewCtx } from '@milkdown/core'
 import { TextSelection } from '@milkdown/prose/state'
 import { isInTable } from '@milkdown/prose/tables'
-import { undo, redo } from 'prosemirror-history'
+import { undo, redo } from '@milkdown/prose/history'
 import { replaceAll, insert } from '@milkdown/utils'
 import { state, post, currentMarkdown } from './state.js'
 import { computeStats } from './stats.js'

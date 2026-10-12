@@ -5,8 +5,9 @@ import { post } from './state.js'
 import { scheduleStats } from './stats.js'
 import { setupFindBar } from './find-bar.js'
 
-import 'prosemirror-view/style/prosemirror.css'
-import 'prosemirror-tables/style/tables.css'
+// ProseMirror 基础样式统一从 @milkdown/prose 取(禁止独立 prosemirror-* 来源)
+import '@milkdown/prose/view/style/prosemirror.css'
+import '@milkdown/prose/tables/style/tables.css'
 import 'katex/dist/katex.min.css'
 import 'prismjs/themes/prism.css'
 import './typora.css'

@@ -8,6 +8,8 @@
     <string>MDPreview</string>
     <key>CFBundleIdentifier</key>
     <string>com.mdpreview.app</string>
+    <!-- 版本号:双键同源手改(单机工具无发布流水线,构建注入属过度工程)。
+         发版时两处一起改;README 徽章与 LICENSE 与此处保持一致。 -->
     <key>CFBundleVersion</key>
     <string>1.0.0</string>
     <key>CFBundleShortVersionString</key>

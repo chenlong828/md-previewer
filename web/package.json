@@ -2,10 +2,12 @@
   "name": "mdpreview-web",
   "private": true,
   "version": "1.0.0",
+  "//milkdown-versions": "版本策略(勿盲改):@milkdown/* 锁 7.7.0;@milkdown/plugin-math 锁 7.5.9——7.5.9+7.7.0 为已知工作组合(selftest 行内/块级 KaTeX 渲染断言守门);7.7 全家桶曾在 addRow*Command 等处引入回归(表格命令因此自实现,见 web/src/tables.js 头注释),统一版本前必须带行为断言重验。ProseMirror 一律从 @milkdown/prose 取用,禁止引入独立 prosemirror-* 依赖(防双来源,node check-deps.mjs 校验)。",
   "type": "module",
   "scripts": {
     "build": "node build.mjs",
-    "lint": "eslint src"
+    "lint": "eslint src",
+    "postinstall": "node check-deps.mjs"
   },
   "dependencies": {
     "@milkdown/core": "7.7.0",
@@ -25,9 +27,6 @@
     "katex": "^0.16.11",
     "mermaid": "^10.9.0",
     "prismjs": "^1.29.0",
-    "prosemirror-history": "^1.4.1",
-    "prosemirror-tables": "^1.5.0",
-    "prosemirror-view": "^1.37.0",
     "refractor": "^5.0.0"
   },
   "devDependencies": {

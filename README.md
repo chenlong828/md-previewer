@@ -34,14 +34,13 @@
 open dist/MDPreview.app --args /path/to/xxx.md
 ```
 
-开发调试:
+开发调试(构建参数唯一来源是 build.sh,此处不复述):
 
 ```bash
-cd web && npm install --registry=https://registry.npmmirror.com --cache ./.npm-cache && node build.mjs
-SWIFTPM_MODULECACHE_OVERRIDE=$PWD/.modulecache \
-  swift build --disable-sandbox --manifest-cache none --cache-path ./.spm-cache
-./.build/debug/MDPreview --selftest      # 无头自检(30 项断言)
+./build.sh debug                        # debug 编译(参数见 build.sh,勿另抄)
+./.build/debug/MDPreview --selftest     # 无头自检
 ./.build/debug/MDPreview --screenshot out.png doc.md   # 进程内截图(无需屏幕录制权限)
+# 前端单跑:cd web && npm install --registry="$NPM_REGISTRY(默认 npmmirror)" && node build.mjs
 ```
 
 ## 架构
