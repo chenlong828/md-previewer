@@ -192,7 +192,7 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
         ]
         let optsJSON = (try? JSONSerialization.data(withJSONObject: opts))
             .flatMap { String(data: $0, encoding: .utf8) } ?? "{}"
-        callJS("window.mdbridge.init('', \(optsJSON))") { [weak self] result in
+        callJS("window.mdbridge.init('', \(optsJSON))") { result in
             // isReady 的唯一赋值点在桥消息 "ready" 分支(含暂存文档补载);
             // 这里只留诊断日志。init 的 evaluateJavaScript 完成与 ready 消息到达
             // 谁先谁后都安全:补载动作只在桥分支发生,openDocument 自带守卫。

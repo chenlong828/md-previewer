@@ -1,7 +1,7 @@
 ---
 layer: works
 module: global
-status: active
+status: closed
 updated: 2026-10-12
 ---
 
@@ -41,11 +41,11 @@ updated: 2026-10-12
 
 ## 验收标准
 
-- [ ] main.js 拆为职责单一模块，单文件不超过 ~300 行；esbuild 构建产物功能等价
-- [ ] selftest 全部通过（拆分前后各跑一次留档于本工序目录）
-- [ ] ESLint 接入且 0 error；`state` 形状静态声明
-- [ ] 菜单 identifier 编译期可查（常量/枚举），字符串裸引用清零
-- [ ] `./build.sh` 通过
+- [x] main.js 拆为职责单一模块，单文件不超过 ~300 行；esbuild 构建产物功能等价
+- [x] selftest 全部通过（拆分前后各跑一次留档于本工序目录）
+- [x] ESLint 接入且 0 error；`state` 形状静态声明
+- [x] 菜单 identifier 编译期可查（常量/枚举），字符串裸引用清零
+- [x] `./build.sh` 通过
 
 ## 依赖与顺序
 

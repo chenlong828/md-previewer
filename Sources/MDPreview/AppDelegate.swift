@@ -2,6 +2,19 @@ import AppKit
 import os.log
 import UniformTypeIdentifiers
 
+/// 菜单 identifier 常量:构建与联动(findMenu/updateMenuItem)共用同一出处,
+/// 拼写错误在编译期暴露,不再有裸字符串递归查找。
+enum MenuID {
+    static let fileMenu = NSUserInterfaceItemIdentifier("fileMenu")
+    static let viewMenu = NSUserInterfaceItemIdentifier("viewMenu")
+    static let appearanceMenu = NSUserInterfaceItemIdentifier("appearanceMenu")
+    static let recentsMenu = NSUserInterfaceItemIdentifier("recentsMenu")
+    static let viewSourceMode = NSUserInterfaceItemIdentifier("view.sourceMode")
+    static let appearanceAuto = NSUserInterfaceItemIdentifier("appearance.auto")
+    static let appearanceLight = NSUserInterfaceItemIdentifier("appearance.light")
+    static let appearanceDark = NSUserInterfaceItemIdentifier("appearance.dark")
+}
+
 final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     static var shared: AppDelegate?
 
@@ -164,28 +177,35 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         refreshAppearanceMenuState()
     }
 
+    /// 外观三态联动表:(菜单, 菜单项, 存储值)。刷新与勾选全部按表驱动。
+    private static let appearanceItems: [(menu: NSUserInterfaceItemIdentifier, item: NSUserInterfaceItemIdentifier, mode: String)] = [
+        (MenuID.appearanceMenu, MenuID.appearanceAuto, "auto"),
+        (MenuID.appearanceMenu, MenuID.appearanceLight, "light"),
+        (MenuID.appearanceMenu, MenuID.appearanceDark, "dark"),
+    ]
+
     func refreshAppearanceMenuState() {
         let saved = UserDefaults.standard.string(forKey: "appearanceMode") ?? "auto"
-        updateMenuItem(in: "appearanceMenu", id: "appearance.auto", selected: saved == "auto")
-        updateMenuItem(in: "appearanceMenu", id: "appearance.light", selected: saved == "light")
-        updateMenuItem(in: "appearanceMenu", id: "appearance.dark", selected: saved == "dark")
+        for entry in Self.appearanceItems {
+            updateMenuItem(in: entry.menu, id: entry.item, selected: saved == entry.mode)
+        }
     }
 
     func refreshViewMenuState() {
         let inSource = currentDocument?.inSourceMode ?? false
-        updateMenuItem(in: "viewMenu", id: "view.sourceMode", selected: inSource)
+        updateMenuItem(in: MenuID.viewMenu, id: MenuID.viewSourceMode, selected: inSource)
     }
 
-    private func updateMenuItem(in menuId: String, id: String, selected: Bool) {
+    private func updateMenuItem(in menuId: NSUserInterfaceItemIdentifier, id: NSUserInterfaceItemIdentifier, selected: Bool) {
         guard let menu = NSApp.mainMenu, let submenu = findMenu(named: menuId, in: menu) else { return }
-        for item in submenu.items where item.identifier?.rawValue == id {
+        for item in submenu.items where item.identifier == id {
             item.state = selected ? .on : .off
         }
     }
 
-    private func findMenu(named id: String, in menu: NSMenu) -> NSMenu? {
+    private func findMenu(named id: NSUserInterfaceItemIdentifier, in menu: NSMenu) -> NSMenu? {
         for item in menu.items {
-            if item.identifier?.rawValue == id, let sub = item.submenu { return sub }
+            if item.identifier == id, let sub = item.submenu { return sub }
             if let sub = item.submenu, let found = findMenu(named: id, in: sub) { return found }
         }
         return nil
@@ -246,131 +266,126 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     // MARK: - 菜单构建
 
     func menuNeedsUpdate(_ menu: NSMenu) {
-        if menu.identifier?.rawValue == "recentsMenu" { rebuildRecentsMenu() }
+        if menu.identifier == MenuID.recentsMenu { rebuildRecentsMenu() }
+    }
+
+    /// 追加一个子菜单并在其中构建菜单项(消除逐级声明的样板嵌套)
+    @discardableResult
+    private static func appendSubmenu(
+        _ title: String, to parent: NSMenu, id: NSUserInterfaceItemIdentifier? = nil, _ build: (NSMenu) -> Void
+    ) -> NSMenu {
+        let item = NSMenuItem(title: title, action: nil, keyEquivalent: "")
+        let menu = NSMenu(title: title)
+        item.submenu = menu
+        menu.identifier = id
+        parent.addItem(item)
+        build(menu)
+        return menu
     }
 
     private func buildMenus() {
         let main = NSMenu()
 
         // ─── App 菜单
-        let appItem = NSMenuItem()
-        main.addItem(appItem)
-        let appMenu = NSMenu(title: "MDPreview")
-        appItem.submenu = appMenu
-        appMenu.addItem(withTitle: "关于 MDPreview", action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)), keyEquivalent: "")
-        appMenu.addItem(.separator())
-        appMenu.addItem(withTitle: "隐藏 MDPreview", action: #selector(NSApplication.hide(_:)), keyEquivalent: "h")
-        let hideOthers = appMenu.addItem(withTitle: "隐藏其他", action: #selector(NSApplication.hideOtherApplications(_:)), keyEquivalent: "h")
-        hideOthers.keyEquivalentModifierMask = [.command, .option]
-        appMenu.addItem(withTitle: "全部显示", action: #selector(NSApplication.unhideAllApplications(_:)), keyEquivalent: "")
-        appMenu.addItem(.separator())
-        appMenu.addItem(withTitle: "退出 MDPreview", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        Self.appendSubmenu("MDPreview", to: main) { menu in
+            menu.addItem(withTitle: "关于 MDPreview", action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)), keyEquivalent: "")
+            menu.addItem(.separator())
+            menu.addItem(withTitle: "隐藏 MDPreview", action: #selector(NSApplication.hide(_:)), keyEquivalent: "h")
+            let hideOthers = menu.addItem(withTitle: "隐藏其他", action: #selector(NSApplication.hideOtherApplications(_:)), keyEquivalent: "h")
+            hideOthers.keyEquivalentModifierMask = [.command, .option]
+            menu.addItem(withTitle: "全部显示", action: #selector(NSApplication.unhideAllApplications(_:)), keyEquivalent: "")
+            menu.addItem(.separator())
+            menu.addItem(withTitle: "退出 MDPreview", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        }
 
         // ─── 文件
-        let fileItem = NSMenuItem()
-        main.addItem(fileItem)
-        let fileMenu = NSMenu(title: "文件")
-        fileItem.submenu = fileMenu
-        fileMenu.identifier = NSUserInterfaceItemIdentifier("fileMenu")
-        fileMenu.addItem(withTitle: "新建", action: #selector(newDocumentAction(_:)), keyEquivalent: "n")
-        fileMenu.addItem(withTitle: "打开…", action: #selector(DocumentWindowController.openDocumentAction(_:)), keyEquivalent: "o")
-        let recentsItem = NSMenuItem(title: "打开最近使用", action: nil, keyEquivalent: "")
-        let recents = NSMenu(title: "打开最近使用")
-        recents.identifier = NSUserInterfaceItemIdentifier("recentsMenu")
-        recents.delegate = self
-        recentsItem.submenu = recents
-        recentsMenu = recents
-        fileMenu.addItem(recentsItem)
-        fileMenu.addItem(.separator())
-        fileMenu.addItem(withTitle: "保存", action: #selector(DocumentWindowController.saveDocumentAction(_:)), keyEquivalent: "s")
-        let saveAs = fileMenu.addItem(withTitle: "另存为…", action: #selector(DocumentWindowController.saveDocumentAsAction(_:)), keyEquivalent: "s")
-        saveAs.keyEquivalentModifierMask = [.command, .shift]
-        fileMenu.addItem(.separator())
-        fileMenu.addItem(withTitle: "在 Finder 中显示", action: #selector(DocumentWindowController.revealInFinderAction(_:)), keyEquivalent: "r")
-        fileMenu.addItem(.separator())
-        fileMenu.addItem(withTitle: "导出 PDF…", action: #selector(DocumentWindowController.exportPDFAction(_:)), keyEquivalent: "e")
-        let exportHTML = fileMenu.addItem(withTitle: "导出 HTML…", action: #selector(DocumentWindowController.exportHTMLAction(_:)), keyEquivalent: "h")
-        exportHTML.keyEquivalentModifierMask = [.command, .shift]
-        fileMenu.addItem(withTitle: "打印…", action: #selector(DocumentWindowController.printDocumentAction(_:)), keyEquivalent: "p")
-        fileMenu.addItem(.separator())
-        fileMenu.addItem(withTitle: "关闭窗口", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
+        Self.appendSubmenu("文件", to: main, id: MenuID.fileMenu) { menu in
+            menu.addItem(withTitle: "新建", action: #selector(self.newDocumentAction(_:)), keyEquivalent: "n")
+            menu.addItem(withTitle: "打开…", action: #selector(DocumentWindowController.openDocumentAction(_:)), keyEquivalent: "o")
+            let recentsItem = NSMenuItem(title: "打开最近使用", action: nil, keyEquivalent: "")
+            let recents = NSMenu(title: "打开最近使用")
+            recents.identifier = MenuID.recentsMenu
+            recents.delegate = self
+            recentsItem.submenu = recents
+            self.recentsMenu = recents
+            menu.addItem(recentsItem)
+            menu.addItem(.separator())
+            menu.addItem(withTitle: "保存", action: #selector(DocumentWindowController.saveDocumentAction(_:)), keyEquivalent: "s")
+            let saveAs = menu.addItem(withTitle: "另存为…", action: #selector(DocumentWindowController.saveDocumentAsAction(_:)), keyEquivalent: "s")
+            saveAs.keyEquivalentModifierMask = [.command, .shift]
+            menu.addItem(.separator())
+            menu.addItem(withTitle: "在 Finder 中显示", action: #selector(DocumentWindowController.revealInFinderAction(_:)), keyEquivalent: "r")
+            menu.addItem(.separator())
+            menu.addItem(withTitle: "导出 PDF…", action: #selector(DocumentWindowController.exportPDFAction(_:)), keyEquivalent: "e")
+            let exportHTML = menu.addItem(withTitle: "导出 HTML…", action: #selector(DocumentWindowController.exportHTMLAction(_:)), keyEquivalent: "h")
+            exportHTML.keyEquivalentModifierMask = [.command, .shift]
+            menu.addItem(withTitle: "打印…", action: #selector(DocumentWindowController.printDocumentAction(_:)), keyEquivalent: "p")
+            menu.addItem(.separator())
+            menu.addItem(withTitle: "关闭窗口", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
+        }
 
         // ─── 编辑
-        let editItem = NSMenuItem()
-        main.addItem(editItem)
-        let editMenu = NSMenu(title: "编辑")
-        editItem.submenu = editMenu
-        // 命令注册表统一驱动(与右键菜单共用定义)
-        EditorCommands.append([.undo, .redo], to: editMenu)
-        editMenu.addItem(.separator())
-        EditorCommands.append([.cut, .copy, .paste, .selectAll], to: editMenu)
-        editMenu.addItem(.separator())
-        EditorCommands.append([.find, .findNext, .findPrev], to: editMenu)
+        Self.appendSubmenu("编辑", to: main) { menu in
+            // 命令注册表统一驱动(与右键菜单共用定义)
+            EditorCommands.append([.undo, .redo], to: menu)
+            menu.addItem(.separator())
+            EditorCommands.append([.cut, .copy, .paste, .selectAll], to: menu)
+            menu.addItem(.separator())
+            EditorCommands.append([.find, .findNext, .findPrev], to: menu)
+        }
 
         // ─── 格式
-        let formatItem = NSMenuItem()
-        main.addItem(formatItem)
-        let formatMenu = NSMenu(title: "格式")
-        formatItem.submenu = formatMenu
-
-        // 命令注册表统一驱动(与右键菜单共用定义)
-        EditorCommands.append([.bold, .italic, .strikethrough, .inlineCode, .link], to: formatMenu)
-        formatMenu.addItem(.separator())
-        EditorCommands.append([.heading1, .heading2, .heading3, .bodyText], to: formatMenu)
-        formatMenu.addItem(.separator())
-        EditorCommands.append([.quote, .bulletList, .orderedList], to: formatMenu)
-        formatMenu.addItem(.separator())
-        EditorCommands.append([.codeBlock, .mathBlock, .insertTable], to: formatMenu)
-        // 表格子菜单:同一注册表
-        let tableItem = NSMenuItem(title: "表格", action: nil, keyEquivalent: "")
-        let tableMenu = NSMenu(title: "表格")
-        tableItem.submenu = tableMenu
-        EditorCommands.append([.rowAbove, .rowBelow, .colLeft, .colRight], to: tableMenu)
-        tableMenu.addItem(.separator())
-        EditorCommands.append([.deleteRow, .deleteColumn, .deleteTable], to: tableMenu)
-        formatMenu.addItem(tableItem)
-        if let hr = EditorCommands.menuItem(for: .insertHr) { formatMenu.addItem(hr) }
+        Self.appendSubmenu("格式", to: main) { menu in
+            // 命令注册表统一驱动(与右键菜单共用定义)
+            EditorCommands.append([.bold, .italic, .strikethrough, .inlineCode, .link], to: menu)
+            menu.addItem(.separator())
+            EditorCommands.append([.heading1, .heading2, .heading3, .bodyText], to: menu)
+            menu.addItem(.separator())
+            EditorCommands.append([.quote, .bulletList, .orderedList], to: menu)
+            menu.addItem(.separator())
+            EditorCommands.append([.codeBlock, .mathBlock, .insertTable], to: menu)
+            // 表格子菜单:同一注册表
+            let tableItem = NSMenuItem(title: "表格", action: nil, keyEquivalent: "")
+            let tableMenu = NSMenu(title: "表格")
+            tableItem.submenu = tableMenu
+            EditorCommands.append([.rowAbove, .rowBelow, .colLeft, .colRight], to: tableMenu)
+            tableMenu.addItem(.separator())
+            EditorCommands.append([.deleteRow, .deleteColumn, .deleteTable], to: tableMenu)
+            menu.addItem(tableItem)
+            if let hr = EditorCommands.menuItem(for: .insertHr) { menu.addItem(hr) }
+        }
 
         // ─── 视图
-        let viewItem = NSMenuItem()
-        main.addItem(viewItem)
-        let viewMenu = NSMenu(title: "视图")
-        viewItem.submenu = viewMenu
-        viewMenu.identifier = NSUserInterfaceItemIdentifier("viewMenu")
-
-        let zoomIn = viewMenu.addItem(withTitle: "放大", action: #selector(DocumentWindowController.zoomInAction(_:)), keyEquivalent: "+")
-        zoomIn.keyEquivalentModifierMask = [.command]
-        let zoomOut = viewMenu.addItem(withTitle: "缩小", action: #selector(DocumentWindowController.zoomOutAction(_:)), keyEquivalent: "-")
-        zoomOut.keyEquivalentModifierMask = [.command]
-        viewMenu.addItem(withTitle: "实际大小", action: #selector(DocumentWindowController.zoomResetAction(_:)), keyEquivalent: "0")
-        viewMenu.addItem(.separator())
-        let sourceItem = viewMenu.addItem(withTitle: "源码模式", action: #selector(DocumentWindowController.toggleSourceModeAction(_:)), keyEquivalent: "/")
-        sourceItem.identifier = NSUserInterfaceItemIdentifier("view.sourceMode")
-        viewMenu.addItem(.separator())
-        let appearanceItem = NSMenuItem(title: "外观", action: nil, keyEquivalent: "")
-        let appearanceMenu = NSMenu(title: "外观")
-        appearanceMenu.identifier = NSUserInterfaceItemIdentifier("appearanceMenu")
-        appearanceItem.submenu = appearanceMenu
-        viewMenu.addItem(appearanceItem)
-        let auto = appearanceMenu.addItem(withTitle: "跟随系统", action: #selector(appearanceAutoAction(_:)), keyEquivalent: "")
-        auto.identifier = NSUserInterfaceItemIdentifier("appearance.auto")
-        auto.target = self
-        let light = appearanceMenu.addItem(withTitle: "浅色", action: #selector(appearanceLightAction(_:)), keyEquivalent: "")
-        light.identifier = NSUserInterfaceItemIdentifier("appearance.light")
-        light.target = self
-        let dark = appearanceMenu.addItem(withTitle: "深色", action: #selector(appearanceDarkAction(_:)), keyEquivalent: "")
-        dark.identifier = NSUserInterfaceItemIdentifier("appearance.dark")
-        dark.target = self
+        Self.appendSubmenu("视图", to: main, id: MenuID.viewMenu) { menu in
+            let zoomIn = menu.addItem(withTitle: "放大", action: #selector(DocumentWindowController.zoomInAction(_:)), keyEquivalent: "+")
+            zoomIn.keyEquivalentModifierMask = [.command]
+            let zoomOut = menu.addItem(withTitle: "缩小", action: #selector(DocumentWindowController.zoomOutAction(_:)), keyEquivalent: "-")
+            zoomOut.keyEquivalentModifierMask = [.command]
+            menu.addItem(withTitle: "实际大小", action: #selector(DocumentWindowController.zoomResetAction(_:)), keyEquivalent: "0")
+            menu.addItem(.separator())
+            let sourceItem = menu.addItem(withTitle: "源码模式", action: #selector(DocumentWindowController.toggleSourceModeAction(_:)), keyEquivalent: "/")
+            sourceItem.identifier = MenuID.viewSourceMode
+            menu.addItem(.separator())
+            Self.appendSubmenu("外观", to: menu, id: MenuID.appearanceMenu) { appearance in
+                let auto = appearance.addItem(withTitle: "跟随系统", action: #selector(AppDelegate.appearanceAutoAction(_:)), keyEquivalent: "")
+                auto.identifier = MenuID.appearanceAuto
+                auto.target = self
+                let light = appearance.addItem(withTitle: "浅色", action: #selector(AppDelegate.appearanceLightAction(_:)), keyEquivalent: "")
+                light.identifier = MenuID.appearanceLight
+                light.target = self
+                let dark = appearance.addItem(withTitle: "深色", action: #selector(AppDelegate.appearanceDarkAction(_:)), keyEquivalent: "")
+                dark.identifier = MenuID.appearanceDark
+                dark.target = self
+            }
+        }
 
         // ─── 窗口
-        let windowItem = NSMenuItem()
-        main.addItem(windowItem)
-        let windowMenu = NSMenu(title: "窗口")
-        windowItem.submenu = windowMenu
-        windowMenu.addItem(withTitle: "最小化", action: #selector(NSWindow.performMiniaturize(_:)), keyEquivalent: "m")
-        windowMenu.addItem(withTitle: "缩放", action: #selector(NSWindow.performZoom(_:)), keyEquivalent: "")
-        windowMenu.addItem(.separator())
-        windowMenu.addItem(withTitle: "前置全部窗口", action: #selector(NSApplication.arrangeInFront(_:)), keyEquivalent: "")
+        Self.appendSubmenu("窗口", to: main) { menu in
+            menu.addItem(withTitle: "最小化", action: #selector(NSWindow.performMiniaturize(_:)), keyEquivalent: "m")
+            menu.addItem(withTitle: "缩放", action: #selector(NSWindow.performZoom(_:)), keyEquivalent: "")
+            menu.addItem(.separator())
+            menu.addItem(withTitle: "前置全部窗口", action: #selector(NSApplication.arrangeInFront(_:)), keyEquivalent: "")
+        }
 
         NSApp.mainMenu = main
         rebuildRecentsMenu()

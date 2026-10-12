@@ -1,0 +1,67 @@
+SELFTEST page: /Users/chenlong/productive/md_preview/web/dist/index.html
+PASS  页面脚本加载(boot)
+PASS  编辑器初始化(ready)
+SELFTEST task: {"outer":"<li data-item-type=\"task\" data-label=\"•\" data-list-type=\"bullet\" data-spread=\"false\" data-checked=\"true\"><p>已完成项</p></li>","attrs":"{\"itemType\":\"task\",\"label\":\"•\",\"listType\":\"bullet\",\"spread\":\"false\",\"checked\":\"true\"}"}
+SELFTEST table-md: "| 功能     |  状态 |\n| ------ | :-: |\n| GFM 表格 |  通过 |\n\n## 数学公式\n\n行内 $E = mc^2$ 公式,块级:\n\n$$\n\\int_0^1 x^2 \\, dx = \\frac{1}{3}\n$"
+SELFTEST diagram: {"svg":true,"html":"<div class=\"mermaid-svg\"><svg id=\"mmd-1-t7hgx5\" width=\"100%\" xmlns=\"http://www.w3.org/2000/svg\" style=\"max-width: 331.578125px;\" viewBox=\"-8 -8 331.57"}
+PASS  ProseMirror 编辑器挂载
+PASS  H1/H2 标题渲染
+PASS  表格渲染
+PASS  KaTeX 公式渲染
+PASS  Prism 代码高亮
+PASS  任务列表渲染
+PASS  引用块渲染
+PASS  分割线渲染
+PASS  链接渲染
+PASS  Mermaid 图表渲染
+PASS  往返包含 Heading One
+PASS  往返包含 | 功能
+PASS  往返包含 $$
+PASS  往返包含 mermaid
+PASS  往返包含 graph LR
+PASS  往返包含 [x]
+PASS  往返包含 >
+PASS  桥命令行为:标题2动作可运行
+PASS  桥命令行为:正文动作可运行
+PASS  桥命令行为:标题1动作可运行
+PASS  源码模式显示原文
+PASS  源码模式编辑回写
+PASS  D1 源码模式保存取一致内容
+PASS  D1 markClean 基线等于所见
+PASS  D2 导出 HTML 标题
+PASS  深色主题切换
+PASS  命令桥 insertTableCommand
+PASS  插入表格生效
+PASS  表格-插入命令
+PASS  表格-初始几何
+PASS  表格-插入行命令
+PASS  表格-插入行生效
+PASS  表格-插入列命令
+PASS  表格-插入列生效
+PASS  表格-删除行命令
+PASS  表格-删除行生效
+PASS  表格-删除列命令
+PASS  表格-删除列生效
+PASS  表格-定位首表
+PASS  表格-新行为空
+PASS  命令注册表完整(33 条)
+PASS  桥命令名双端一致(21 条)
+PASS  Info.plist 扩展名一致(6 项)
+PASS  缩放应用
+PASS  宽度策略(100%+CSS变量下限)
+WEB-JS-ERROR: Script error.
+
+PASS  查找命中计数(1/2)
+PASS  查找下一处(2/2)
+PASS  查找高亮与定位(2 处)
+PASS  查找栏关闭
+SELFTEST pdf bytes: 131185
+PASS  PDF 导出
+PASS  图片路径改写(加载)
+PASS  代码围栏不受改写影响
+PASS  图片路径还原(保存)
+PASS  缺失文件保持原样
+PASS  OQ-1 轻量页脚本加载
+PASS  OQ-1 轻量初始化(ready)
+PASS  OQ-1 pluginSet 轻量模式生效
+SELFTEST PASSED
