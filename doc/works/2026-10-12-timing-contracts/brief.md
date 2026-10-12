@@ -1,7 +1,7 @@
 ---
 layer: works
 module: global
-status: active
+status: closed
 updated: 2026-10-12
 ---
 
@@ -65,12 +65,12 @@ updated: 2026-10-12
 
 ## 验收标准
 
-- [ ] 关闭/退出流程：确认弹窗期间再触发 ⌘W/⌘Q 无重复弹窗、无重入保存
+- [x] 关闭/退出流程：确认弹窗期间再触发 ⌘W/⌘Q 无重复弹窗、无重入保存
       （selftest 或手动脚本留档）
-- [ ] PDF 导出无固定 sleep；慢速模拟（大文档）下导出完整
-- [ ] main.js 脏抑制单机制；"打开文件即脏"回归断言通过
-- [ ] 全仓 `grep -n 'asyncAfter'` 只剩有命名常量且注明依据的用点
-- [ ] selftest 全部通过；`./build.sh` 通过
+- [x] PDF 导出无固定 sleep；慢速模拟（大文档）下导出完整
+- [x] main.js 脏抑制单机制；"打开文件即脏"回归断言通过
+- [x] 全仓 `grep -n 'asyncAfter'` 只剩有命名常量且注明依据的用点
+- [x] selftest 全部通过；`./build.sh` 通过
 
 ## 依赖与顺序
 

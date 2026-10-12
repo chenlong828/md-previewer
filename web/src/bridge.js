@@ -42,13 +42,10 @@ window.mdbridge = {
 
     setMarkdown(md, flush = false) {
         if (!state.ready) return
-        state.suppressChange = true
-        state.pendingBaseline = true
-        try {
-            state.editor.action(replaceAll(md || '', flush))
-        } finally {
-            queueMicrotask(() => { state.suppressChange = false })
-        }
+        state.editor.action(replaceAll(md || '', flush))
+        // 确定性基线:同步序列化 replaceAll 落定后的 doc(与保存取回同一口径),
+        // 不依赖异步回调的到达时机——并发编辑的防抖回调由 editor 的过期过滤处理
+        if (!flush) state.baselineMarkdown = currentMarkdown()
     },
 
     /** 保存成功后由原生调用:以当前所见内容为新基线(源码模式下即 textarea 内容) */

@@ -11,7 +11,9 @@ final class EditorWebView: WKWebView, WKScriptMessageHandler, WKNavigationDelega
     var onPageReady: (() -> Void)?
     /// 由控制器异步提供右键菜单(先定位光标再构建);返回 nil 时本次不弹菜单
     var contextMenuHandler: ((_ x: CGFloat, _ y: CGFloat, _ done: @escaping (NSMenu?) -> Void) -> Void)?
-    private var localEventMonitor: Any?
+    // 全局/局部事件监视器句柄集中管理:窗口关闭或实例释放时统一移除,
+    // 避免多窗口下事件穿越 N 个已废弃监视器(审计 #20)。
+    private var eventMonitors: [Any] = []
 
     static func makeConfiguration() -> WKWebViewConfiguration {
         let config = WKWebViewConfiguration()
@@ -27,7 +29,7 @@ final class EditorWebView: WKWebView, WKScriptMessageHandler, WKNavigationDelega
         super.init(frame: .zero, configuration: configuration)
         navigationDelegate = self
         uiDelegate = self
-        // 让 WebKit 的编辑行为(剪切/粘贴/撤销)走系统菜单响应链
+        // 编辑器不使用前后退导航手势(单页应用,手势会与文本编辑误触冲突)
         allowsBackForwardNavigationGestures = false
         // 在实际生效的 configuration 上注册消息处理;
         // 用弱引用代理避免 WKUserContentController 强持有 WebView 造成循环引用
@@ -36,13 +38,13 @@ final class EditorWebView: WKWebView, WKScriptMessageHandler, WKNavigationDelega
         configuration.userContentController.add(proxy, name: "mdbridge")
         // 彻底覆盖系统右键菜单:按下与抬起都在编辑器区域内时吞掉事件,
         // 抬起后先定位光标(异步查询表格状态),再弹应用自定义菜单
-        NSEvent.addLocalMonitorForEvents(matching: .rightMouseDown) { [weak self] event in
+        addMonitor(for: .rightMouseDown) { [weak self] event in
             guard let self,
                   event.window === self.window,
                   self.hitTest(event.locationInWindow) != nil else { return event }
             return nil
         }
-        localEventMonitor = NSEvent.addLocalMonitorForEvents(matching: .rightMouseUp) { [weak self] event in
+        addMonitor(for: .rightMouseUp) { [weak self] event in
             guard let self,
                   event.window === self.window,
                   self.hitTest(event.locationInWindow) != nil,
@@ -58,6 +60,18 @@ final class EditorWebView: WKWebView, WKScriptMessageHandler, WKNavigationDelega
     }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    /// addLocalMonitorForEvents 返回可空句柄:非空才入册,deinit 时成对移除
+    private func addMonitor(for type: NSEvent.EventTypeMask, _ handler: @escaping (NSEvent) -> NSEvent?) {
+        if let monitor = NSEvent.addLocalMonitorForEvents(matching: type, handler: handler) {
+            eventMonitors.append(monitor)
+        }
+    }
+
+    deinit {
+        for monitor in eventMonitors { NSEvent.removeMonitor(monitor) }
+        eventMonitors = []
+    }
 
     // MARK: - JS 消息代理中转
 

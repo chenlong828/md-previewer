@@ -10,10 +10,9 @@ export const state = {
     zoom: 1.0,
     sourceMode: false,
     lastMarkdown: '',
-    // 干净基线:文件加载/保存时的序列化结果;仅当内容偏离基线才向原生上报 changed
+    // 干净基线:文件加载/保存时的序列化结果;仅当内容偏离基线才向原生上报 changed。
+    // 基线由 setMarkdown/markClean 同步落定(确定性口径),不等 200ms 防抖回调。
     baselineMarkdown: '',
-    // listener 为异步触发:加载后置位,下一次 listener 回调的内容即新基线
-    pendingBaseline: false,
     // 插件档位:'full' | 'no-diagram'(由 init opts 传入,_init 先解析再建编辑器)
     pluginSet: 'full',
 }

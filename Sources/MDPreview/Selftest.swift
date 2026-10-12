@@ -13,6 +13,14 @@ final class SelftestRunner: NSObject {
     private var window: NSWindow!
     private var bootReceived = false
     private var readyReceived = false
+    /// 等待间隔命名常量(非魔力裸数字:注明依据)
+    enum Polling {
+        /// 几何收敛轮询间隔:一轮布局+合成至少数帧,0.05s 足以观察到变化
+        static let geometryInterval: TimeInterval = 0.05
+        /// 几何收敛轮询上限(40 次 ≈ 2s):超大文档兜底
+        static let geometryMaxAttempts = 40
+    }
+
     /// 桥消息观测:changed 上报计数(D1 误报守门用)
     private var changedTrueCount = 0
     private var changedTotalCount = 0
@@ -175,6 +183,22 @@ func greet() -> String {
         for marker in ["Heading One", "| 功能", "$$", "mermaid", "graph LR", "[x]", ">"] {
             if roundtrip.contains(marker) { pass("往返包含 \(marker)") } else { fail("往返缺少 \(marker)") }
         }
+
+        // ── T3 打开文件即脏回归:注入文档后,静止窗内不得上报 dirty=true。
+        //    基线由 setMarkdown 同步落定,防抖回调只做比对(红→绿守门:
+        //    修复前 pendingBaseline/suppressChange 双机制清零时机不同,漏掉即误报)。
+        var t3 = false
+        waitForCollect("T3 打开文件即脏回归", timeout: 15) { done in
+            self.settleBridge(quiet: 1.2, timeout: 8) // 排空注入前旧事务尾窗
+            self.changedTrueCount = 0
+            self.changedTotalCount = 0
+            self.evaluate("window.mdbridge.setMarkdown(\(JSArgs.string(SelftestRunner.sampleMarkdown)))") { _ in
+                self.settleBridge(quiet: 1.2, timeout: 8) // 注入的全部上报到齐
+                t3 = self.changedTrueCount == 0
+                done()
+            }
+        }
+        if t3 { pass("T3 打开文件即脏回归(注入后零误报)") } else { fail("T3 打开文件即脏回归(dirty=true 报了 \(changedTrueCount) 次)") }
 
         // ── 桥命令行为抽检:命令经 formatCommand 真实可运行(基线时 wrapInHeadingCommand
         //    未注册 + payload 形态不符,菜单动作静默失败——由双端校验与行为抽检共同守门)。
@@ -445,22 +469,24 @@ func greet() -> String {
             if (r as? String) == "closed" { self.pass("查找栏关闭") } else { self.fail("查找栏关闭 → \(String(describing: r))") }
         }
 
-        // ── PDF 导出能力
+        // ── PDF 导出能力(几何就绪信号驱动,替代固定延时;W5-T2)
         var pdfOK = false
+        var smallPdfBytes = 0
+        var smallHeight: Double = 0
         waitForCollect("PDF 导出", timeout: 25) { done in
-            self.evaluate("document.documentElement.scrollHeight") { hResult in
-                guard let h = (hResult as? NSNumber)?.doubleValue, h > 100 else {
-                    done()
-                    return
-                }
+            self.waitForScrollHeightSettled { settledH in
+                guard let h = settledH, h > 100 else { done(); return }
+                smallHeight = h
                 self.webview.translatesAutoresizingMaskIntoConstraints = true
                 self.webview.frame = NSRect(x: 0, y: 0, width: 1000, height: CGFloat(h))
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                // 收敛后让一拍合成器完成 raster,下一次 RunLoop tick 截取
+                DispatchQueue.main.async {
                     let config = WKPDFConfiguration()
                     config.rect = self.webview.bounds
                     self.webview.createPDF(configuration: config) { result in
                         switch result {
                         case .success(let data):
+                            smallPdfBytes = data.count
                             pdfOK = data.count > 10_000
                             print("SELFTEST pdf bytes:", data.count)
                         case .failure(let error):
@@ -474,6 +500,38 @@ func greet() -> String {
         }
         if pdfOK { pass("PDF 导出") } else { fail("PDF 导出") }
 
+        // ── 大文档 PDF 完整性:注入 30 份样例,几何收敛后截取,内容高度与字节数都须成规模。
+        //    守门:修复前固定 0.35s 延时在慢渲染(mermaid 多图)下会截缺内容。
+        var bigOK = false
+        waitForCollect("大文档 PDF 完整性", timeout: 60) { done in
+            let big = Array(repeating: SelftestRunner.sampleMarkdown, count: 30).joined()
+            self.evaluate("window.mdbridge.setMarkdown(\(JSArgs.string(big)))") { _ in
+                self.waitForScrollHeightSettled { settledH in
+                    guard let h = settledH, h > smallHeight * 4 else { done(); return }
+                    self.webview.frame = NSRect(x: 0, y: 0, width: 1000, height: CGFloat(h))
+                    DispatchQueue.main.async {
+                        let config = WKPDFConfiguration()
+                        config.rect = self.webview.bounds
+                        self.webview.createPDF(configuration: config) { result in
+                            if case .success(let data) = result {
+                                print("SELFTEST big pdf bytes:", data.count, "height:", Int(h))
+                                bigOK = data.count > smallPdfBytes
+                            } else if case .failure(let error) = result {
+                                print("SELFTEST big pdf error:", error.localizedDescription)
+                            }
+                            // 恢复标准样例,后续检查不受影响
+                            self.evaluate("window.mdbridge.setMarkdown(\(JSArgs.string(SelftestRunner.sampleMarkdown)))") { _ in
+                                self.webview.translatesAutoresizingMaskIntoConstraints = false
+                                self.window?.contentView?.layoutSubtreeIfNeeded()
+                                done()
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        if bigOK { pass("大文档 PDF 完整性") } else { fail("大文档 PDF 完整性") }
+
         // ── Swift 侧图片路径改写
         testPathRewriter()
 
@@ -484,6 +542,25 @@ func greet() -> String {
 
         print("SELFTEST \(failed ? "FAILED" : "PASSED")")
         exit(failed ? 1 : 0)
+    }
+
+    /// 与生产同口径的几何就绪信号:连续两次测得相同 scrollHeight 视为布局收敛。
+    /// 返回收敛时的内容高度;超限未收敛返回 nil(W5-T2 就绪信号替代固定延时)。
+    private func waitForScrollHeightSettled(
+        attempts: Int = Polling.geometryMaxAttempts, last: Double? = nil,
+        _ completion: @escaping (Double?) -> Void
+    ) {
+        guard attempts > 0 else { completion(nil); return }
+        evaluate("Math.max(document.documentElement.scrollHeight)") { r in
+            let current = (r as? NSNumber)?.doubleValue ?? 0
+            if let last, abs(current - last) < 0.5 {
+                completion(current)
+                return
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + Polling.geometryInterval) {
+                self.waitForScrollHeightSettled(attempts: attempts - 1, last: current, completion)
+            }
+        }
     }
 
     /// 第二个页面实例验证 plugins 配置真实生效(OQ-1 选 a:保留轻量模式能力)

@@ -20,12 +20,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     /// 所有打开的文档窗口(Typora 模型:单进程多窗口,Dock 图标只有一个)
     private(set) var documents: [DocumentWindowController] = []
-    /// 退出流程进行中:抑制各窗口的二次保存询问
-    private(set) var isTerminating = false
     private var recentsMenu: NSMenu?
     private var appearanceObservation: NSKeyValueObservation?
     private var pinnedAppearance: NSAppearance.Name? // nil = 跟随系统
+    // 不变量(启动矩阵):CLI 参数路径只由 openFromCommandLineIfNeeded 走一次;
+    // application(_:openFile:) 由 LaunchServices 在 applicationDidFinishLaunching
+    // 之后送达(AppKit 启动时序保证),argvFileHandled 记录该事实防止 CLI 重复开窗。
+    // 防御:个别环境同一文档可能同时经 CLI 与 LaunchServices 双路送达,按标准化 URL 去重。
     private var argvFileHandled = false
+    private var cliOpenedURLs: Set<URL> = []
+    /// 退出确认流程进行中(挂起 .terminateLater 到 reply 之间)
+    private var isTerminateConfirming = false
 
     /// Markdown 扩展名的 Swift 唯一来源(打开面板 UTType、文档内链接拦截、
     /// Info.plist 一致性断言均由此派生)。决策:不含 txt——.txt 由系统外部打开。
@@ -58,7 +63,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     func application(_ sender: NSApplication, openFile filename: String) -> Bool {
         // 由 `open xxx.md` / Finder / LaunchServices 触发 → 新窗口
         argvFileHandled = true
-        openInNewWindow(at: URL(fileURLWithPath: filename))
+        let url = URL(fileURLWithPath: filename).standardizedFileURL
+        if cliOpenedURLs.contains(url) { return true } // 与 CLI 路径双送达时去重
+        openInNewWindow(at: url)
         return true
     }
 
@@ -74,17 +81,40 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
-        isTerminating = true
+        if isTerminateConfirming { return .terminateCancel } // 确认流程已在跑:取消重复请求
+        isTerminateConfirming = true
         let dirty = documents.filter { $0.isDirty }
-        guard !dirty.isEmpty else { return .terminateNow }
-        // 每个有修改的窗口询问一次;isTerminating 抑制 windowShouldClose 的重复弹窗
-        for controller in dirty {
-            if !controller.confirmClose(allowCancel: true) {
-                isTerminating = false
-                return .terminateCancel
+        guard !dirty.isEmpty else {
+            isTerminateConfirming = false
+            return .terminateNow
+        }
+        // 保存确认是异步流程(sheet 回调,见 beginConfirmClose):这里挂起退出,
+        // 逐窗口串行确认完毕后再 reply。sheet 运行期间 AppKit 会禁用菜单键等价键,
+        // 正常路径不会重入;Dock/AppleScript 重复触发由 isTerminateConfirming 挡下。
+        beginTerminateConfirmation(pending: dirty)
+        return .terminateLater
+    }
+
+    /// 逐窗口串行确认;全部可安全关闭后才 reply(true),任一取消/保存失败即 reply(false)
+    private func beginTerminateConfirmation(pending: [DocumentWindowController]) {
+        var queue = pending
+        func confirmNext() {
+            guard let next = queue.first else {
+                isTerminateConfirming = false
+                NSApp.reply(toApplicationShouldTerminate: true)
+                return
+            }
+            queue.removeFirst()
+            next.beginConfirmClose(allowCancel: false) { [weak self] confirmed in
+                if confirmed {
+                    confirmNext()
+                } else {
+                    self?.isTerminateConfirming = false
+                    NSApp.reply(toApplicationShouldTerminate: false)
+                }
             }
         }
-        return .terminateNow
+        confirmNext()
     }
 
     // MARK: - 多窗口管理
@@ -129,7 +159,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             let url = URL(fileURLWithPath: path)
             if FileManager.default.fileExists(atPath: url.path, isDirectory: &isDir), !isDir.boolValue {
                 argvFileHandled = true
-                openInNewWindow(at: url.standardizedFileURL)
+                let target = url.standardizedFileURL
+                cliOpenedURLs.insert(target)
+                openInNewWindow(at: target)
                 return
             }
         }

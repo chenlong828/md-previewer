@@ -17,7 +17,21 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
     private var webView: EditorWebView!
     var webViewIfNeeded: EditorWebView? { webView }
     private var statusLabel: NSTextField!
+    private var zoomLabel: NSTextField!
     private var stateLabel: NSTextField!
+
+    // MARK: - 状态栏(字段拆分:词数区/缩放区/状态区,同一渲染函数统一落值)
+    // 双职责 label(平时词数、缩放时临时占比)会让两类信息互相覆盖回退;
+    // 拆字段后各信息持久驻留,不再需要"临时显示再恢复"的时序补丁。
+    private var wordStatsText = "就绪" { didSet { renderStatusBar() } }
+    private var zoomText = "" { didSet { renderStatusBar() } }
+    private var stateText = "" { didSet { renderStatusBar() } }
+
+    private func renderStatusBar() {
+        statusLabel.stringValue = wordStatsText
+        zoomLabel.stringValue = zoomText
+        stateLabel.stringValue = stateText
+    }
     private var fileMonitor: DispatchSourceFileSystemObject?
     private var lastKnownFileAttributes: (modificationDate: Date, size: Int)?
     private var pendingExportPDF = false
@@ -71,6 +85,12 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
         statusLabel.textColor = .secondaryLabelColor
         statusLabel.translatesAutoresizingMaskIntoConstraints = false
 
+        zoomLabel = NSTextField(labelWithString: "")
+        zoomLabel.font = NSFont.systemFont(ofSize: 11)
+        zoomLabel.textColor = .secondaryLabelColor
+        zoomLabel.alignment = .right
+        zoomLabel.translatesAutoresizingMaskIntoConstraints = false
+
         stateLabel = NSTextField(labelWithString: "")
         stateLabel.font = NSFont.systemFont(ofSize: 11)
         stateLabel.textColor = .secondaryLabelColor
@@ -78,6 +98,7 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
         stateLabel.translatesAutoresizingMaskIntoConstraints = false
 
         statusBar.addSubview(statusLabel)
+        statusBar.addSubview(zoomLabel)
         statusBar.addSubview(stateLabel)
         container.addSubview(statusBar)
 
@@ -97,6 +118,9 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
 
             stateLabel.trailingAnchor.constraint(equalTo: statusBar.trailingAnchor, constant: -12),
             stateLabel.centerYAnchor.constraint(equalTo: statusBar.centerYAnchor),
+
+            zoomLabel.trailingAnchor.constraint(equalTo: stateLabel.leadingAnchor, constant: -16),
+            zoomLabel.centerYAnchor.constraint(equalTo: statusBar.centerYAnchor),
         ])
 
         window.contentView = container
@@ -128,7 +152,7 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
             // 允许读取整个文件系统内的本地图片(file:// 渲染 markdown 里的图片)
             webView.loadFileURL(url, allowingReadAccessTo: URL(fileURLWithPath: "/"))
         } else {
-            stateLabel.stringValue = "错误:找不到编辑器资源(web/dist)"
+            stateText = "错误:找不到编辑器资源(web/dist)"
         }
     }
 
@@ -144,25 +168,27 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
             alert.alertStyle = .warning
             if alert.runModal() != .alertFirstButtonReturn { return }
         }
+        let target = url.standardizedFileURL
+        // 未就绪(命令行/Finder 启动时页面可能尚未加载完):只记 URL 不读内容,
+        // 读文件动作只在就绪补载时发生一次——消除双读 TOCTOU 与大文件双读。
+        guard isReady, !isLoadingContent else {
+            pendingOpenURL = target
+            return
+        }
         // 读取编码仅用于探测显示;输出恒定 UTF-8(承诺见 README 已知边界)
-        guard let (text, _) = TextFile.read(at: url) else {
+        guard let (text, _) = TextFile.read(at: target) else {
             let alert = NSAlert()
             alert.messageText = "无法读取文件"
-            alert.informativeText = url.path
+            alert.informativeText = target.path
             alert.runModal()
             return
         }
-        fileURL = url.standardizedFileURL
+        fileURL = target
         isDirty = false
         updateTitle()
         updateStateLabel()
-        AppDelegate.shared?.addRecentFile(url)
-        // 编辑器未就绪(命令行/Finder 启动时页面可能尚未加载完):暂存,就绪后补载
-        guard isReady, !isLoadingContent else {
-            pendingOpenURL = fileURL
-            return
-        }
-        injectMarkdown(text, baseURL: fileURL!)
+        AppDelegate.shared?.addRecentFile(target)
+        injectMarkdown(text, baseURL: target)
     }
 
     /// 将已读取的文本注入编辑器——加载与外部变更重载的唯一入口(仅限编辑器就绪后调用)。
@@ -200,6 +226,19 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
         }
     }
 
+    // MARK: - 时序契约
+
+    /// 非魔力裸数字的用点必须有命名常量与依据。防抖是合理模式,裸数字不是。
+    enum Timing {
+        /// 外部写入防抖窗口:编辑器保存为整文件原子写,0.4s 足以跳过写入窗口,
+        /// 又能屏蔽 FSEvents 对同一文件的连发(实测 R6 场景 0.3s 内可达 3 次)。
+        static let fileMonitorDebounce: TimeInterval = 0.4
+        /// PDF 前几何收敛轮询间隔:一轮布局+合成至少数帧,0.05s 足以观察到变化且总时延可控。
+        static let geometryPollInterval: TimeInterval = 0.05
+        /// 几何收敛轮询上限(40 次 ≈ 2s):超大文档兜底,之后尽力截取。
+        static let geometryPollMaxAttempts = 40
+    }
+
     // MARK: - 保存
 
     func saveDocument(_ sender: Any? = nil) {
@@ -235,11 +274,13 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
                     self.updateTitle()
                     self.updateStateLabel()
                     self.startFileMonitor()
+                    self.finishCloseRequest(success: true)
                 } catch {
                     let alert = NSAlert()
                     alert.messageText = "保存失败"
                     alert.informativeText = error.localizedDescription
                     alert.runModal()
+                    self.finishCloseRequest(success: false)
                 }
             }
         }
@@ -294,7 +335,7 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
         case "stats":
             let words = payload["words"] as? Int ?? 0
             let chars = payload["chars"] as? Int ?? 0
-            statusLabel.stringValue = "\(words) 词 · \(chars) 字符"
+            wordStatsText = "\(words) 词 · \(chars) 字符"
         case "sourceMode":
             sourceModeCached = (payload["value"] as? Bool) ?? false
             AppDelegate.shared?.refreshViewMenuState()
@@ -418,7 +459,7 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
             // 夹取(0.5–3)归 web 端 mdbridge.setZoom 单点负责,此处透传并采用其返回的有效值
             callJS("window.mdbridge.setZoom(\(newValue))") { [weak self] result in
                 guard let effective = result as? Double else { return }
-                self?.statusLabel.stringValue = String(format: "缩放 %.0f%%", effective * 100)
+                self?.zoomText = String(format: "缩放 %.0f%%", effective * 100)
                 // 直接让 web 端重报词数以恢复状态栏(消息通道自带节流,无固定延时)
                 self?.callJS("window.mdbridge.requestStats()")
             }
@@ -475,6 +516,26 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
         }
     }
 
+    /// 截图前 WebView 几何就绪信号:连续两次测得相同内容高度即视为渲染/布局收敛。
+    /// 以就绪信号替代固定延时——mermaid/katex 渲染慢的机器不再可能导出缺内容。
+    private func waitForWebViewGeometrySettled(
+        attempts: Int, last: CGFloat? = nil, _ completion: @escaping () -> Void
+    ) {
+        guard attempts > 0 else { completion(); return } // 兜底:迟迟不收敛也尽力截取
+        callJS("Math.max(document.documentElement.scrollHeight)") { [weak self] result in
+            guard let self else { return }
+            let current = CGFloat((result as? Double) ?? 0)
+            if let last, abs(current - last) < 0.5 {
+                // 收敛后再让一拍合成器完成 raster,下一次 RunLoop tick 即可截取
+                DispatchQueue.main.async { completion() }
+                return
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + Timing.geometryPollInterval) {
+                self.waitForWebViewGeometrySettled(attempts: attempts - 1, last: current, completion)
+            }
+        }
+    }
+
     private func capturePDF(height: CGFloat) {
         guard window?.contentView != nil else { return }
         let originalFrame = webView.frame
@@ -483,7 +544,7 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
         webView.translatesAutoresizingMaskIntoConstraints = true
         webView.frame = NSRect(x: 0, y: 0, width: width, height: height)
 
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { [weak self] in
+        waitForWebViewGeometrySettled(attempts: Timing.geometryPollMaxAttempts) { [weak self] in
             guard let self else { return }
             let config = WKPDFConfiguration()
             config.rect = self.webView.bounds
@@ -556,11 +617,11 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
 
     private func updateStateLabel() {
         if sourceModeCached {
-            stateLabel.stringValue = "源码模式"
+            stateText = "源码模式"
         } else if isReady {
-            stateLabel.stringValue = isDirty ? "已修改" : "就绪"
+            stateText = isDirty ? "已修改" : "就绪"
         } else {
-            stateLabel.stringValue = "加载中…"
+            stateText = "加载中…"
         }
     }
 
@@ -594,7 +655,7 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
 
     private func fileChangedOnDisk() {
         // 防抖:等待写入完成
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak self] in
+        DispatchQueue.main.asyncAfter(deadline: .now() + Timing.fileMonitorDebounce) { [weak self] in
             guard let self else { return }
             guard let attrs = self.fileAttributes(),
                   let last = self.lastKnownFileAttributes else {
@@ -636,13 +697,15 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
         updateStateLabel()
     }
 
-    /// 询问保存当前修改;返回 true 表示可以继续关闭(已保存或放弃),false 表示取消。
+    /// 异步保存确认:确认弹窗以 sheet 呈现,期间只有确认流程本身在等回调,
+    /// 主循环不被泵送——消灭"泵主循环等异步保存"模式下的重入窗口
+    /// (⌘W/菜单/拖放不会再嵌套进保存与打开路径)。
+    /// completion(true) 仅在「窗口可安全关闭」时回调:保存路径等写入完成后再回调。
     /// allowCancel=false 用于退出流程(仅 保存/不保存 两项)。
-    func confirmClose(allowCancel: Bool = true) -> Bool {
-        guard isDirty else { return true }
-        guard !isConfirmingClose else { return false } // 弹窗期间忽略重复关闭请求
+    func beginConfirmClose(allowCancel: Bool = true, completion: @escaping (Bool) -> Void) {
+        guard isDirty else { completion(true); return }
+        guard !isConfirmingClose else { completion(false); return } // 弹窗期间忽略重复请求
         isConfirmingClose = true
-        defer { isConfirmingClose = false }
 
         let alert = NSAlert()
         alert.messageText = "是否保存对「\(fileURL?.lastPathComponent ?? "未命名")」的更改?"
@@ -651,31 +714,55 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
         if allowCancel { alert.addButton(withTitle: "取消") }
         alert.addButton(withTitle: "不保存")
         alert.alertStyle = .warning
-        let response = alert.runModal()
 
-        switch response {
-        case .alertFirstButtonReturn:
-            saveDocument()
-            // 同步等待保存完成(isDirty 由保存回调清除)
-            let deadline = Date().addingTimeInterval(5)
-            while isDirty && Date() < deadline {
-                RunLoop.current.run(mode: .default, before: Date().addingTimeInterval(0.05))
+        guard let window else {
+            isConfirmingClose = false
+            completion(false)
+            return
+        }
+        alert.beginSheetModal(for: window) { [weak self] response in
+            guard let self else { return }
+            self.isConfirmingClose = false
+            switch response {
+            case .alertFirstButtonReturn:
+                // 保存异步进行:挂起关闭回调,由保存完成回调续做
+                self.closeCompletion = completion
+                self.saveDocument()
+            case .alertSecondButtonReturn where !allowCancel:
+                // 退出流程的「不保存」
+                self.setDirty(false)
+                completion(true)
+            case .alertThirdButtonReturn:
+                // 「不保存」:放弃修改
+                self.setDirty(false)
+                completion(true)
+            default:
+                completion(false)
             }
-            return !isDirty
-        case .alertThirdButtonReturn:
-            // 「不保存」:放弃修改
-            setDirty(false)
-            return true
-        default:
-            // 「取消」;退出流程无取消项(第二按钮即「不保存」)
-            return !allowCancel && response == .alertSecondButtonReturn
         }
     }
 
+    /// 关闭请求的挂起回调:保存成功→可安全关闭;失败→留在窗口由用户重试
+    private var closeCompletion: ((Bool) -> Void)?
+
+    private func finishCloseRequest(success: Bool) {
+        guard let completion = closeCompletion else { return }
+        closeCompletion = nil
+        completion(success && !isDirty)
+    }
+
     func windowShouldClose(_ sender: NSWindow) -> Bool {
-        // 退出流程已在 applicationShouldTerminate 中逐窗口询问过
-        if AppDelegate.shared?.isTerminating == true { return true }
-        return confirmClose(allowCancel: true)
+        // 退出流程的逐窗口询问也走 beginConfirmClose(allowCancel: false),
+        // 这里不做 isTerminating 旁路:队列等待期间手动 ⌘W 脏窗口仍必须弹确认,
+        // 否则会静默丢改动;同一窗口的重复请求由 isConfirmingClose 吞掉。
+        guard isDirty else { return true }
+        guard !isConfirmingClose else { return false } // 确认弹窗进行中,吞掉本次请求
+        // 返回 false 阻止立即关闭;sheet 确认结果回调里续做关闭
+        beginConfirmClose(allowCancel: true) { [weak self] confirmed in
+            guard confirmed else { return }
+            self?.window?.performClose(nil) // isDirty 已清,重入 windowShouldClose 直通关闭
+        }
+        return false
     }
 
     // MARK: - NSMenuItemValidation

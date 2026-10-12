@@ -21,7 +21,7 @@ import groovy from 'refractor/groovy'
 import protobuf from 'refractor/protobuf'
 import elixir from 'refractor/elixir'
 import mermaid from 'mermaid'
-import { state, post } from './state.js'
+import { state, post, currentMarkdown } from './state.js'
 import { scheduleStats } from './stats.js'
 import { findKey, findUI, findProsePlugin } from './find.js'
 import { updateFindCount, runFind } from './find-bar.js'
@@ -100,11 +100,10 @@ export async function createEditor() {
     editor.action((ctx) => {
         ctx.get(listenerCtx).markdownUpdated((_ctx, markdown, _prev) => {
             state.lastMarkdown = markdown
-            if (state.pendingBaseline) {
-                // 加载后的第一次回调即为干净基线
-                state.pendingBaseline = false
-                state.baselineMarkdown = markdown
-            } else if (!state.suppressChange) {
+            // 单一脏机制:防抖窗(200ms)内的并发编辑会产生携带中间态的过期回调;
+            // 只认与当前 doc 同步的序列化结果,过期回调直接丢弃——最新状态必有
+            // 更新的回调跟进。基线对齐由 setMarkdown/markClean 同步保证,回调只做比对。
+            if (markdown === currentMarkdown()) {
                 post({ op: 'changed', dirty: markdown !== state.baselineMarkdown })
             }
             scheduleStats()
