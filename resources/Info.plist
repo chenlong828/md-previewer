@@ -43,6 +43,8 @@
                 <string>public.markdown</string>
                 <string>org.textmate.markdown</string>
             </array>
+            <!-- CFBundleTypeExtensions 与 Sources/MDPreview/AppDelegate.swift 的
+                 markdownExtensions 保持一致,由 selftest 断言比对;修改清单需两处同步 -->
             <key>CFBundleTypeExtensions</key>
             <array>
                 <string>md</string>

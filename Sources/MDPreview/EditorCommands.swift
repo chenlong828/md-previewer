@@ -31,6 +31,12 @@ struct EditorCommandSpec {
     /// true:走 responder 链(剪切/拷贝/粘贴等系统编辑动作,输入框焦点时也能正确生效);
     /// false:由 DocumentWindowController 显式处理
     var responderChain: Bool = false
+    /// web 端命令名:格式组为 formatCommand 参数,表格组为 tableCommand 参数。
+    /// nil 表示走控制器专用处理(撤销/重做/查找/源码模式/数学块/插入表格)。
+    /// 双端一致性(JS 注册表存在同名命令)由 selftest 遍历校验。
+    var jsCommand: String? = nil
+    /// formatCommand 的 payload(milkdown 命令为位置参数形态:标题级别是数字)
+    var jsPayload: Any? = nil
 }
 
 enum EditorCommands {
@@ -45,29 +51,29 @@ enum EditorCommands {
         EditorCommandSpec(action: .findNext, title: "查找下一个", selector: #selector(DocumentWindowController.findNextAction(_:)), key: "g", modifiers: .command),
         EditorCommandSpec(action: .findPrev, title: "查找上一个", selector: #selector(DocumentWindowController.findPrevAction(_:)), key: "g", modifiers: [.command, .shift]),
         EditorCommandSpec(action: .toggleSource, title: "源码模式", selector: #selector(DocumentWindowController.toggleSourceModeAction(_:)), key: "/", modifiers: .command, inContextMenu: true),
-        EditorCommandSpec(action: .bold, title: "加粗", selector: #selector(DocumentWindowController.toggleBoldAction(_:)), key: "b", modifiers: .command, inContextMenu: true),
-        EditorCommandSpec(action: .italic, title: "斜体", selector: #selector(DocumentWindowController.toggleItalicAction(_:)), key: "i", modifiers: .command, inContextMenu: true),
-        EditorCommandSpec(action: .strikethrough, title: "删除线", selector: #selector(DocumentWindowController.toggleStrikethroughAction(_:)), key: "x", modifiers: [.command, .shift], inContextMenu: true),
-        EditorCommandSpec(action: .inlineCode, title: "行内代码", selector: #selector(DocumentWindowController.toggleInlineCodeAction(_:)), key: "c", modifiers: [.command, .shift], inContextMenu: true),
-        EditorCommandSpec(action: .link, title: "链接…", selector: #selector(DocumentWindowController.toggleLinkAction(_:)), key: "k", modifiers: .command),
-        EditorCommandSpec(action: .heading1, title: "标题 1", selector: #selector(DocumentWindowController.heading1Action(_:)), key: "1", modifiers: .command),
-        EditorCommandSpec(action: .heading2, title: "标题 2", selector: #selector(DocumentWindowController.heading2Action(_:)), key: "2", modifiers: .command),
-        EditorCommandSpec(action: .heading3, title: "标题 3", selector: #selector(DocumentWindowController.heading3Action(_:)), key: "3", modifiers: .command),
-        EditorCommandSpec(action: .bodyText, title: "正文", selector: #selector(DocumentWindowController.bodyTextAction(_:)), key: "0", modifiers: .command),
-        EditorCommandSpec(action: .quote, title: "引用", selector: #selector(DocumentWindowController.blockquoteAction(_:)), key: "b", modifiers: [.command, .shift]),
-        EditorCommandSpec(action: .bulletList, title: "无序列表", selector: #selector(DocumentWindowController.bulletListAction(_:)), key: "7", modifiers: [.command, .shift]),
-        EditorCommandSpec(action: .orderedList, title: "有序列表", selector: #selector(DocumentWindowController.orderedListAction(_:)), key: "8", modifiers: [.command, .shift]),
-        EditorCommandSpec(action: .codeBlock, title: "代码块", selector: #selector(DocumentWindowController.codeBlockAction(_:)), key: "c", modifiers: [.command, .option]),
+        EditorCommandSpec(action: .bold, title: "加粗", selector: #selector(DocumentWindowController.toggleBoldAction(_:)), key: "b", modifiers: .command, inContextMenu: true, jsCommand: "toggleStrongCommand"),
+        EditorCommandSpec(action: .italic, title: "斜体", selector: #selector(DocumentWindowController.toggleItalicAction(_:)), key: "i", modifiers: .command, inContextMenu: true, jsCommand: "toggleEmphasisCommand"),
+        EditorCommandSpec(action: .strikethrough, title: "删除线", selector: #selector(DocumentWindowController.toggleStrikethroughAction(_:)), key: "x", modifiers: [.command, .shift], inContextMenu: true, jsCommand: "toggleStrikethroughCommand"),
+        EditorCommandSpec(action: .inlineCode, title: "行内代码", selector: #selector(DocumentWindowController.toggleInlineCodeAction(_:)), key: "c", modifiers: [.command, .shift], inContextMenu: true, jsCommand: "toggleInlineCodeCommand"),
+        EditorCommandSpec(action: .link, title: "链接…", selector: #selector(DocumentWindowController.toggleLinkAction(_:)), key: "k", modifiers: .command, jsCommand: "toggleLinkCommand"),
+        EditorCommandSpec(action: .heading1, title: "标题 1", selector: #selector(DocumentWindowController.heading1Action(_:)), key: "1", modifiers: .command, jsCommand: "wrapInHeadingCommand", jsPayload: 1),
+        EditorCommandSpec(action: .heading2, title: "标题 2", selector: #selector(DocumentWindowController.heading2Action(_:)), key: "2", modifiers: .command, jsCommand: "wrapInHeadingCommand", jsPayload: 2),
+        EditorCommandSpec(action: .heading3, title: "标题 3", selector: #selector(DocumentWindowController.heading3Action(_:)), key: "3", modifiers: .command, jsCommand: "wrapInHeadingCommand", jsPayload: 3),
+        EditorCommandSpec(action: .bodyText, title: "正文", selector: #selector(DocumentWindowController.bodyTextAction(_:)), key: "0", modifiers: .command, jsCommand: "turnIntoTextCommand"),
+        EditorCommandSpec(action: .quote, title: "引用", selector: #selector(DocumentWindowController.blockquoteAction(_:)), key: "b", modifiers: [.command, .shift], jsCommand: "wrapInBlockquoteCommand"),
+        EditorCommandSpec(action: .bulletList, title: "无序列表", selector: #selector(DocumentWindowController.bulletListAction(_:)), key: "7", modifiers: [.command, .shift], jsCommand: "wrapInBulletListCommand"),
+        EditorCommandSpec(action: .orderedList, title: "有序列表", selector: #selector(DocumentWindowController.orderedListAction(_:)), key: "8", modifiers: [.command, .shift], jsCommand: "wrapInOrderedListCommand"),
+        EditorCommandSpec(action: .codeBlock, title: "代码块", selector: #selector(DocumentWindowController.codeBlockAction(_:)), key: "c", modifiers: [.command, .option], jsCommand: "createCodeBlockCommand"),
         EditorCommandSpec(action: .mathBlock, title: "数学公式块", selector: #selector(DocumentWindowController.mathBlockAction(_:)), key: "m", modifiers: [.command, .option]),
         EditorCommandSpec(action: .insertTable, title: "插入表格", selector: #selector(DocumentWindowController.insertTableAction(_:)), key: "t", modifiers: [.command, .option], inContextMenu: true),
-        EditorCommandSpec(action: .insertHr, title: "分割线", selector: #selector(DocumentWindowController.hrAction(_:)), key: "-", modifiers: [.command, .shift], inContextMenu: true),
-        EditorCommandSpec(action: .rowAbove, title: "在上方插入行", selector: #selector(DocumentWindowController.insertRowAboveAction(_:)), requiresTable: true, inContextMenu: true),
-        EditorCommandSpec(action: .rowBelow, title: "在下方插入行", selector: #selector(DocumentWindowController.insertRowBelowAction(_:)), requiresTable: true, inContextMenu: true),
-        EditorCommandSpec(action: .colLeft, title: "在左侧插入列", selector: #selector(DocumentWindowController.insertColLeftAction(_:)), requiresTable: true, inContextMenu: true),
-        EditorCommandSpec(action: .colRight, title: "在右侧插入列", selector: #selector(DocumentWindowController.insertColRightAction(_:)), requiresTable: true, inContextMenu: true),
-        EditorCommandSpec(action: .deleteRow, title: "删除所在行", selector: #selector(DocumentWindowController.deleteRowAction(_:)), requiresTable: true, inContextMenu: true),
-        EditorCommandSpec(action: .deleteColumn, title: "删除所在列", selector: #selector(DocumentWindowController.deleteColumnAction(_:)), requiresTable: true, inContextMenu: true),
-        EditorCommandSpec(action: .deleteTable, title: "删除表格", selector: #selector(DocumentWindowController.deleteTableAction(_:)), requiresTable: true, inContextMenu: true),
+        EditorCommandSpec(action: .insertHr, title: "分割线", selector: #selector(DocumentWindowController.hrAction(_:)), key: "-", modifiers: [.command, .shift], inContextMenu: true, jsCommand: "insertHrCommand"),
+        EditorCommandSpec(action: .rowAbove, title: "在上方插入行", selector: #selector(DocumentWindowController.insertRowAboveAction(_:)), requiresTable: true, inContextMenu: true, jsCommand: "insertRowAbove"),
+        EditorCommandSpec(action: .rowBelow, title: "在下方插入行", selector: #selector(DocumentWindowController.insertRowBelowAction(_:)), requiresTable: true, inContextMenu: true, jsCommand: "insertRowBelow"),
+        EditorCommandSpec(action: .colLeft, title: "在左侧插入列", selector: #selector(DocumentWindowController.insertColLeftAction(_:)), requiresTable: true, inContextMenu: true, jsCommand: "insertColLeft"),
+        EditorCommandSpec(action: .colRight, title: "在右侧插入列", selector: #selector(DocumentWindowController.insertColRightAction(_:)), requiresTable: true, inContextMenu: true, jsCommand: "insertColRight"),
+        EditorCommandSpec(action: .deleteRow, title: "删除所在行", selector: #selector(DocumentWindowController.deleteRowAction(_:)), requiresTable: true, inContextMenu: true, jsCommand: "deleteRow"),
+        EditorCommandSpec(action: .deleteColumn, title: "删除所在列", selector: #selector(DocumentWindowController.deleteColumnAction(_:)), requiresTable: true, inContextMenu: true, jsCommand: "deleteColumn"),
+        EditorCommandSpec(action: .deleteTable, title: "删除表格", selector: #selector(DocumentWindowController.deleteTableAction(_:)), requiresTable: true, inContextMenu: true, jsCommand: "deleteTable"),
     ]
 
     static func spec(for action: EditorAction) -> EditorCommandSpec? {

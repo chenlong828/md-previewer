@@ -167,3 +167,30 @@ enum JSArgs {
         return json
     }
 }
+
+// MARK: - 资源定位(编辑器与自检共用,全仓唯一 #filePath 依赖点)
+
+enum WebLocator {
+    /// 编辑器页面入口:打包后取 Bundle 资源,开发模式(swift run)回退仓库内 web/dist
+    static func indexURL() -> URL? {
+        if let res = Bundle.main.resourceURL {
+            let u = res.appendingPathComponent("web/index.html")
+            if FileManager.default.fileExists(atPath: u.path) { return u }
+        }
+        let repo = repoRootURL()?.appendingPathComponent("web/dist/index.html")
+        return repo.flatMap { FileManager.default.fileExists(atPath: $0.path) ? $0 : nil }
+    }
+
+    /// 仓库根目录(仅开发模式有意义;由本文件路径上溯三级,全仓唯一的 #filePath 用点)
+    static func repoRootURL() -> URL? {
+        URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+    }
+
+    /// 仓库内 resources/Info.plist(仅 selftest 一致性断言使用)
+    static func repoInfoPlistURL() -> URL? {
+        repoRootURL()?.appendingPathComponent("resources/Info.plist")
+    }
+}

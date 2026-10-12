@@ -89,7 +89,8 @@ final class EditorWebView: WKWebView, WKScriptMessageHandler, WKNavigationDelega
         if navigationAction.navigationType == .linkActivated, let url = navigationAction.request.url {
             if url.isFileURL {
                 let ext = url.pathExtension.lowercased()
-                if ["md", "markdown", "mdown", "mkdn", "mdown", "text"].contains(ext) || ext.isEmpty {
+                // 扩展名清单唯一来源:AppDelegate.markdownExtensions(与打开面板/Info.plist 同源)
+                if AppDelegate.markdownExtensions.contains(ext) || ext.isEmpty {
                     onDocumentLinkActivated?(url)
                     decisionHandler(.cancel)
                     return

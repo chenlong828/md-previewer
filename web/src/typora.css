@@ -125,24 +125,9 @@ ul, ol { padding-left: 30px; }
 
 li p { margin: 0.2em 0; }
 
-/* 任务列表 */
-[data-type="task-list-item"] {
-    list-style: none;
-    position: relative;
-}
-.md-editor-view ul li:has(> input[type="checkbox"]) {
-    list-style: none;
-    position: relative;
-}
-.md-editor-view input[type="checkbox"] {
-    position: absolute;
-    left: -1.6em;
-    top: 0.28em;
-    width: 1em;
-    height: 1em;
-    accent-color: var(--link-color);
-    cursor: pointer;
-}
+/* 任务列表:视觉机制唯一由文件尾部 "data-checked 驱动" 段实现。
+   milkdown 7.7 的任务项输出 <li data-item-type="task" data-checked="...">,
+   不含真实 <input type=checkbox> 元素——此处不再保留针对旧 DOM 假设的兜底规则。 */
 
 /* ---------- 引用 / 分割线 ---------- */
 

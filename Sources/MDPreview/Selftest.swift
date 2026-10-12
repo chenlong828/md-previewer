@@ -176,6 +176,20 @@ func greet() -> String {
             if roundtrip.contains(marker) { pass("往返包含 \(marker)") } else { fail("往返缺少 \(marker)") }
         }
 
+        // ── 桥命令行为抽检:命令经 formatCommand 真实可运行(基线时 wrapInHeadingCommand
+        //    未注册 + payload 形态不符,菜单动作静默失败——由双端校验与行为抽检共同守门)。
+        //    先用 focusAt 把光标定位到首段,再按 spec 的位置参数形态调用。
+        evaluate("(function(){var p=document.querySelector('.ProseMirror p');var r=p.getBoundingClientRect();return JSON.stringify(window.mdbridge.focusAt(r.left+5,r.top+5))})()") { _ in }
+        evaluate("window.mdbridge.formatCommand('wrapInHeadingCommand', 2)") { r in
+            if (r as? Bool) == true { self.pass("桥命令行为:标题2动作可运行") } else { self.fail("桥命令行为:标题2动作 → \(String(describing: r))") }
+        }
+        evaluate("window.mdbridge.formatCommand('turnIntoTextCommand')") { r in
+            if (r as? Bool) == true { self.pass("桥命令行为:正文动作可运行") } else { self.fail("桥命令行为:正文动作 → \(String(describing: r))") }
+        }
+        evaluate("window.mdbridge.formatCommand('wrapInHeadingCommand', 1)") { r in
+            if (r as? Bool) == true { self.pass("桥命令行为:标题1动作可运行") } else { self.fail("桥命令行为:标题1动作 → \(String(describing: r))") }
+        }
+
         // ── 源码模式
         var sourceOK = false
         waitForCollect("源码模式显示原文", timeout: 10) { done in
@@ -357,6 +371,26 @@ func greet() -> String {
             fail("命令注册表完整(\(EditorCommands.all.count) 条,响应缺失)")
         }
 
+        // ── 桥命令名双端一致性:Swift 注册表携带的 JS 命令名必须存在于 web 注册表且可运行
+        do {
+            let names = EditorCommands.all.compactMap { $0.jsCommand }
+            let arr = names.map { "'\($0)'" }.joined(separator: ",")
+            evaluate("JSON.stringify(window.mdbridge.hasCommands([\(arr)]))") { r in
+                guard let json = r as? String,
+                      let data = json.data(using: .utf8),
+                      let list = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]],
+                      list.count == names.count,
+                      list.allSatisfy({ ($0["ok"] as? Bool) == true }) else {
+                    self.fail("桥命令名双端一致 → \(String(describing: r))")
+                    return
+                }
+                self.pass("桥命令名双端一致(\(names.count) 条)")
+            }
+        }
+
+        // ── Info.plist 扩展名清单与 Swift 唯一来源一致(AppDelegate.markdownExtensions)
+        assertInfoPlistExtensions()
+
         // ── 缩放
         evaluate("window.mdbridge.setZoom(1.25)") { _ in }
         evaluate("getComputedStyle(document.getElementById('app')).zoom") { r in
@@ -365,20 +399,22 @@ func greet() -> String {
         }
         evaluate("window.mdbridge.setZoom(1.0)") { _ in }
 
-        // ── 宽度策略:100% 跟随窗体,下限 860px
-        evaluate("JSON.stringify({appW: document.getElementById('app').getBoundingClientRect().width, vw: document.documentElement.clientWidth, minW: getComputedStyle(document.getElementById('app')).minWidth})") { r in
+        // ── 宽度策略:正文 100% 跟随窗体,收缩下限由 CSS 变量 --editor-max-width 声明(不再锚定具体数字)
+        evaluate("(function(){var r=document.documentElement;return JSON.stringify({appW:document.getElementById('app').getBoundingClientRect().width,vw:r.clientWidth,minW:parseFloat(getComputedStyle(document.getElementById('app')).minWidth),declared:parseFloat(getComputedStyle(r).getPropertyValue('--editor-max-width'))})})()") { r in
             guard let json = r as? String,
                   let data = json.data(using: .utf8),
                   let dict = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                   let appW = dict["appW"] as? Double,
                   let vw = dict["vw"] as? Double,
-                  let minW = dict["minW"] as? String else {
+                  let minW = dict["minW"] as? Double,
+                  let declared = dict["declared"] as? Double else {
                 self.fail("宽度策略读取 → \(String(describing: r))")
                 return
             }
             let fillsWindow = appW >= vw - 1.5
-            let minOk = minW.contains("860")
-            if fillsWindow && minOk { self.pass("宽度策略(100%+860下限)") } else { self.fail("宽度策略 → appW=\(appW) vw=\(vw) minW=\(minW)") }
+            // zoom 复位为 1 后,#app 的实际 min-width 应等于变量声明值
+            let floorOk = declared > 0 && abs(minW - declared) < 1.5
+            if fillsWindow && floorOk { self.pass("宽度策略(100%+CSS变量下限)") } else { self.fail("宽度策略 → appW=\(appW) vw=\(vw) minW=\(minW) declared=\(declared)") }
         }
 
         // ── 文档内查找
@@ -496,6 +532,23 @@ func greet() -> String {
             fail("OQ-1 pluginSet 轻量模式生效(关闭图表=\(diagramOff),公式=\(mathOn))")
         }
         lightWindow.close()
+    }
+
+    /// Info.plist 的 CFBundleTypeExtensions 必须与 AppDelegate.markdownExtensions 一致
+    private func assertInfoPlistExtensions() {
+        guard let plistURL = WebLocator.repoInfoPlistURL(),
+              let data = try? Data(contentsOf: plistURL),
+              let plist = (try? PropertyListSerialization.propertyList(from: data, options: [], format: nil)) as? [String: Any],
+              let docTypes = plist["CFBundleDocumentTypes"] as? [[String: Any]],
+              let exts = docTypes.first?["CFBundleTypeExtensions"] as? [String] else {
+            fail("Info.plist 扩展名一致(解析失败:仅开发模式可断言)")
+            return
+        }
+        if exts.sorted() == AppDelegate.markdownExtensions.sorted() {
+            pass("Info.plist 扩展名一致(\(exts.count) 项)")
+        } else {
+            fail("Info.plist 扩展名一致 → plist=\(exts.sorted()) code=\(AppDelegate.markdownExtensions.sorted())")
+        }
     }
 
     private static let checksJS = """
@@ -624,20 +677,3 @@ func greet() -> String {
     }
 }
 
-/// web 资源定位(编辑器与自检共用)
-enum WebLocator {
-    static func indexURL() -> URL? {
-        if let res = Bundle.main.resourceURL {
-            let u = res.appendingPathComponent("web/index.html")
-            if FileManager.default.fileExists(atPath: u.path) { return u }
-        }
-        let repoCandidates = [
-            URL(fileURLWithPath: #filePath).deletingLastPathComponent()
-                .deletingLastPathComponent()
-                .deletingLastPathComponent()
-                .appendingPathComponent("web/dist/index.html"),
-        ]
-        for c in repoCandidates where FileManager.default.fileExists(atPath: c.path) { return c }
-        return nil
-    }
-}

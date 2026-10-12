@@ -1,7 +1,7 @@
 ---
 layer: works
 module: global
-status: active
+status: closed
 updated: 2026-10-12
 ---
 
@@ -80,12 +80,12 @@ updated: 2026-10-12
 
 ## 验收标准
 
-- [ ] 扩展名清单：Swift 侧唯一常量 + plist 一致性断言存在
-- [ ] 桥命令名：双端一致性由 selftest 自动校验（人为改漏会红）
-- [ ] WebLocator 位于 Util.swift，`DocumentWindowController` 无复制逻辑
-- [ ] 注入/重载单入口；`isReady` 单赋值路径
-- [ ] 表格判定单源；任务列表 CSS 单机制
-- [ ] selftest 全部通过；`./build.sh` 通过
+- [x] 扩展名清单：Swift 侧唯一常量 + plist 一致性断言存在
+- [x] 桥命令名：双端一致性由 selftest 自动校验（人为改漏会红）
+- [x] WebLocator 位于 Util.swift，`DocumentWindowController` 无复制逻辑
+- [x] 注入/重载单入口；`isReady` 单赋值路径
+- [x] 表格判定单源；任务列表 CSS 单机制
+- [x] selftest 全部通过；`./build.sh` 通过
 
 ## 依赖与顺序
 

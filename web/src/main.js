@@ -29,7 +29,7 @@ import {
 // 只登记 Swift 侧(@objc 动作)实际转发的命令名——表格行列命令由 tableCommand 自实现,不经此表。
 const commandRegistry = {
     toggleStrongCommand, toggleEmphasisCommand, toggleInlineCodeCommand, toggleLinkCommand,
-    wrapInBlockquoteCommand, wrapInBulletListCommand, wrapInOrderedListCommand,
+    wrapInHeadingCommand, wrapInBlockquoteCommand, wrapInBulletListCommand, wrapInOrderedListCommand,
     insertHrCommand, createCodeBlockCommand, turnIntoTextCommand,
     insertTableCommand, toggleStrikethroughCommand,
 }
@@ -834,6 +834,19 @@ ${bodyHtml}
 
 // ---------- 桥接 API ----------
 
+// 表格命令表:名字 → view 实现(全部 schema 感知自定义:
+// milkdown 7.7 的 addRow*Command 工厂嵌套三层,其 CommandManager 只解两层,调用是静默 no-op;
+// 列命令会复制邻列内容)。Swift 侧 spec 携带这里的名字,由 selftest 校验双端一致。
+const tableCommandImpls = {
+    insertRowAbove: (view) => insertRowInTable(view, false),
+    insertRowBelow: (view) => insertRowInTable(view, true),
+    insertColLeft: (view) => insertColumnInTable(view, false),
+    insertColRight: (view) => insertColumnInTable(view, true),
+    deleteRow: deleteRowInTable,
+    deleteColumn: deleteColumnInTable,
+    deleteTable: deleteTableInTable,
+}
+
 window.mdbridge = {
     async init(markdown, opts = {}) {
         try {
@@ -913,23 +926,12 @@ window.mdbridge = {
 
     /** 表格行列命令 */
     tableCommand(name) {
-        if (!state.ready) return false
+        const impl = tableCommandImpls[name]
+        if (!state.ready || !impl) return false
         return state.editor.action((ctx) => {
             const view = ctx.get(editorViewCtx)
             try {
-                switch (name) {
-                // 行插入:schema 感知自定义(milkdown 行命令上游 no-op bug)
-                case 'insertRowAbove': return insertRowInTable(view, false)
-                case 'insertRowBelow': return insertRowInTable(view, true)
-                // 列插入:schema 感知自定义(空单元格,不复制邻列)
-                case 'insertColLeft': return insertColumnInTable(view, false)
-                case 'insertColRight': return insertColumnInTable(view, true)
-                // 删除:schema 感知自定义实现
-                case 'deleteRow': return deleteRowInTable(view)
-                case 'deleteColumn': return deleteColumnInTable(view)
-                case 'deleteTable': return deleteTableInTable(view)
-                default: return false
-                }
+                return impl(view)
             } catch (e) {
                 console.warn('tableCommand failed', name, e)
                 return false
@@ -947,11 +949,10 @@ window.mdbridge = {
                 if (!info || info.pos == null) return { ok: false, inTable: false }
                 const $pos = view.state.doc.resolve(info.pos)
                 view.dispatch(view.state.tr.setSelection(TextSelection.near($pos)))
-                const $from = view.state.selection.$from
-                for (let d = $from.depth; d > 0; d--) {
-                    if ($from.node(d).type.name === 'table') return { ok: true, inTable: true }
-                }
-                return { ok: true, inTable: false }
+                // inTable 判定与右键菜单/表格命令同源(prosemirror-tables isInTable)
+                let inTable = false
+                try { inTable = isInTable(view.state) } catch (e) { inTable = false }
+                return { ok: true, inTable }
             } catch (e) {
                 return { ok: false, inTable: false }
             }
@@ -975,10 +976,14 @@ window.mdbridge = {
         })
     },
 
+    /** 测试诊断:光标处表格信息。inTable 判定同源 isInTable;行列数仅辅助自检 */
     tableInfo() {
         if (!state.ready) return { inTable: false }
         return state.editor.action((ctx) => {
             const view = ctx.get(editorViewCtx)
+            let inTable = false
+            try { inTable = isInTable(view.state) } catch (e) { inTable = false }
+            if (!inTable) return { inTable: false }
             const $from = view.state.selection.$from
             for (let d = $from.depth; d > 0; d--) {
                 if ($from.node(d).type.name === 'table') {
@@ -986,7 +991,7 @@ window.mdbridge = {
                     return { inTable: true, rows: $from.node(d).childCount, cols: header ? header.childCount : 0 }
                 }
             }
-            try { return { inTable: isInTable(view.state) } } catch (e) { return { inTable: false } }
+            return { inTable: true }
         })
     },
 
@@ -1038,6 +1043,15 @@ window.mdbridge = {
             const view = ctx.get(editorViewCtx)
             redo(view.state, view.dispatch, view)
         })
+    },
+
+    /** 诊断:校验命令名是否已注册且可运行(供 selftest 做双端一致性校验);
+     *  格式命令在 commandRegistry,表格命令在 tableCommandImpls */
+    hasCommands(names) {
+        return names.map((n) => ({
+            name: n,
+            ok: typeof commandRegistry[n]?.run === 'function' || typeof tableCommandImpls[n] === 'function',
+        }))
     },
 
     /** 通过命令名调用预设命令(供原生菜单使用) */

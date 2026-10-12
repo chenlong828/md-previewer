@@ -14,9 +14,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var pinnedAppearance: NSAppearance.Name? // nil = 跟随系统
     private var argvFileHandled = false
 
+    /// Markdown 扩展名的 Swift 唯一来源(打开面板 UTType、文档内链接拦截、
+    /// Info.plist 一致性断言均由此派生)。决策:不含 txt——.txt 由系统外部打开。
+    static let markdownExtensions = ["md", "markdown", "mdown", "mkdn", "mdtext", "mdwn"]
+
     static let markdownUTTypes: [UTType] = {
         var types: [UTType] = []
-        for ext in ["md", "markdown", "mdown", "mkdn", "mdtext", "mdwn"] {
+        for ext in markdownExtensions {
             if let t = UTType(filenameExtension: ext), !types.contains(t) { types.append(t) }
         }
         return types.isEmpty ? [.plainText] : types

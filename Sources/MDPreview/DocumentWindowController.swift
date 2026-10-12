@@ -124,23 +124,12 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
 
     override func showWindow(_ sender: Any?) {
         super.showWindow(sender)
-        let url = indexPageURL()
-        if let url = url {
+        if let url = WebLocator.indexURL() {
             // 允许读取整个文件系统内的本地图片(file:// 渲染 markdown 里的图片)
             webView.loadFileURL(url, allowingReadAccessTo: URL(fileURLWithPath: "/"))
         } else {
             stateLabel.stringValue = "错误:找不到编辑器资源(web/dist)"
         }
-    }
-
-    private func indexPageURL() -> URL? {
-        if let located = WebLocator.indexURL() { return located }
-        // 开发模式 (swift run) 的兜底:仓库内 web/dist
-        let repo = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .appendingPathComponent("web/dist/index.html")
-        return FileManager.default.fileExists(atPath: repo.path) ? repo : nil
     }
 
     // MARK: - 打开文档
@@ -173,11 +162,12 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
             pendingOpenURL = fileURL
             return
         }
-        loadMarkdownContent(text, baseURL: fileURL!)
+        injectMarkdown(text, baseURL: fileURL!)
     }
 
-    /// 将已读取的文本注入编辑器(仅限编辑器就绪后调用)
-    private func loadMarkdownContent(_ text: String, baseURL: URL) {
+    /// 将已读取的文本注入编辑器——加载与外部变更重载的唯一入口(仅限编辑器就绪后调用)。
+    /// 两路径唯一历史差异(是否重启文件监视)按"重启"收敛:重载后以磁盘现状为新基线。
+    private func injectMarkdown(_ text: String, baseURL: URL) {
         isLoadingContent = true
         let rewritten = ImagePathRewriter.forLoad(text, baseURL: baseURL)
         callJS("window.mdbridge.setMarkdown(\(JSArgs.string(rewritten)))") { [weak self] _ in
@@ -203,16 +193,10 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
         let optsJSON = (try? JSONSerialization.data(withJSONObject: opts))
             .flatMap { String(data: $0, encoding: .utf8) } ?? "{}"
         callJS("window.mdbridge.init('', \(optsJSON))") { [weak self] result in
-            DispatchQueue.main.async {
-                self?.isReady = true
-                self?.updateStateLabel()
-                os_log(.info, "editor ready: %{public}@", "\(result ?? "")")
-                // 补载启动时因页面未就绪而暂存的文档
-                if let pending = self?.pendingOpenURL {
-                    self?.pendingOpenURL = nil
-                    self?.openDocument(at: pending)
-                }
-            }
+            // isReady 的唯一赋值点在桥消息 "ready" 分支(含暂存文档补载);
+            // 这里只留诊断日志。init 的 evaluateJavaScript 完成与 ready 消息到达
+            // 谁先谁后都安全:补载动作只在桥分支发生,openDocument 自带守卫。
+            os_log(.info, "editor init callback: %{public}@", "\(result ?? "")")
         }
     }
 
@@ -295,8 +279,14 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
         case "boot":
             break // 页面脚本加载完成,等 didFinish 后 pushInitialContent
         case "ready":
+            // 全仓唯一 isReady 赋值点
             isReady = true
             updateStateLabel()
+            // 补载启动时因页面未就绪而暂存的文档
+            if let pending = pendingOpenURL {
+                pendingOpenURL = nil
+                openDocument(at: pending)
+            }
         case "changed":
             if isLoadingContent { return }
             let dirty = (payload["dirty"] as? Bool) ?? true
@@ -328,7 +318,8 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
     func formatCommand(_ name: String, payload: Any? = nil) {
         let payloadJS: String
         if let payload = payload {
-            if let data = try? JSONSerialization.data(withJSONObject: payload),
+            // fragmentsAllowed:标量 payload(如标题级别数字)也合法
+            if let data = try? JSONSerialization.data(withJSONObject: payload, options: [.fragmentsAllowed]),
                let json = String(data: data, encoding: .utf8) {
                 payloadJS = json
             } else {
@@ -340,6 +331,17 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
         callJS("window.mdbridge.formatCommand(\(JSArgs.string(name)), \(payloadJS))")
     }
     func insertTable() { callJS("window.mdbridge.insertTable(3,3)") }
+
+    /// 按注册表把动作转发到 web 命令(JS 命令名由 spec 携带,双端一致由 selftest 校验):
+    /// 表格组走 tableCommand,其余走 formatCommand
+    func performEditorAction(_ action: EditorAction) {
+        guard let spec = EditorCommands.spec(for: action), let js = spec.jsCommand else { return }
+        if spec.requiresTable {
+            tableCommand(js)
+        } else {
+            formatCommand(js, payload: spec.jsPayload)
+        }
+    }
     func toggleSourceMode() {
         callJS("window.mdbridge.toggleSource()") { [weak self] result in
             DispatchQueue.main.async {
@@ -399,25 +401,25 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
         callJS("window.mdbridge.tableCommand(\(JSArgs.string(name)))")
     }
 
-    @objc func insertRowAboveAction(_ sender: Any?) { tableCommand("insertRowAbove") }
-    @objc func insertRowBelowAction(_ sender: Any?) { tableCommand("insertRowBelow") }
-    @objc func insertColLeftAction(_ sender: Any?) { tableCommand("insertColLeft") }
-    @objc func insertColRightAction(_ sender: Any?) { tableCommand("insertColRight") }
-    @objc func deleteRowAction(_ sender: Any?) { tableCommand("deleteRow") }
-    @objc func deleteColumnAction(_ sender: Any?) { tableCommand("deleteColumn") }
-    @objc func deleteTableAction(_ sender: Any?) { tableCommand("deleteTable") }
+    @objc func insertRowAboveAction(_ sender: Any?) { performEditorAction(.rowAbove) }
+    @objc func insertRowBelowAction(_ sender: Any?) { performEditorAction(.rowBelow) }
+    @objc func insertColLeftAction(_ sender: Any?) { performEditorAction(.colLeft) }
+    @objc func insertColRightAction(_ sender: Any?) { performEditorAction(.colRight) }
+    @objc func deleteRowAction(_ sender: Any?) { performEditorAction(.deleteRow) }
+    @objc func deleteColumnAction(_ sender: Any?) { performEditorAction(.deleteColumn) }
+    @objc func deleteTableAction(_ sender: Any?) { performEditorAction(.deleteTable) }
 
     // MARK: - 缩放
 
     private var zoomScale: Double {
         get { UserDefaults.standard.double(forKey: "editorZoom").takingIfPositive() ?? 1.0 }
         set {
-            let clamped = min(3.0, max(0.5, newValue))
-            UserDefaults.standard.set(clamped, forKey: "editorZoom")
-            callJS("window.mdbridge.setZoom(\(clamped))")
-            statusLabel.stringValue = String(format: "缩放 %.0f%%", clamped * 100)
-            // 让 web 端重新上报词数,恢复状态栏
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { [weak self] in
+            UserDefaults.standard.set(newValue, forKey: "editorZoom")
+            // 夹取(0.5–3)归 web 端 mdbridge.setZoom 单点负责,此处透传并采用其返回的有效值
+            callJS("window.mdbridge.setZoom(\(newValue))") { [weak self] result in
+                guard let effective = result as? Double else { return }
+                self?.statusLabel.stringValue = String(format: "缩放 %.0f%%", effective * 100)
+                // 直接让 web 端重报词数以恢复状态栏(消息通道自带节流,无固定延时)
                 self?.callJS("window.mdbridge.requestStats()")
             }
         }
@@ -618,18 +620,10 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
         }
     }
 
+    /// 外部变更后的重载:与加载共用注入入口
     private func forceReload(from url: URL) {
         guard let (text, _) = TextFile.read(at: url) else { return }
-        isLoadingContent = true
-        let rewritten = ImagePathRewriter.forLoad(text, baseURL: url.deletingLastPathComponent())
-        callJS("window.mdbridge.setMarkdown(\(JSArgs.string(rewritten)))") { [weak self] _ in
-            DispatchQueue.main.async {
-                self?.isLoadingContent = false
-                self?.isDirty = false
-                self?.updateTitle()
-                self?.updateStateLabel()
-            }
-        }
+        injectMarkdown(text, baseURL: url.deletingLastPathComponent())
     }
 
     // MARK: - 关闭 / 退出确认
@@ -735,25 +729,25 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
     @objc func zoomOutAction(_ sender: Any?) { zoomOut() }
     @objc func zoomResetAction(_ sender: Any?) { zoomReset() }
 
-    @objc func toggleBoldAction(_ sender: Any?) { formatCommand("toggleStrongCommand") }
-    @objc func toggleItalicAction(_ sender: Any?) { formatCommand("toggleEmphasisCommand") }
-    @objc func toggleStrikethroughAction(_ sender: Any?) { formatCommand("toggleStrikethroughCommand") }
-    @objc func toggleInlineCodeAction(_ sender: Any?) { formatCommand("toggleInlineCodeCommand") }
-    @objc func toggleLinkAction(_ sender: Any?) { formatCommand("toggleLinkCommand") }
-    @objc func heading1Action(_ sender: Any?) { formatCommand("wrapInHeadingCommand", payload: ["level": 1]) }
-    @objc func heading2Action(_ sender: Any?) { formatCommand("wrapInHeadingCommand", payload: ["level": 2]) }
-    @objc func heading3Action(_ sender: Any?) { formatCommand("wrapInHeadingCommand", payload: ["level": 3]) }
-    @objc func bodyTextAction(_ sender: Any?) { formatCommand("turnIntoTextCommand") }
-    @objc func blockquoteAction(_ sender: Any?) { formatCommand("wrapInBlockquoteCommand") }
-    @objc func bulletListAction(_ sender: Any?) { formatCommand("wrapInBulletListCommand") }
-    @objc func orderedListAction(_ sender: Any?) { formatCommand("wrapInOrderedListCommand") }
-    @objc func codeBlockAction(_ sender: Any?) { formatCommand("createCodeBlockCommand") }
+    @objc func toggleBoldAction(_ sender: Any?) { performEditorAction(.bold) }
+    @objc func toggleItalicAction(_ sender: Any?) { performEditorAction(.italic) }
+    @objc func toggleStrikethroughAction(_ sender: Any?) { performEditorAction(.strikethrough) }
+    @objc func toggleInlineCodeAction(_ sender: Any?) { performEditorAction(.inlineCode) }
+    @objc func toggleLinkAction(_ sender: Any?) { performEditorAction(.link) }
+    @objc func heading1Action(_ sender: Any?) { performEditorAction(.heading1) }
+    @objc func heading2Action(_ sender: Any?) { performEditorAction(.heading2) }
+    @objc func heading3Action(_ sender: Any?) { performEditorAction(.heading3) }
+    @objc func bodyTextAction(_ sender: Any?) { performEditorAction(.bodyText) }
+    @objc func blockquoteAction(_ sender: Any?) { performEditorAction(.quote) }
+    @objc func bulletListAction(_ sender: Any?) { performEditorAction(.bulletList) }
+    @objc func orderedListAction(_ sender: Any?) { performEditorAction(.orderedList) }
+    @objc func codeBlockAction(_ sender: Any?) { performEditorAction(.codeBlock) }
     @objc func mathBlockAction(_ sender: Any?) {
         callJS("window.mdbridge.insertMarkdown(\(JSArgs.string("$$\n\n$$")))") { [weak self] _ in
             self?.focusEditor()
         }
     }
-    @objc func hrAction(_ sender: Any?) { formatCommand("insertHrCommand") }
+    @objc func hrAction(_ sender: Any?) { performEditorAction(.insertHr) }
     @objc func insertTableAction(_ sender: Any?) { insertTable() }
 
     // MARK: - 拖放文件
