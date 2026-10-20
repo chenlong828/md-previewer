@@ -1,7 +1,7 @@
 ---
-layer: works
+layer: history
 module: global
-status: active
+status: frozen
 updated: 2026-10-20
 ---
 
@@ -22,8 +22,8 @@ updated: 2026-10-20
 3. **粘贴/导入** ✅ — e2e(MDP_IMPORT_IMAGE 钩子,真实控制器):图片复制到
    `resource/doc/img_001.jpg`、光标处插入、渲染 1080px。剪贴板位图识别、
    base64 编码、落盘命名(img_NNN 递增/mime 定扩展名)、同名冲突后缀均为
-   selftest 单元用例;真实 ⌘V 粘贴的 web 事件链路由同一段代码承载,留一次
-   人工手感验证。
+   selftest 单元用例;真实 ⌘V 粘贴的 web 事件链路由同一段代码承载,
+   2026-10-20 人工手感验证通过(真实剪贴板截图粘贴→落盘→插入→渲染)。
 4. **保存往返** ✅ — selftest:空格路径 加载→%20 file://、保存→`<>` 包裹相对
    路径(定点)、二次加载一致;标题保留/还原;缺失文件/远程图不改写;代码围栏
    不受影响。
