@@ -77,3 +77,35 @@ updated: 2026-10-20
     与目录列举路径失配会误删,红跑实证);
   - 判定用例:selftest「资源清理-孤儿删除且被引用/非图片保留」(%20 编码
     与 ./ 前缀分支)。
+
+## P5 打开请求暂存只挂在仅发生一次的 ready 桥消息,装载中到达的请求永久滞留
+
+- **现象**:抽屉双击/⌘O 的打开请求在编辑器注入进行中(isLoadingContent)到达时
+  暂存于 pendingOpenURL,而补载逻辑只挂在 ready 桥消息分支——ready 在页面
+  生命周期仅发生一次,此后暂存请求永不补载。实测 setMarkdown 完成回调在
+  编辑器冷启动期可延迟 ~1.6s,该窗口期真实存在(2026-10-20 drawer-test
+  红跑实证:双击落入窗口期即永久无响应)。
+- **存续条件**:已消失(2026-10-20)。注入完成后 drainPendingOpen 立即排空
+  暂存请求(按目录/文件分派);openDirectory 未就绪时并入同一暂存机制。
+- **对策落点**:
+  - 契约写明于 design/architecture.md §2.4「装载暂存排空契约」;
+  - 同类判据:一次性事件(ready/首次加载完成)不能作为暂存队列的唯一补载
+    时机——排空点必须与页面生命周期事件无关。
+
+## P6 NSOutlineView 懒加载三段式(shouldExpand 拦截+后台装载+续展)与子层缓存时序不合,真实点击展开失效
+
+- **现象**:文件抽屉 lazy 首版用「shouldExpand 拦截返回 false + 后台 readdir +
+  reloadItem 后 expandItem 续展」装载子层;真实 GUI 点击展开三角无反应,
+  而 selftest/drawer-test 全绿——无头 harness 只能按调用链模拟
+  (debugExpandByClick),复现不了真实点击与 NSOutlineView 对未展开条目
+  子层缓存的时序组合,任何一环错拍即表现为「目录打不开」(2026-10-20 实证)。
+- **存续条件**:已消失(2026-10-20)。装载改**数据源内同步**——
+  numberOfChildrenOfItem 取数时 ensureLoaded 同步 readdir 该层,无拦截/
+  无异步/无续展,与 AppKit 缓存时序彻底无关;选中定位同口径同步装载祖先链。
+  代价评估:展开是单次点击低频动作,单层 readdir 毫秒级,同步可接受。
+- **对策落点**:
+  - 契约写明于 design/architecture.md §2.4「装载模型为 lazy 按层」;
+  - 测试口径缺口登记为 [plan/risks.md R8](../plan/risks.md)(交互时序无头
+    不可复现,交互类工序收口必附真人点验清单);
+  - 同类判据:AppKit 数据源懒加载优先在数据源内同步供给,避免
+    「拦截+异步+续展」的时序重组。

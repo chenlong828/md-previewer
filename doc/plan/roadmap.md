@@ -2,16 +2,20 @@
 layer: plan
 module: global
 status: current
-updated: 2026-10-14
+updated: 2026-10-20
 ---
 
 # 技术债修复路线图
 
 来源：2026-10-12 全仓库只读技术债审计（Swift 壳 + Milkdown 前端，共 40 项发现）。
 发现不在此处复制——每项发现只登记在唯一承接它的工序 brief 里（一处一事）；
-本文件只维护批次、优先级、依赖与工程量。
+本文件只维护批次、优先级、依赖与工程量。2026-10-20 起功能开发工序也在本表登记
+（优先级列标「功能」，技术债 P0–P3 编号仅用于审计批次）。
 
-## 工序总览（全部已完成，2026-10-14 归档至 history/works/）
+## 工序总览
+
+技术债审计批次（W1–W7）全部完成，2026-10-14 收口归档至 history/works/；
+2026-10-20 起为功能工序。
 
 | 工序 | 主题 | 优先级 | 工程量 | 依赖 | 状态 |
 |---|---|---|---|---|---|
@@ -22,6 +26,9 @@ updated: 2026-10-14
 | [2026-10-12-timing-contracts](../history/works/2026-10-12-timing-contracts/brief.md) | 时序耦合与魔法延时治理 | P2 | L | W3（同在 DocumentWindowController 密集改动） | ✅ 已完成 |
 | [2026-10-12-deps-and-build](../history/works/2026-10-12-deps-and-build/brief.md) | 依赖、构建与许可卫生 | P3 | S–M | 无硬依赖 | ✅ 已完成 |
 | [2026-10-12-tests-and-security-doc](../history/works/2026-10-12-tests-and-security-doc/brief.md) | 自检可靠性 + 安全取舍显式化 | P3 | M | 无硬依赖，建议收尾 | ✅ 已完成 |
+| [2026-10-20-image-support](../history/works/2026-10-20-image-support/brief.md) | 图片支持（相对路径显示/源码编辑块/粘贴拖放导入落盘） | 功能 | M | 无 | ✅ 已完成（已归档） |
+| [2026-10-20-image-cleanup](../history/works/2026-10-20-image-cleanup/brief.md) | 图片资源生命周期（撤销不残留、关闭统一 GC 清理） | 功能 | S | 图片支持 | ✅ 已完成（已归档） |
+| [2026-10-20-file-drawer](../works/2026-10-20-file-drawer/brief.md) | 文件抽屉与目录模式（lazy 按层装载、锚定下拉框、同窗覆盖打开） | 功能 | L | 无 | 🔄 收口中（自动化全绿，待人工实证） |
 
 ## 批次与依赖链
 

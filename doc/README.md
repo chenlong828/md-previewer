@@ -7,19 +7,19 @@
 
 ## 阅读顺序
 
-1. **要了解"接下来修什么"** → [plan/roadmap.md](plan/roadmap.md)：七个技术债修复工序
-   已全部完成（2026-10-14，归档见 history/works/）。
-2. **要了解"哪些风险在悬着"** → [plan/risks.md](plan/risks.md)：3 个疑似缺陷级 +
-   4 个结构性风险的存续条件与承接工序。
+1. **要了解"接下来修什么"** → [plan/roadmap.md](plan/roadmap.md)：工序总览表
+   即任务入口，各工序状态以表内状态列为准（2026-10-12 技术债批次已全部
+   收口归档；2026-10-20 起功能工序也在此登记）。
+2. **要了解"哪些风险在悬着"** → [plan/risks.md](plan/risks.md)：跨工序活风险
+   与已收口条目的台账（已消除条目保留作回归监控）。
 3. **要领取一个任务** → `works/<工序ID>/brief.md`，从 roadmap 表进入对应工序目录；
    跨工序决策先查 [plan/open-questions.md](plan/open-questions.md)。
 4. **要了解系统现状** → 仓库根 [README](../README.md)（架构图与桥协议）；
    跨模块设计取舍见 [design/architecture.md](design/architecture.md)
-   （安全/行为取舍、诊断面、桥协议，由
-   [2026-10-12-tests-and-security-doc](history/works/2026-10-12-tests-and-security-doc/brief.md)
-   收口诞生）。
+   （安全/行为取舍、诊断面、桥协议）。
 
 ## 约定
 
 - 工序目录名即工序ID：`YYYY-MM-DD-<短名>`，立项日命名，归档不改名。
-- `history/` 已有首批内容：已归档工序（history/works/）与坑档案（pitfalls.md）。
+- `history/` 现有：已归档工序（history/works/，技术债批次与 2026-10-20
+  图片两工序）与坑档案（pitfalls.md，P1–P6）。
