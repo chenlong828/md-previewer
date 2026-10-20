@@ -36,6 +36,15 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
     private var lastKnownFileAttributes: (modificationDate: Date, size: Int)?
     private var pendingExportPDF = false
 
+    // MARK: - 文件抽屉与目录模式
+    // 抽屉可见性全局记忆(UserDefaults);目录模式无文档,右侧空白,抽屉为唯一导航面。
+    private(set) var isDrawerVisible = false
+    private(set) var directoryMode = false
+    /// 目录模式的扫描根(文件模式的根 = fileURL 所在目录,不落此字段)
+    private var drawerRootURL: URL?
+    private var drawerView: FileDrawerView!
+    private var drawerWidthConstraint: NSLayoutConstraint!
+
     // MARK: - 初始化
 
     init() {
@@ -71,6 +80,16 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
         webView.onDocumentLinkActivated = { url in
             AppDelegate.shared?.openInNewWindow(at: url)
         }
+        // 左侧文件抽屉:默认收起(宽度 0 且隐藏),开合由 toggleDrawer 单点驱动
+        drawerView = FileDrawerView()
+        drawerView.translatesAutoresizingMaskIntoConstraints = false
+        drawerView.onOpenFile = { [weak self] url in
+            self?.openDocument(at: url)
+        }
+        container.addSubview(drawerView)
+        drawerWidthConstraint = drawerView.widthAnchor.constraint(equalToConstant: 0)
+        drawerView.isHidden = true
+
         container.addSubview(webView)
 
         // 底部状态栏
@@ -103,7 +122,12 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
         container.addSubview(statusBar)
 
         NSLayoutConstraint.activate([
-            webView.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+            drawerView.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+            drawerView.topAnchor.constraint(equalTo: container.topAnchor),
+            drawerView.bottomAnchor.constraint(equalTo: statusBar.topAnchor),
+            drawerWidthConstraint,
+
+            webView.leadingAnchor.constraint(equalTo: drawerView.trailingAnchor),
             webView.trailingAnchor.constraint(equalTo: container.trailingAnchor),
             webView.topAnchor.constraint(equalTo: container.topAnchor),
             webView.bottomAnchor.constraint(equalTo: statusBar.topAnchor),
@@ -158,19 +182,25 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
         } else {
             stateText = "错误:找不到编辑器资源(web/dist)"
         }
+        // 恢复的窗框可能超屏(跨屏拖动/外接屏拔除):先收敛一次
+        clampWindowFrameToScreen()
+        // 抽屉可见性跨窗口恢复;目录模式的展开由 openDirectory 显式驱动
+        if UserDefaults.standard.bool(forKey: "fileDrawerVisible"), !isDrawerVisible {
+            setDrawerVisible(true, animated: false)
+        }
     }
 
     // MARK: - 打开文档
 
     func openDocument(at url: URL) {
         if isDirty {
-            let alert = NSAlert()
-            alert.messageText = "当前文档尚未保存"
-            alert.informativeText = "打开新文件将丢弃未保存的修改。"
-            alert.addButton(withTitle: "丢弃并打开")
-            alert.addButton(withTitle: "取消")
-            alert.alertStyle = .warning
-            if alert.runModal() != .alertFirstButtonReturn { return }
+            // 脏文档覆盖打开前统一走保存确认(保存/取消/不保存),与关闭/抽屉双击同一路径;
+            // 「不保存」即放弃修改后继续打开,不再出现静默丢弃语义的旧模态
+            beginConfirmClose(allowCancel: true) { [weak self] confirmed in
+                guard confirmed else { return }
+                self?.openDocument(at: url) // 确认后 isDirty 已清,重入直通装载
+            }
+            return
         }
         let target = url.standardizedFileURL
         // 未就绪(命令行/Finder 启动时页面可能尚未加载完):只记 URL 不读内容,
@@ -187,12 +217,53 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
             alert.runModal()
             return
         }
+        directoryMode = false
         fileURL = target
         isDirty = false
         updateTitle()
         updateStateLabel()
         AppDelegate.shared?.addRecentFile(target)
         injectMarkdown(text, docURL: target)
+        if isDrawerVisible { refreshDrawer() }
+    }
+
+    /// 目录模式:只装载目录不装载文档。右侧走既有空文档路径(init('')/注入空文本),
+    /// 抽屉为唯一导航面;再次打开文件经 openDocument 自然退出目录模式。
+    func openDirectory(at url: URL) {
+        if isDirty {
+            beginConfirmClose(allowCancel: true) { [weak self] confirmed in
+                guard confirmed else { return }
+                self?.openDirectory(at: url)
+            }
+            return
+        }
+        let target = url.standardizedFileURL
+        var isDir: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: target.path, isDirectory: &isDir), isDir.boolValue else {
+            return
+        }
+        // 编辑器未就绪/注入进行中:与 openDocument 同一暂存机制,补载时按目录分派
+        guard isReady, !isLoadingContent else {
+            pendingOpenURL = target
+            return
+        }
+        fileMonitor?.cancel()
+        fileMonitor = nil
+        directoryMode = true
+        drawerRootURL = target
+        fileURL = nil
+        isDirty = false
+        updateTitle()
+        updateStateLabel()
+        if isDrawerVisible {
+            refreshDrawer()
+        } else {
+            setDrawerVisible(true, animated: false)
+        }
+        // 编辑器就绪后以空文档覆盖(从文件窗口切到目录模式时清空右侧)
+        if isReady {
+            injectMarkdown("", docURL: target)
+        }
     }
 
     /// 将已读取的文本注入编辑器——加载与外部变更重载的唯一入口(仅限编辑器就绪后调用)。
@@ -215,7 +286,22 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
                 self.updateTitle()
                 self.updateStateLabel()
                 self.startFileMonitor()
+                // 装载完成后立即排空暂存的打开请求。此前只靠 ready 桥消息补载,
+                // 而 ready 仅发生一次:装载中(⌘O/抽屉双击)到达的请求会永久滞留。
+                self.drainPendingOpen()
             }
+        }
+    }
+
+    /// 统一补载暂存的打开请求:按目录/文件分派(与 openDirectory/openDocument 同一入口)
+    private func drainPendingOpen() {
+        guard let pending = pendingOpenURL else { return }
+        pendingOpenURL = nil
+        var isDir: ObjCBool = false
+        if FileManager.default.fileExists(atPath: pending.path, isDirectory: &isDir), isDir.boolValue {
+            openDirectory(at: pending)
+        } else {
+            openDocument(at: pending)
         }
     }
 
@@ -225,7 +311,8 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
             "theme": AppDelegate.shared?.currentThemeJS() ?? "light",
             "zoom": UserDefaults.standard.double(forKey: "editorZoom").takingIfPositive() ?? 1.0,
             // 文件名传给 web 层作为 document.title(HTML 导出标题的来源);无文件名时 web 层兜底 "MDPreview"
-            "title": fileURL?.lastPathComponent ?? "",
+            // 目录模式传目录名
+            "title": directoryMode ? (drawerRootURL?.lastPathComponent ?? "") : (fileURL?.lastPathComponent ?? ""),
         ]
         let optsJSON = (try? JSONSerialization.data(withJSONObject: opts))
             .flatMap { String(data: $0, encoding: .utf8) } ?? "{}"
@@ -248,6 +335,8 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
         static let geometryPollInterval: TimeInterval = 0.05
         /// 几何收敛轮询上限(40 次 ≈ 2s):超大文档兜底,之后尽力截取。
         static let geometryPollMaxAttempts = 40
+        /// 抽屉开合动画时长:与窗口 setFrame 动画(~0.2s)同量级,视觉同步不脱节。
+        static let drawerAnimationDuration: TimeInterval = 0.22
     }
 
     // MARK: - 保存
@@ -336,11 +425,7 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
             // 全仓唯一 isReady 赋值点
             isReady = true
             updateStateLabel()
-            // 补载启动时因页面未就绪而暂存的文档
-            if let pending = pendingOpenURL {
-                pendingOpenURL = nil
-                openDocument(at: pending)
-            }
+            drainPendingOpen()
         case "changed":
             if isLoadingContent { return }
             let dirty = (payload["dirty"] as? Bool) ?? true
@@ -715,14 +800,15 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
 
     func updateTitle() {
         guard let window else { return }
-        let name = fileURL?.lastPathComponent ?? "未命名"
+        let name = directoryMode ? (drawerRootURL?.lastPathComponent ?? "未命名")
+                                 : (fileURL?.lastPathComponent ?? "未命名")
         window.title = name
-        window.representedURL = fileURL
+        window.representedURL = directoryMode ? drawerRootURL : fileURL
         window.isDocumentEdited = isDirty
         // web 层 document.title 与文件名保持同步(导出 HTML 的 <title> 取自它);
         // web 未就绪时不推送,初始标题由 pushInitialContent 的 opts 携带
         if isReady {
-            callJS("window.mdbridge.setTitle(\(JSArgs.string(fileURL?.lastPathComponent ?? "")))")
+            callJS("window.mdbridge.setTitle(\(JSArgs.string(name)))")
         }
     }
 
@@ -912,6 +998,8 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
             return isReady
         }
         switch menuItem.action {
+        case #selector(toggleDrawerAction(_:)):
+            return true // 抽屉开合不依赖编辑器就绪
         case #selector(saveDocumentAs(_:)):
             return isReady
         default:
@@ -930,11 +1018,21 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
         openDocument(at: url)
     }
 
+    /// 文件 → 打开文件夹…:当前窗口切入目录模式(右侧空白,抽屉导航)
+    @objc func openFolderAction(_ sender: Any?) {
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.allowsMultipleSelection = false
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        openDirectory(at: url)
+    }
+
     @objc func saveDocumentAction(_ sender: Any?) { saveDocument(sender) }
     @objc func saveDocumentAsAction(_ sender: Any?) { saveDocumentAs(sender) }
 
     @objc func revealInFinderAction(_ sender: Any?) {
-        guard let url = fileURL else { return }
+        guard let url = directoryMode ? drawerRootURL : fileURL else { return }
         NSWorkspace.shared.activateFileViewerSelecting([url])
     }
 
@@ -971,6 +1069,97 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
     }
     @objc func hrAction(_ sender: Any?) { performEditorAction(.insertHr) }
     @objc func insertTableAction(_ sender: Any?) { insertTable() }
+
+    // MARK: - 文件抽屉(开合/窗口宽度收敛/根目录解析)
+
+    /// 抽屉开合唯一入口:视图菜单/快捷键驱动;可见性与窗口宽度在此单点维护
+    func toggleDrawer() {
+        setDrawerVisible(!isDrawerVisible)
+    }
+
+    @objc func toggleDrawerAction(_ sender: Any?) {
+        toggleDrawer()
+    }
+
+    func setDrawerVisible(_ visible: Bool, animated: Bool = true) {
+        guard isDrawerVisible != visible else { return }
+        isDrawerVisible = visible
+        UserDefaults.standard.set(visible, forKey: "fileDrawerVisible")
+        if visible {
+            drawerView.isHidden = false
+            refreshDrawer()
+        }
+        let target: CGFloat = visible ? FileDrawerView.width : 0
+        let delta: CGFloat = visible ? FileDrawerView.width : -FileDrawerView.width
+        if animated {
+            NSAnimationContext.runAnimationGroup({ context in
+                context.duration = Timing.drawerAnimationDuration
+                context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+                drawerWidthConstraint.animator().constant = target
+            }, completionHandler: { [weak self] in
+                if !(self?.isDrawerVisible ?? true) { self?.drawerView.isHidden = true }
+            })
+        } else {
+            drawerWidthConstraint.constant = target
+            drawerView.isHidden = !visible
+        }
+        // 窗口同步调整:向左伸出 drawerWidth;伸出超屏则整体收敛到屏幕宽度
+        adjustWindowWidthForDrawer(delta: delta, animated: animated)
+        AppDelegate.shared?.refreshViewMenuState()
+    }
+
+    /// 抽屉开合的窗口宽度收敛:
+    /// 展开 → 优先向左伸出 drawerWidth(编辑器内容宽度不变);伸出后超出屏幕可视
+    /// 宽度则整体收敛到屏幕宽度(右缘保持,编辑器压缩)——「向外伸出,超屏收敛」。
+    /// 收起 → 右缘保持,宽度缩回 drawerWidth(下限窗口最小宽度)。
+    private func adjustWindowWidthForDrawer(delta: CGFloat, animated: Bool) {
+        guard let window else { return }
+        guard let visible = (window.screen ?? NSScreen.main)?.visibleFrame else { return }
+        var frame = window.frame
+        if delta > 0 {
+            let proposedWidth = frame.width + delta
+            if proposedWidth <= visible.width {
+                frame.origin.x = max(visible.minX, frame.minX - delta)
+                frame.size.width = proposedWidth
+            } else {
+                let rightEdge = min(frame.maxX, visible.maxX)
+                frame.size.width = min(visible.width, max(window.minSize.width, proposedWidth))
+                frame.origin.x = max(visible.minX, rightEdge - frame.size.width)
+            }
+        } else {
+            let oldWidth = frame.width
+            frame.size.width = max(window.minSize.width, frame.width + delta)
+            frame.origin.x += oldWidth - frame.size.width
+            if frame.minX < visible.minX { frame.origin.x = visible.minX }
+        }
+        window.setFrame(frame, display: true, animate: animated)
+    }
+
+    /// 启动/恢复时窗框超屏的一次性收敛(跨屏拖动、外接屏拔除后的残留窗框)
+    private func clampWindowFrameToScreen() {
+        guard let window else { return }
+        guard let visible = (window.screen ?? NSScreen.main)?.visibleFrame else { return }
+        var frame = window.frame
+        guard frame.width > visible.width || frame.minX < visible.minX || frame.maxX > visible.maxX else { return }
+        frame.size.width = min(frame.width, visible.width)
+        frame.origin.x = min(max(frame.origin.x, visible.minX), visible.maxX - frame.width)
+        window.setFrame(frame, display: false)
+    }
+
+    /// 抽屉扫描根:目录模式 = 显式目录;文件模式 = 文档所在目录;无文档无目录 = nil
+    private func currentDrawerRoot() -> URL? {
+        directoryMode ? drawerRootURL : fileURL?.deletingLastPathComponent()
+    }
+
+    /// 抽屉内容刷新(打开文件/切换根后调用):load 内部对同根只重扫
+    private func refreshDrawer() {
+        guard let root = currentDrawerRoot() else { return }
+        drawerView.load(root: root)
+        if let fileURL { drawerView.select(url: fileURL) }
+    }
+
+    /// 诊断/自检用:抽屉视图访问(与 webViewIfNeeded 同一口径的受控暴露)
+    var drawerForDiagnostics: FileDrawerView? { drawerView }
 
     // MARK: - 拖放文件
 

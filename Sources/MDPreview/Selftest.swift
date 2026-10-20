@@ -551,6 +551,9 @@ func greet() -> String {
         testImageStore()
         testImageCleanup()
 
+        // ── 文件抽屉目录扫描(过滤/剪枝/防环/防深)
+        testDirectoryTree()
+
         // ── 图片节点渲染/编辑框/插入桥(点击编辑与 Esc 还原的 web 行为往返)
         testImageNodeView()
 
@@ -687,6 +690,90 @@ func greet() -> String {
     """
 
     // MARK: - 路径改写测试
+
+    /// 文件抽屉目录扫描用例:md 过滤与扩展名清单、隐藏条目、符号链接防环、
+    /// 无 md 后代目录剪枝、排序(文件夹在前)、深度上限、根不可读报错、子孙定位。
+    private func testDirectoryTree() {
+        let fm = FileManager.default
+        let root = URL(fileURLWithPath: "/tmp/selftest-tree-\(getpid())")
+        try? fm.removeItem(at: root)
+        defer { try? fm.removeItem(at: root) }
+        func mkdir(_ rel: String) throws {
+            try fm.createDirectory(at: root.appendingPathComponent(rel), withIntermediateDirectories: true)
+        }
+        func put(_ rel: String) {
+            fm.createFile(atPath: root.appendingPathComponent(rel).path, contents: Data("# t\n".utf8))
+        }
+        do {
+            try mkdir("sub")
+            try mkdir("sub/deep")
+            try mkdir("empty") // 无 md 后代 → 剪枝
+            put("a.md")
+            put("b.txt") // 非 md → 排除
+            put(".hidden.md") // 隐藏 → 排除
+            put("sub/c.md")
+            put("sub/e.txt")
+            put("sub/deep/d.markdown")
+            try fm.createSymbolicLink(
+                at: root.appendingPathComponent("loop"),
+                withDestinationURL: root) // 符号链接 → 不跟随(防环)
+
+            let tree = try DirectoryTree.scan(root: root)
+            let rootNames = tree.children.map(\.name)
+            if rootNames == ["sub", "a.md"] {
+                pass("目录扫描-根层过滤与排序(文件夹在前,得 \(rootNames))")
+            } else {
+                fail("目录扫描-根层过滤与排序 → \(rootNames),期望 [sub, a.md]")
+            }
+            let sub = tree.children.first { $0.name == "sub" }
+            let subNames = sub?.children.map(\.name) ?? []
+            if subNames == ["deep", "c.md"] {
+                pass("目录扫描-子层过滤(排除 e.txt,得 \(subNames))")
+            } else {
+                fail("目录扫描-子层过滤 → \(subNames)")
+            }
+            let deepNames = sub?.children.first { $0.name == "deep" }?.children.map(\.name) ?? []
+            if deepNames == ["d.markdown"] {
+                pass("目录扫描-深层 md 扩展名(.markdown)")
+            } else {
+                fail("目录扫描-深层 md 扩展名 → \(deepNames)")
+            }
+            if tree.descendant(at: root.appendingPathComponent("sub/deep/d.markdown")) != nil,
+               tree.descendant(at: root.appendingPathComponent("b.txt")) == nil {
+                pass("目录扫描-子孙定位(descendant)")
+            } else {
+                fail("目录扫描-子孙定位失败")
+            }
+
+            // 深度上限:嵌套 15 层,层 9 内 md 可见,层 12 内 md 被截断
+            var chain = root
+            for i in 0..<15 {
+                chain = chain.appendingPathComponent("n\(i)")
+                try fm.createDirectory(at: chain, withIntermediateDirectories: true)
+            }
+            put("n0/n1/n2/n3/n4/n5/n6/n7/n8/shallow.md")   // 深度 9 < 上限 10
+            put("n0/n1/n2/n3/n4/n5/n6/n7/n8/n9/n10/n11/deep.md") // 深度 12 > 上限
+            let tree2 = try DirectoryTree.scan(root: root)
+            let chainNode = tree2.children.first { $0.name == "n0" }
+            var cursor = chainNode
+            for _ in 0..<8 { cursor = cursor?.children.first { $0.isFolder } }
+            let found = cursor?.children.map(\.name) ?? []
+            if found.contains("shallow.md") && !found.contains("deep.md") {
+                pass("目录扫描-深度上限(浅层保留,深层截断)")
+            } else {
+                fail("目录扫描-深度上限 → 层8子项 \(found)")
+            }
+        } catch {
+            fail("目录扫描-建树失败 \(error)")
+        }
+        // 根不可读 → 抛错(调用方展示空态,不静默装空树)
+        do {
+            _ = try DirectoryTree.scan(root: URL(fileURLWithPath: "/tmp/selftest-nonexist-\(getpid())"))
+            fail("目录扫描-根不可读应抛错")
+        } catch {
+            pass("目录扫描-根不可读抛错")
+        }
+    }
 
     private func testPathRewriter() {
         let baseURL = URL(fileURLWithPath: "/tmp/selftest-doc-\(getpid())")

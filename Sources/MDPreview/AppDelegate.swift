@@ -10,6 +10,7 @@ enum MenuID {
     static let appearanceMenu = NSUserInterfaceItemIdentifier("appearanceMenu")
     static let recentsMenu = NSUserInterfaceItemIdentifier("recentsMenu")
     static let viewSourceMode = NSUserInterfaceItemIdentifier("view.sourceMode")
+    static let viewDrawer = NSUserInterfaceItemIdentifier("view.drawer")
     static let appearanceAuto = NSUserInterfaceItemIdentifier("appearance.auto")
     static let appearanceLight = NSUserInterfaceItemIdentifier("appearance.light")
     static let appearanceDark = NSUserInterfaceItemIdentifier("appearance.dark")
@@ -128,10 +129,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         return controller
     }
 
-    /// 在新窗口打开文档
+    /// 在新窗口打开文档(目录入参自动路由到目录窗口:
+    /// LaunchServices/拖放/文档链接等所有既有调用方统一收敛,不再出现"目录当文件读失败")
     func openInNewWindow(at url: URL) {
+        var isDir: ObjCBool = false
+        if FileManager.default.fileExists(atPath: url.path, isDirectory: &isDir), isDir.boolValue {
+            openDirectoryWindow(at: url)
+            return
+        }
         let controller = makeEmptyDocument()
         controller.openDocument(at: url)
+    }
+
+    /// 新建目录模式窗口:右侧空白编辑器,抽屉展示该目录树
+    @discardableResult
+    func openDirectoryWindow(at url: URL) -> DocumentWindowController {
+        let controller = makeEmptyDocument()
+        controller.openDirectory(at: url)
+        return controller
     }
 
     private func observeWindowCloseNotifications() {
@@ -157,11 +172,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 ? NSString(string: "~/").expandingTildeInPath + arg.dropFirst() : arg
             var isDir: ObjCBool = false
             let url = URL(fileURLWithPath: path)
-            if FileManager.default.fileExists(atPath: url.path, isDirectory: &isDir), !isDir.boolValue {
+            if FileManager.default.fileExists(atPath: url.path, isDirectory: &isDir) {
                 argvFileHandled = true
-                let target = url.standardizedFileURL
-                cliOpenedURLs.insert(target)
-                openInNewWindow(at: target)
+                if isDir.boolValue {
+                    openDirectoryWindow(at: url.standardizedFileURL)
+                } else {
+                    let target = url.standardizedFileURL
+                    cliOpenedURLs.insert(target)
+                    openInNewWindow(at: target)
+                }
                 return
             }
         }
@@ -226,6 +245,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     func refreshViewMenuState() {
         let inSource = currentDocument?.inSourceMode ?? false
         updateMenuItem(in: MenuID.viewMenu, id: MenuID.viewSourceMode, selected: inSource)
+        updateMenuItem(in: MenuID.viewMenu, id: MenuID.viewDrawer, selected: currentDocument?.isDrawerVisible ?? false)
     }
 
     private func updateMenuItem(in menuId: NSUserInterfaceItemIdentifier, id: NSUserInterfaceItemIdentifier, selected: Bool) {
@@ -334,6 +354,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         Self.appendSubmenu("文件", to: main, id: MenuID.fileMenu) { menu in
             menu.addItem(withTitle: "新建", action: #selector(self.newDocumentAction(_:)), keyEquivalent: "n")
             menu.addItem(withTitle: "打开…", action: #selector(DocumentWindowController.openDocumentAction(_:)), keyEquivalent: "o")
+            let openFolder = menu.addItem(withTitle: "打开文件夹…", action: #selector(DocumentWindowController.openFolderAction(_:)), keyEquivalent: "o")
+            openFolder.keyEquivalentModifierMask = [.command, .shift]
             let recentsItem = NSMenuItem(title: "打开最近使用", action: nil, keyEquivalent: "")
             let recents = NSMenu(title: "打开最近使用")
             recents.identifier = MenuID.recentsMenu
@@ -402,6 +424,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             menu.addItem(.separator())
             let sourceItem = menu.addItem(withTitle: "源码模式", action: #selector(DocumentWindowController.toggleSourceModeAction(_:)), keyEquivalent: "/")
             sourceItem.identifier = MenuID.viewSourceMode
+            menu.addItem(.separator())
+            let drawerItem = menu.addItem(withTitle: "文件抽屉", action: #selector(DocumentWindowController.toggleDrawerAction(_:)), keyEquivalent: "\\")
+            drawerItem.identifier = MenuID.viewDrawer
             menu.addItem(.separator())
             Self.appendSubmenu("外观", to: menu, id: MenuID.appearanceMenu) { appearance in
                 let auto = appearance.addItem(withTitle: "跟随系统", action: #selector(AppDelegate.appearanceAutoAction(_:)), keyEquivalent: "")
