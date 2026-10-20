@@ -79,6 +79,42 @@ enum ImageStore {
             .appendingPathComponent(docURL.deletingPathExtension().lastPathComponent, isDirectory: true)
     }
 
+    // MARK: 关闭清理(资源 GC)
+
+    /// 清理资源目录里未被文档引用的图片。触发点唯一:文档关闭
+    /// (windowWillClose),此刻磁盘内容是权威终态(保存/放弃决策均已完成);
+    /// 撤销粘贴的孤儿文件由此在关闭时清除(撤销不立即删盘——重做会指向
+    /// 已删文件变破图)。
+    ///
+    /// 判定:复用 ImagePathRewriter 的同一套引用解析(围栏内不算引用);
+    /// 只清理 UTType 判定为图片的文件,非图片文件(未来附件/用户手放杂物)
+    /// 一律不动。目录清空则连同 `resource/<md文件名>/` 移除,`resource/`
+    /// 随之为空亦移除。失败原样抛错,由调用方记日志、不打断关闭。
+    /// 返回被删除的文件名(供日志与自检断言)。
+    @discardableResult
+    static func cleanUnreferenced(docURL: URL, markdown: String) throws -> [String] {
+        let dir = directory(for: docURL)
+        guard FileManager.default.fileExists(atPath: dir.path) else { return [] }
+        let referenced = ImagePathRewriter.referencedLocalImagePaths(
+            in: markdown, baseURL: docURL.deletingLastPathComponent())
+        var deleted: [String] = []
+        for item in try existingFiles(in: dir) {
+            let url = dir.appendingPathComponent(item)
+            guard isImageFile(url) else { continue } // 非图片文件不动
+            guard !referenced.contains(url.standardizedFileURL.path) else { continue }
+            try FileManager.default.removeItem(at: url)
+            deleted.append(item)
+        }
+        if try existingFiles(in: dir).isEmpty {
+            try FileManager.default.removeItem(at: dir)
+            let resourceRoot = dir.deletingLastPathComponent()
+            if try existingFiles(in: resourceRoot).isEmpty {
+                try FileManager.default.removeItem(at: resourceRoot)
+            }
+        }
+        return deleted
+    }
+
     // MARK: 命名
 
     /// 剪贴板位图命名:img_NNN.ext,序号取目录内 img_ 最大序号 +1(从 001 起)

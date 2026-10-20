@@ -549,6 +549,7 @@ func greet() -> String {
         // ── Swift 侧图片路径改写与落盘导入
         testPathRewriter()
         testImageStore()
+        testImageCleanup()
 
         // ── 图片节点渲染/编辑框/插入桥(点击编辑与 Esc 还原的 web 行为往返)
         testImageNodeView()
@@ -848,6 +849,86 @@ func greet() -> String {
             }
         } catch {
             fail("图片落盘异常 → \(error)")
+        }
+    }
+
+    // MARK: - 资源目录 GC(关闭时清理未引用图片)
+
+    /// 清理判定全形态覆盖:相对/`<>`包裹(含空格)/%20 编码 file:///手写
+    /// 绝对 file:// 均保护;围栏内同名写法不保护;非图片文件不动;
+    /// 引用清空图片全删;无其他文件时目录与 resource/ 连带移除。
+    private func testImageCleanup() {
+        let fm = FileManager.default
+        let docURL = URL(fileURLWithPath: "/tmp/selftest-gc-\(getpid())/文档.md")
+        let dir = ImageStore.directory(for: docURL)
+        defer { try? fm.removeItem(at: docURL.deletingLastPathComponent()) }
+        do {
+            try fm.createDirectory(at: dir, withIntermediateDirectories: true)
+            func put(_ name: String, _ bytes: [UInt8]) throws {
+                try Data(bytes).write(to: dir.appendingPathComponent(name))
+            }
+            try put("img_001.png", [0x89, 0x50])
+            try put("orphan.png", [0x89, 0x50])
+            try put("keep me.jpg", [0xFF, 0xD8])
+            try put("abs ref.png", [0x89, 0x50])
+            try put("dot ref.png", [0x89, 0x50])
+            try put("notes.txt", [0x74])
+
+            let base = docURL.deletingLastPathComponent().path
+            let md = """
+                正文引用 ![一](resource/文档/img_001.png)
+
+                包裹引用 ![二](<resource/文档/keep me.jpg>)
+
+                编码引用 ![三](file://\(base)/resource/文档/abs%20ref.png)
+
+                点前缀引用 ![四](./resource/文档/dot%20ref.png)
+
+                ```
+                围栏里写 ![x](resource/文档/orphan.png) 不算引用
+                ```
+                """
+            let removed1 = try ImageStore.cleanUnreferenced(docURL: docURL, markdown: md)
+            if removed1 == ["orphan.png"],
+               fm.fileExists(atPath: dir.appendingPathComponent("img_001.png").path),
+               fm.fileExists(atPath: dir.appendingPathComponent("keep me.jpg").path),
+               fm.fileExists(atPath: dir.appendingPathComponent("abs ref.png").path),
+               fm.fileExists(atPath: dir.appendingPathComponent("dot ref.png").path),
+               fm.fileExists(atPath: dir.appendingPathComponent("notes.txt").path) {
+                pass("资源清理-孤儿删除且被引用/非图片保留")
+            } else {
+                fail("资源清理-孤儿删除且被引用/非图片保留 → 删=\(removed1)")
+            }
+
+            // 引用清空:图片全删,非图片文件撑住目录
+            let removed2 = try ImageStore.cleanUnreferenced(docURL: docURL, markdown: "无图文档")
+            if removed2.sorted() == ["abs ref.png", "dot ref.png", "img_001.png", "keep me.jpg"].sorted(),
+               fm.fileExists(atPath: dir.appendingPathComponent("notes.txt").path) {
+                pass("资源清理-引用清空图片全删,非图片撑住目录")
+            } else {
+                fail("资源清理-引用清空图片全删,非图片撑住目录 → 删=\(removed2)")
+            }
+
+            // 无任何文件:目录与 resource/ 连带移除(不留空壳)
+            try fm.removeItem(at: dir.appendingPathComponent("notes.txt"))
+            _ = try ImageStore.cleanUnreferenced(docURL: docURL, markdown: "无图文档")
+            let resourceRoot = docURL.deletingLastPathComponent().appendingPathComponent("resource")
+            if !fm.fileExists(atPath: dir.path), !fm.fileExists(atPath: resourceRoot.path) {
+                pass("资源清理-空目录与resource连带移除")
+            } else {
+                fail("资源清理-空目录与resource连带移除")
+            }
+
+            // 无资源目录:调用安全无副作用(新建未保存/首次打开文档路径)
+            let bareDoc = URL(fileURLWithPath: "/tmp/selftest-gc-\(getpid())/bare.md")
+            let removed3 = try ImageStore.cleanUnreferenced(docURL: bareDoc, markdown: "任意")
+            if removed3.isEmpty, !fm.fileExists(atPath: ImageStore.directory(for: bareDoc).path) {
+                pass("资源清理-无目录安全跳过")
+            } else {
+                fail("资源清理-无目录安全跳过 → \(removed3)")
+            }
+        } catch {
+            fail("资源清理用例异常 → \(error)")
         }
     }
 

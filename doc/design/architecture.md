@@ -108,6 +108,18 @@ WKWebView 承载 Milkdown 7.7（ProseMirror）前端。本文记录跨模块的�
   ImagePathRewriter 还原为相对路径。落盘失败(目录不可列举/不可写、非图片等)
   一律原样抛错、由原生弹窗提示,绝不静默降级——序号命名依赖目录列举,静默
   当空目录会让序号回绕、`.atomic` 写盘覆盖既有图片(selftest 防覆盖用例守门)。
+- **关闭清理(资源 GC)**:`windowWillClose` 唯一钩子,此刻磁盘内容是权威
+  终态(保存/放弃决策已在 windowShouldClose→beginConfirmClose 完成)。判定
+  复用 ImagePathRewriter 的同一套行规则与目的地解析(只读收集器
+  `referencedLocalImagePaths`,围栏内不算引用,零解析重复):目录内 UTType
+  为图片且不被引用 → 删除,非图片文件一律不动;目录清空连带移除
+  `resource/<md文件名>/`,随之为空亦移除 `resource/`。撤销粘贴的孤儿文件由
+  本机制在关闭时清除——撤销不立即删盘(⌘⇧Z 重做会指向已删文件破图,用户
+  2026-10-20 定稿关闭时统一 GC)。引用与候选路径双侧经 `standardizedFileURL`
+  规范化比对(消解 `./` 冗余段);相对引用按改写器原样与 CommonMark %XX
+  解码两种口径收集(均以文件实际存在为准,宁多保护不误删)。file:// 目的地
+  解码用手工分段(`percentDecodedPath`),不用 URL(string:)(混排内容会再
+  转义合法 %XX,坑档案 P4)。清理失败 os_log 不打断关闭。
 - **路径分离**:导入是偶发慢路径——web 捕获阶段拦截 paste(非图片载荷放行给
   milkdown clipboard 文本链路)→ 桥 op `importImage` → 原生落盘 → 回灌
   `onImageImported(requestId,{ok,src})` → 恢复粘贴时刻选区插入节点;失败由

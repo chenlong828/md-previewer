@@ -876,6 +876,30 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
         return false
     }
 
+    func windowWillClose(_ notification: Notification) {
+        cleanOrphanResources()
+    }
+
+    /// 关闭时清理资源目录死链图片(撤销粘贴孤儿/正文删除引用的残留)。
+    /// 此刻磁盘内容已是权威终态(保存/放弃决策已在 windowShouldClose 完成),
+    /// 判定与执行细节单点在 ImageStore.cleanUnreferenced。清理是偶发慢路径,
+    /// 失败只记日志,不打断关闭。
+    private func cleanOrphanResources() {
+        guard let fileURL else { return } // 新建未保存文档:无资源目录,无清理对象
+        guard let (text, _) = TextFile.read(at: fileURL) else {
+            os_log(.error, "资源清理:文档读取失败 %{public}@", fileURL.path)
+            return
+        }
+        do {
+            let removed = try ImageStore.cleanUnreferenced(docURL: fileURL, markdown: text)
+            if !removed.isEmpty {
+                os_log(.info, "资源清理:%{public}@ 移除 %{public}@", fileURL.lastPathComponent, removed.joined(separator: ", "))
+            }
+        } catch {
+            os_log(.error, "资源清理失败 %{public}@ → %{public}@", fileURL.lastPathComponent, "\(error)")
+        }
+    }
+
     // MARK: - NSMenuItemValidation
 
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {

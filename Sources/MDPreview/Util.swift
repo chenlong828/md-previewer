@@ -126,6 +126,53 @@ enum ImagePathRewriter {
         }
     }
 
+    // MARK: 引用收集(资源清理判定用)
+
+    /// 收集文档内所有能指向本地文件的图片引用(文件系统绝对路径集合,
+    /// 已做路径规范化),供 ImageStore 关闭清理判定「被引用」。行规则与
+    /// 图片语法解析与改写器共用同一实现(围栏内不算引用),不复制第二份。
+    /// 引用形态按两种口径都算保护,宁多保护不误删:
+    /// - 改写器口径:目的地原样(含字面 %XX、./ 前缀),文件真实存在;
+    /// - CommonMark 口径:目的地按 %XX 解码后指向的另一真实文件。
+    static func referencedLocalImagePaths(in markdown: String, baseURL: URL) -> Set<String> {
+        var paths = Set<String>()
+        mapLinesOutsideFences(markdown) { line in
+            replaceImages(in: line) { rawPath, _ in
+                let trimmed = rawPath.trimmingCharacters(in: .whitespaces)
+                if trimmed.hasPrefix("file://") {
+                    paths.insert(percentDecodedPath(String(trimmed.dropFirst("file://".count))).standardizedFilePath)
+                } else if !isRemoteDestination(trimmed) {
+                    if let resolved = resolveForLoad(rawPath, baseURL: baseURL),
+                       let url = URL(string: resolved), url.isFileURL {
+                        paths.insert(url.standardizedFileURL.path)
+                    }
+                    let absPath = trimmed.hasPrefix("/")
+                        ? trimmed
+                        : baseURL.appendingPathComponent(trimmed).path
+                    for candidate in [absPath, percentDecodedPath(absPath)] {
+                        if FileManager.default.fileExists(atPath: candidate) {
+                            paths.insert(candidate.standardizedFilePath)
+                        }
+                    }
+                }
+                return nil
+            }
+            return line
+        }
+        return paths
+    }
+
+    /// file:// 之后的部分 → 文件系统路径:手工分段百分号解码。
+    /// 不用 URL(string:):实测(2026-10-20,selftest 资源清理用例)它对
+    /// 「未编码非 ASCII + 合法 %XX 混排」会把合法 %XX 再转义成 %25XX
+    /// (%20→%2520),解码后与真实文件名错位;分段解码对已编码/未编码/
+    /// 文件名含字面 % 三种形态都得到正确路径。
+    private static func percentDecodedPath(_ afterScheme: String) -> String {
+        afterScheme.split(separator: "/", omittingEmptySubsequences: false)
+            .map { $0.removingPercentEncoding ?? String($0) }
+            .joined(separator: "/")
+    }
+
     // MARK: helpers
 
     private static func wrappedIfNeeded(_ path: String) -> String {
@@ -133,15 +180,19 @@ enum ImagePathRewriter {
             ? "<\(path)>" : path
     }
 
+    /// 远程/数据/锚点/空目的地:不参与本地路径改写,也不算本地文件引用。
+    /// scheme 规则的唯一来源,resolveForLoad 与引用收集器共用。
+    private static func isRemoteDestination(_ trimmed: String) -> Bool {
+        trimmed.isEmpty || trimmed.hasPrefix("http://") || trimmed.hasPrefix("https://")
+            || trimmed.hasPrefix("data:") || trimmed.hasPrefix("#")
+    }
+
     /// 相对/根相对路径 → 绝对 file:// URL(百分号编码,空格→%20,
     /// 消除 CommonMark 目的地不容空格的问题)。远程/data/锚点/缺失文件
     /// 返回 nil,原文保持不动。
     private static func resolveForLoad(_ raw: String, baseURL: URL) -> String? {
         let trimmed = raw.trimmingCharacters(in: .whitespaces)
-        if trimmed.isEmpty
-            || trimmed.hasPrefix("http://") || trimmed.hasPrefix("https://")
-            || trimmed.hasPrefix("data:") || trimmed.hasPrefix("file://")
-            || trimmed.hasPrefix("#") {
+        if isRemoteDestination(trimmed) || trimmed.hasPrefix("file://") {
             return nil
         }
         let abs: URL
@@ -157,8 +208,10 @@ enum ImagePathRewriter {
     /// file:// URL → 文档目录内相对路径(保留原始空格写法);
     /// 目录外的绝对路径保留绝对写法(空格/括号由 wrappedIfNeeded 包裹)。
     private static func resolveForSave(_ raw: String, baseURL: URL) -> String? {
-        guard raw.hasPrefix("file://"), let url = URL(string: raw) else { return nil }
-        let path = url.path
+        guard raw.hasPrefix("file://") else { return nil }
+        // 与 referencedLocalImagePaths 同一解码口径:URL(string:) 对混排
+        // 内容会再转义合法 %XX(见 percentDecodedPath 注释)
+        let path = percentDecodedPath(String(raw.dropFirst("file://".count)))
         let base = baseURL.path
         if path.hasPrefix(base + "/") {
             return String(path.dropFirst(base.count + 1))
@@ -236,5 +289,12 @@ enum WebLocator {
     /// 仓库内 resources/Info.plist(仅 selftest 一致性断言使用)
     static func repoInfoPlistURL() -> URL? {
         repoRootURL()?.appendingPathComponent("resources/Info.plist")
+    }
+}
+
+private extension String {
+    /// 文件系统路径规范化(消解 ./ 与冗余段),与资源目录列举路径同口径比较
+    var standardizedFilePath: String {
+        URL(fileURLWithPath: self).standardizedFileURL.path
     }
 }

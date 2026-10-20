@@ -54,3 +54,26 @@ updated: 2026-10-20
   - 失败契约写明于 design/architecture.md §2.1a「导入落盘约定」;
   - 同类风险判据:`try? ?? 空值` 兜底 IO 失败前,先问"空值会让下游推导出
     错误业务结果吗"——序号/去重/命名类推导对空表敏感,必须抛错。
+
+## P4 URL(string:) 对「未编码非 ASCII + 合法 %XX」混排 file URL 再转义合法 %XX
+
+- **现象**:资源清理用例红跑中,`file:///…/文档/abs%20ref.png` 经
+  `URL(string:)` 解析后 `.path` 得到字面 `"abs%20ref.png"`(空格未还原)——
+  描述输出显示 `%20` 被再转义成 `%2520`,解码后与真实文件名 `abs ref.png`
+  错位,该引用判定失配、文件被误删(2026-10-20 实证)。根因:当 URL 字符串
+  同时含未编码非 ASCII 与合法 %XX 时,Foundation 的新解析器进入宽容编码
+  模式,把已合法的 `%` 一并转义;纯 ASCII 的 %XX(如自家产生的
+  absoluteString)则解析正确——所以保存往返用例从未暴露。
+- **存续条件**:仍在。这是 Foundation 运行时行为,不随本仓库代码变化;
+  凡「混排 file URL → 文件系统路径」的解析点都要绕开 `URL(string:)`。
+- **对策落点**:
+  - `ImagePathRewriter.percentDecodedPath`:file:// 之后手工分段
+    百分号解码(`removingPercentEncoding`,非法序列保原文),已编码/未编码/
+    文件名含字面 % 三种形态都得正确路径;
+  - `resolveForSave` 同口径加固(保存链路同一缺陷类,selftest 保存往返守门);
+  - `addingPercentEncoding(.urlQueryAllowed)` 不含 `%`(RFC 3986 字面集),
+    不能用来"补编码"含 % 的串——会把合法 %XX 变 %25XX;
+  - 引用与候选路径比较前双侧 `standardizedFileURL` 规范化(./ 前缀引用
+    与目录列举路径失配会误删,红跑实证);
+  - 判定用例:selftest「资源清理-孤儿删除且被引用/非图片保留」(%20 编码
+    与 ./ 前缀分支)。
