@@ -1161,6 +1161,11 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
     /// 诊断/自检用:抽屉视图访问(与 webViewIfNeeded 同一口径的受控暴露)
     var drawerForDiagnostics: FileDrawerView? { drawerView }
 
+    /// 诊断/自检用:抽屉选中定位(lazy 下触发祖先链同步装载)
+    func selectForDiagnostics(url: URL) {
+        drawerView.select(url: url)
+    }
+
     // MARK: - 拖放文件
 
 }

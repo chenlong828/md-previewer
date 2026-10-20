@@ -691,8 +691,9 @@ func greet() -> String {
 
     // MARK: - 路径改写测试
 
-    /// 文件抽屉目录扫描用例:md 过滤与扩展名清单、隐藏条目、符号链接防环、
-    /// 无 md 后代目录剪枝、排序(文件夹在前)、深度上限、根不可读报错、子孙定位。
+    /// 文件抽屉目录扫描用例(lazy 单层装载):md 过滤与扩展名清单、隐藏条目、
+    /// 符号链接防环、node_modules/包整棵跳过、排序(文件夹在前)、lazy 装载态、
+    /// 父链与已装载层定位、根不可读报错。
     private func testDirectoryTree() {
         let fm = FileManager.default
         let root = URL(fileURLWithPath: "/tmp/selftest-tree-\(getpid())")
@@ -707,81 +708,70 @@ func greet() -> String {
         do {
             try mkdir("sub")
             try mkdir("sub/deep")
-            try mkdir("empty") // 无 md 后代 → 剪枝
-            try mkdir("web/node_modules/pkg") // 依赖目录 → 整棵跳过(内部 md 不进树)
+            try mkdir("empty") // 无 md 目录:lazy 下照常显示(不做后代剪枝)
+            try mkdir("web/node_modules/pkg") // 依赖目录 → 整棵跳过
             try mkdir("MyApp.app/Contents") // 包目录 → 整棵跳过(Finder 同款不透明语义)
-            put("web/keep.md")
-            put("web/node_modules/pkg/README.md")
-            put("MyApp.app/Contents/inside.md")
             put("a.md")
             put("b.txt") // 非 md → 排除
             put(".hidden.md") // 隐藏 → 排除
             put("sub/c.md")
             put("sub/e.txt")
             put("sub/deep/d.markdown")
+            put("web/keep.md")
+            put("web/node_modules/pkg/README.md")
+            put("MyApp.app/Contents/inside.md")
             try fm.createSymbolicLink(
                 at: root.appendingPathComponent("loop"),
                 withDestinationURL: root) // 符号链接 → 不跟随(防环)
 
-            let tree = try DirectoryTree.scan(root: root)
-            let rootNames = tree.children.map(\.name)
-            if rootNames == ["sub", "web", "a.md"] {
-                pass("目录扫描-根层过滤与排序(文件夹在前,得 \(rootNames))")
+            let rootLevel = try DirectoryTree.scanLevel(of: root)
+            let subNode = rootLevel.children.first { $0.name == "sub" }
+            if rootLevel.childrenLoaded,
+               subNode?.childrenLoaded == false, subNode?.children.isEmpty == true {
+                pass("目录扫描-lazy 根层装载,子目录未装载")
             } else {
-                fail("目录扫描-根层过滤与排序 → \(rootNames),期望 [sub, web, a.md]")
+                fail("目录扫描-lazy 装载态不符")
             }
-            let webChildren = tree.children.first { $0.name == "web" }?.children.map(\.name) ?? []
-            if tree.descendant(at: root.appendingPathComponent("web/node_modules/pkg/README.md")) == nil,
-               tree.descendant(at: root.appendingPathComponent("MyApp.app/Contents/inside.md")) == nil,
-               webChildren == ["keep.md"] {
-                pass("目录扫描-node_modules 与包整棵跳过(内部 md 不进树)")
+            let rootNames = rootLevel.children.map(\.name)
+            if rootNames == ["empty", "sub", "web", "a.md"] {
+                pass("目录扫描-单层过滤与排序(无md目录保留/包跳过/得 \(rootNames))")
             } else {
-                fail("目录扫描-node_modules/包跳过 → web 子项 \(webChildren)")
+                fail("目录扫描-单层过滤与排序 → \(rootNames),期望 [empty, sub, web, a.md]")
             }
-            let sub = tree.children.first { $0.name == "sub" }
-            let subNames = sub?.children.map(\.name) ?? []
-            if subNames == ["deep", "c.md"] {
-                pass("目录扫描-子层过滤(排除 e.txt,得 \(subNames))")
+            let webLevel = try DirectoryTree.scanLevel(of: root.appendingPathComponent("web"))
+            if webLevel.children.map(\.name) == ["keep.md"] {
+                pass("目录扫描-node_modules 整棵跳过(内部 md 不进树)")
             } else {
-                fail("目录扫描-子层过滤 → \(subNames)")
+                fail("目录扫描-node_modules 跳过 → \(webLevel.children.map(\.name))")
             }
-            let deepNames = sub?.children.first { $0.name == "deep" }?.children.map(\.name) ?? []
-            if deepNames == ["d.markdown"] {
-                pass("目录扫描-深层 md 扩展名(.markdown)")
+            // 子层惰性装载:逐层 readdir
+            let subLevel = try DirectoryTree.scanLevel(of: root.appendingPathComponent("sub"))
+            let deepNode = subLevel.children.first { $0.name == "deep" }
+            let deepLevel = deepNode.flatMap { try? DirectoryTree.scanLevel(of: $0.url) }
+            if subLevel.children.map(\.name) == ["deep", "c.md"],
+               deepLevel?.children.map(\.name) == ["d.markdown"] {
+                pass("目录扫描-子层装载与深层 md 扩展名(.markdown)")
             } else {
-                fail("目录扫描-深层 md 扩展名 → \(deepNames)")
+                fail("目录扫描-子层装载 → sub=\(subLevel.children.map(\.name)) deep=\(deepLevel?.children.map(\.name) ?? [])")
             }
-            if tree.descendant(at: root.appendingPathComponent("sub/deep/d.markdown")) != nil,
-               tree.descendant(at: root.appendingPathComponent("b.txt")) == nil {
-                pass("目录扫描-子孙定位(descendant)")
-            } else {
-                fail("目录扫描-子孙定位失败")
-            }
-
-            // 深度上限:嵌套 15 层,层 9 内 md 可见,层 12 内 md 被截断
-            var chain = root
-            for i in 0..<15 {
-                chain = chain.appendingPathComponent("n\(i)")
-                try fm.createDirectory(at: chain, withIntermediateDirectories: true)
-            }
-            put("n0/n1/n2/n3/n4/n5/n6/n7/n8/shallow.md")   // 深度 9 < 上限 10
-            put("n0/n1/n2/n3/n4/n5/n6/n7/n8/n9/n10/n11/deep.md") // 深度 12 > 上限
-            let tree2 = try DirectoryTree.scan(root: root)
-            let chainNode = tree2.children.first { $0.name == "n0" }
-            var cursor = chainNode
-            for _ in 0..<8 { cursor = cursor?.children.first { $0.isFolder } }
-            let found = cursor?.children.map(\.name) ?? []
-            if found.contains("shallow.md") && !found.contains("deep.md") {
-                pass("目录扫描-深度上限(浅层保留,深层截断)")
-            } else {
-                fail("目录扫描-深度上限 → 层8子项 \(found)")
+            // 父链回填 + descendant 只及已装载层(模拟 attachChildren 的回填)
+            if let subNode {
+                subNode.children = subLevel.children
+                for child in subNode.children { child.parent = subNode }
+                if rootLevel.descendant(at: root.appendingPathComponent("sub/c.md")) != nil,
+                   rootLevel.descendant(at: root.appendingPathComponent("sub/deep/d.markdown")) == nil,
+                   rootLevel.descendant(at: root.appendingPathComponent("b.txt")) == nil {
+                    pass("目录扫描-descendant 只及已装载层")
+                } else {
+                    fail("目录扫描-descendant 定位范围不符")
+                }
             }
         } catch {
             fail("目录扫描-建树失败 \(error)")
         }
         // 根不可读 → 抛错(调用方展示空态,不静默装空树)
         do {
-            _ = try DirectoryTree.scan(root: URL(fileURLWithPath: "/tmp/selftest-nonexist-\(getpid())"))
+            _ = try DirectoryTree.scanLevel(of: URL(fileURLWithPath: "/tmp/selftest-nonexist-\(getpid())"))
             fail("目录扫描-根不可读应抛错")
         } catch {
             pass("目录扫描-根不可读抛错")
