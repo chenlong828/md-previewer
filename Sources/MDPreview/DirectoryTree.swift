@@ -41,6 +41,26 @@ enum DirectoryTree {
     /// 整棵跳过的目录名(依赖目录约定,其内 README 等与文档树无关且体量巨大)
     private static let skippedDirectoryNames: Set<String> = ["node_modules"]
 
+    /// 锚点下拉框的一条目录项(显示名 + 完整 URL)
+    struct AnchorEntry {
+        let name: String
+        let url: URL
+    }
+
+    /// 锚点链:从文件系统根到指定目录的父级序列(末项 = 该目录自身)。
+    /// 抽屉下拉框据此列出「父级目录」供重新锚定;纯路径逻辑,无 IO。
+    static func ancestorChain(of url: URL) -> [AnchorEntry] {
+        var chain: [AnchorEntry] = []
+        var cursor = url.standardizedFileURL
+        while true {
+            let name = cursor.path == "/" ? "/" : cursor.lastPathComponent
+            chain.append(AnchorEntry(name: name, url: cursor))
+            guard cursor.path != "/" else { break }
+            cursor = cursor.deletingLastPathComponent()
+        }
+        return chain.reversed()
+    }
+
     /// 根目录不可读(不存在/无权限)时抛出;其余层级同样抛错,由调用方决定展示空态。
     enum ScanError: Error { case inaccessible }
 

@@ -13,6 +13,8 @@ final class FileDrawerView: NSView, NSOutlineViewDataSource, NSOutlineViewDelega
 
     /// 双击 md 文件回调(唯一对外动作;文件夹双击只切换展开)
     var onOpenFile: ((URL) -> Void)?
+    /// 锚点下拉框选择回调:用户把某父级目录选为新抽屉根
+    var onAnchorSelected: ((URL) -> Void)?
 
     /// 当前扫描根(目录模式 = 打开的目录;文件模式 = 文档所在目录)
     private(set) var rootURL: URL?
@@ -27,7 +29,9 @@ final class FileDrawerView: NSView, NSOutlineViewDataSource, NSOutlineViewDelega
     private var pendingExpandPaths = Set<String>()
 
     private let headerBackground = NSVisualEffectView()
-    private let headerLabel = NSTextField(labelWithString: "")
+    /// 锚点下拉框:列出当前锚点向上到文件系统根的父级目录链(面包屑式缩进),
+    /// 选中任一父级即重新锚定抽屉根;选中项恒为当前锚点(兼作当前目录名显示)
+    private let anchorPopup = NSPopUpButton(frame: .zero, pullsDown: false)
     private let refreshButton: NSButton
     private let scrollView = NSScrollView()
     private let outlineView = NSOutlineView()
@@ -53,12 +57,15 @@ final class FileDrawerView: NSView, NSOutlineViewDataSource, NSOutlineViewDelega
         headerBackground.translatesAutoresizingMaskIntoConstraints = false
         addSubview(headerBackground)
 
-        headerLabel.font = .systemFont(ofSize: 11, weight: .semibold)
-        headerLabel.textColor = .secondaryLabelColor
-        headerLabel.lineBreakMode = .byTruncatingTail
-        headerLabel.cell?.truncatesLastVisibleLine = true
-        headerLabel.translatesAutoresizingMaskIntoConstraints = false
-        headerBackground.addSubview(headerLabel)
+        anchorPopup.target = self
+        anchorPopup.action = #selector(anchorItemAction(_:))
+        anchorPopup.font = .systemFont(ofSize: 11, weight: .semibold)
+        anchorPopup.isBordered = false
+        anchorPopup.contentTintColor = .secondaryLabelColor
+        anchorPopup.toolTip = "锚定抽屉根目录(选择父级目录)"
+        anchorPopup.translatesAutoresizingMaskIntoConstraints = false
+        anchorPopup.setAccessibilityIdentifier("drawerAnchorPopup")
+        headerBackground.addSubview(anchorPopup)
 
         refreshButton.target = self
         refreshButton.action = #selector(refreshAction)
@@ -106,9 +113,9 @@ final class FileDrawerView: NSView, NSOutlineViewDataSource, NSOutlineViewDelega
             headerBackground.trailingAnchor.constraint(equalTo: trailingAnchor),
             headerBackground.heightAnchor.constraint(equalToConstant: 28),
 
-            headerLabel.leadingAnchor.constraint(equalTo: headerBackground.leadingAnchor, constant: 10),
-            headerLabel.centerYAnchor.constraint(equalTo: headerBackground.centerYAnchor),
-            headerLabel.trailingAnchor.constraint(lessThanOrEqualTo: refreshButton.leadingAnchor, constant: -8),
+            anchorPopup.leadingAnchor.constraint(equalTo: headerBackground.leadingAnchor, constant: 10),
+            anchorPopup.centerYAnchor.constraint(equalTo: headerBackground.centerYAnchor),
+            anchorPopup.trailingAnchor.constraint(lessThanOrEqualTo: refreshButton.leadingAnchor, constant: -8),
 
             refreshButton.trailingAnchor.constraint(equalTo: headerBackground.trailingAnchor, constant: -6),
             refreshButton.centerYAnchor.constraint(equalTo: headerBackground.centerYAnchor),
@@ -166,7 +173,7 @@ final class FileDrawerView: NSView, NSOutlineViewDataSource, NSOutlineViewDelega
             outlineView.expandItem(node) // 根恒展开(根层已装载)
             expandRememberedChildren(of: node)
         }
-        headerLabel.stringValue = rootURL.lastPathComponent
+        rebuildAnchorMenu()
         let isEmpty = node?.children.isEmpty ?? true
         emptyLabel.stringValue = node == nil ? "文件夹不可读" : (isEmpty ? "无 Markdown 文件" : "")
         if let selectedURL { select(url: selectedURL) }
@@ -343,6 +350,14 @@ final class FileDrawerView: NSView, NSOutlineViewDataSource, NSOutlineViewDelega
         root?.descendant(at: url) != nil
     }
 
+    /// 锚点下拉框当前条目数(自检断言父级链长度)
+    var anchorItemCountForDiagnostics: Int { anchorPopup.numberOfItems }
+
+    /// 模拟在锚点下拉框中选择某父级目录(走 onAnchorSelected 同一回调路径)
+    func debugAnchor(to url: URL) {
+        onAnchorSelected?(url)
+    }
+
     /// 模拟双击打开指定文件:走 doubleClicked 同一回调路径(onOpenFile → 控制器 openDocument)
     func debugOpenByDoubleClick(url: URL) {
         guard let node = root?.descendant(at: url) else { return }
@@ -360,6 +375,29 @@ final class FileDrawerView: NSView, NSOutlineViewDataSource, NSOutlineViewDelega
             cursor = parent.parent
         }
         return chain.reversed()
+    }
+
+    // MARK: - 锚点下拉框
+
+    /// 按当前锚点重建父级目录链:根在顶(逐级缩进),当前锚点在末且选中
+    private func rebuildAnchorMenu() {
+        anchorPopup.removeAllItems()
+        guard let rootURL else { return }
+        let chain = DirectoryTree.ancestorChain(of: rootURL)
+        for (index, entry) in chain.enumerated() {
+            let item = NSMenuItem(title: entry.name, action: #selector(anchorItemAction(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = entry.url
+            item.indentationLevel = index
+            item.toolTip = entry.url.path
+            anchorPopup.menu?.addItem(item)
+        }
+        anchorPopup.selectItem(at: chain.count - 1) // 编程选中不触发 action
+    }
+
+    @objc private func anchorItemAction(_ sender: NSMenuItem) {
+        guard let url = sender.representedObject as? URL else { return }
+        onAnchorSelected?(url)
     }
 
     // MARK: - 动作

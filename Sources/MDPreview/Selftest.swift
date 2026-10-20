@@ -769,6 +769,23 @@ func greet() -> String {
         } catch {
             fail("目录扫描-建树失败 \(error)")
         }
+        // 锚点链:文件系统根 → 指定目录(末项为自身),抽屉下拉框的父级目录来源
+        let deep = URL(fileURLWithPath: "/tmp/mdp-anchor-demo/level1/level2")
+        let chain = DirectoryTree.ancestorChain(of: deep)
+        let names = chain.map(\.name)
+        if names == ["/", "tmp", "mdp-anchor-demo", "level1", "level2"],
+           chain.first?.url.path == "/", chain.last?.url.path == deep.standardizedFileURL.path {
+            pass("锚点链-根到锚点完整父级序列(\(names.count) 项)")
+        } else {
+            fail("锚点链-序列不符 → \(names)")
+        }
+        let shallow = DirectoryTree.ancestorChain(of: URL(fileURLWithPath: "/"))
+        if shallow.count == 1, shallow[0].name == "/" {
+            pass("锚点链-根目录自身单项")
+        } else {
+            fail("锚点链-根目录 → \(shallow.count) 项")
+        }
+
         // 根不可读 → 抛错(调用方展示空态,不静默装空树)
         do {
             _ = try DirectoryTree.scanLevel(of: URL(fileURLWithPath: "/tmp/selftest-nonexist-\(getpid())"))

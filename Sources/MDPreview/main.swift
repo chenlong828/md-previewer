@@ -110,6 +110,7 @@ if isSelftest {
     let dirFlag = flagValue("--dir")
     let fileA = flagValue("--fileA").map { URL(fileURLWithPath: $0) }
     let fileB = flagValue("--fileB").map { URL(fileURLWithPath: $0) }
+    let fileC = flagValue("--fileC").map { URL(fileURLWithPath: $0) } // 锚点之外的文件(验证重锚契约)
 
     var failures: [String] = []
     func report(_ ok: Bool, _ label: String) {
@@ -140,6 +141,10 @@ if isSelftest {
         doc.openDirectory(at: dirURL)
         RunLoop.main.run(mode: .default, before: Date().addingTimeInterval(0.5))
         report(AppDelegate.shared?.documents.count == 1, "目录模式仅 1 个窗口")
+        // 锚点下拉框:父级链条目数与 DirectoryTree.ancestorChain 一致
+        let expectedChain = DirectoryTree.ancestorChain(of: dirURL).count
+        report(doc.drawerForDiagnostics?.anchorItemCountForDiagnostics == expectedChain,
+               "锚点下拉框条目=父级链(\(doc.drawerForDiagnostics?.anchorItemCountForDiagnostics ?? -1)/\(expectedChain))")
         report(doc.directoryMode, "目录模式标志(directoryMode=true)")
         report(doc.fileURL == nil, "目录模式无文档(fileURL=nil)")
         report(doc.isDrawerVisible, "目录模式抽屉展开")
@@ -180,12 +185,29 @@ if isSelftest {
         report(openedA, "fileURL=双击目标")
         report(!doc.directoryMode, "已退出目录模式")
         report(doc.window?.title == fileA.lastPathComponent, "标题=文件名(得 \(doc.window?.title ?? "-"))")
+        report(doc.anchorRootForDiagnostics == dirURL, "抽屉双击保持锚点(不重锚到文件所在层)")
 
-        // 再次打开另一文件:仍同窗覆盖(菜单/抽屉统一的 openDocument 路径)
+        // 子层文件经树打开(先选中装载祖先链,再走抽屉回调):锚点保持为原锚点
         if let fileB {
-            doc.openDocument(at: fileB)
+            doc.selectForDiagnostics(url: fileB)
+            doc.drawerForDiagnostics?.debugOpenByDoubleClick(url: fileB)
             let openedB = waitForFileURL(fileB, timeout: 8.0)
-            report(openedB, "第二次打开同窗覆盖(fileURL=\(doc.fileURL?.lastPathComponent ?? "nil"))")
+            report(openedB, "树打开子层文件同窗覆盖(fileURL=\(doc.fileURL?.lastPathComponent ?? "nil"))")
+            report(doc.anchorRootForDiagnostics == dirURL, "树打开子层文件保持锚点(跨多层浏览)")
+        }
+
+        // 非抽屉来源打开锚点外文件:锚点重锚为文件所在目录(外部/⌘O/最近使用契约)
+        if let fileC {
+            doc.openDocument(at: fileC)
+            let openedC = waitForFileURL(fileC, timeout: 8.0)
+            report(openedC && doc.anchorRootForDiagnostics == fileC.deletingLastPathComponent().standardizedFileURL,
+                   "非抽屉打开锚点外文件重锚到文件所在目录")
+            // 锚点下拉框选回原目录(走 onAnchorSelected 同一路径)
+            doc.drawerForDiagnostics?.debugAnchor(to: dirURL)
+            let chainBack = DirectoryTree.ancestorChain(of: dirURL).count
+            report(doc.anchorRootForDiagnostics == dirURL
+                   && doc.drawerForDiagnostics?.anchorItemCountForDiagnostics == chainBack,
+                   "下拉框重锚回原目录(条目数 \(doc.drawerForDiagnostics?.anchorItemCountForDiagnostics ?? -1))")
         }
 
         // ⌘O 菜单动作解析诊断:无 target 菜单项的派发以 key window 响应链为起点,

@@ -9,8 +9,13 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
     private(set) var isDirty = false
     var isReady = false
     var isLoadingContent = false
-    /// 页面/编辑器尚未就绪时暂存的待打开文档,就绪后自动补载
-    private var pendingOpenURL: URL?
+    /// 页面/编辑器尚未就绪或注入进行中时暂存的待打开请求,就绪/装载完成后自动补载;
+    /// reanchor 记录来源(抽屉双击不重锚,其余以文件所在目录重锚)
+    private struct PendingOpen {
+        let url: URL
+        let reanchor: Bool
+    }
+    private var pendingOpen: PendingOpen?
     /// 保存确认弹窗进行中(防止重复弹窗)
     private var isConfirmingClose = false
 
@@ -84,7 +89,10 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
         drawerView = FileDrawerView()
         drawerView.translatesAutoresizingMaskIntoConstraints = false
         drawerView.onOpenFile = { [weak self] url in
-            self?.openDocument(at: url)
+            self?.openDocument(at: url, reanchor: false) // 抽屉来源保持锚点
+        }
+        drawerView.onAnchorSelected = { [weak self] url in
+            self?.anchorDrawer(at: url)
         }
         container.addSubview(drawerView)
         drawerWidthConstraint = drawerView.widthAnchor.constraint(equalToConstant: 0)
@@ -192,13 +200,16 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
 
     // MARK: - 打开文档
 
-    func openDocument(at url: URL) {
+    /// 打开文档。reanchor 语义:抽屉双击传 false(保持锚点,文件必在锚点子树内,
+    /// 这是「锚定祖先目录后跨多层打开」的关键);其余来源(⌘O/最近使用/CLI/拖放/
+    /// 文档链接)默认 true——以文件所在目录为锚点。
+    func openDocument(at url: URL, reanchor: Bool = true) {
         if isDirty {
             // 脏文档覆盖打开前统一走保存确认(保存/取消/不保存),与关闭/抽屉双击同一路径;
             // 「不保存」即放弃修改后继续打开,不再出现静默丢弃语义的旧模态
             beginConfirmClose(allowCancel: true) { [weak self] confirmed in
                 guard confirmed else { return }
-                self?.openDocument(at: url) // 确认后 isDirty 已清,重入直通装载
+                self?.openDocument(at: url, reanchor: reanchor) // 确认后 isDirty 已清,重入直通装载
             }
             return
         }
@@ -206,7 +217,7 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
         // 未就绪(命令行/Finder 启动时页面可能尚未加载完):只记 URL 不读内容,
         // 读文件动作只在就绪补载时发生一次——消除双读 TOCTOU 与大文件双读。
         guard isReady, !isLoadingContent else {
-            pendingOpenURL = target
+            pendingOpen = PendingOpen(url: target, reanchor: reanchor)
             return
         }
         // 读取编码仅用于探测显示;输出恒定 UTF-8(承诺见 README 已知边界)
@@ -218,6 +229,10 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
             return
         }
         directoryMode = false
+        // 锚定契约:非抽屉来源(或越界防御)以文件所在目录重锚;抽屉来源保持锚点
+        if reanchor || !isWithinDrawerRoot(target) {
+            drawerRootURL = target.deletingLastPathComponent()
+        }
         fileURL = target
         isDirty = false
         updateTitle()
@@ -244,7 +259,7 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
         }
         // 编辑器未就绪/注入进行中:与 openDocument 同一暂存机制,补载时按目录分派
         guard isReady, !isLoadingContent else {
-            pendingOpenURL = target
+            pendingOpen = PendingOpen(url: target, reanchor: true)
             return
         }
         fileMonitor?.cancel()
@@ -295,13 +310,13 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
 
     /// 统一补载暂存的打开请求:按目录/文件分派(与 openDirectory/openDocument 同一入口)
     private func drainPendingOpen() {
-        guard let pending = pendingOpenURL else { return }
-        pendingOpenURL = nil
+        guard let pending = pendingOpen else { return }
+        pendingOpen = nil
         var isDir: ObjCBool = false
-        if FileManager.default.fileExists(atPath: pending.path, isDirectory: &isDir), isDir.boolValue {
-            openDirectory(at: pending)
+        if FileManager.default.fileExists(atPath: pending.url.path, isDirectory: &isDir), isDir.boolValue {
+            openDirectory(at: pending.url)
         } else {
-            openDocument(at: pending)
+            openDocument(at: pending.url, reanchor: pending.reanchor)
         }
     }
 
@@ -1146,9 +1161,30 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
         window.setFrame(frame, display: false)
     }
 
-    /// 抽屉扫描根:目录模式 = 显式目录;文件模式 = 文档所在目录;无文档无目录 = nil
+    /// 抽屉扫描根(锚定目录):目录模式 = 打开的目录;文件模式 = 最近一次锚定
+    /// (抽屉双击不重锚,⌘O/外部打开以文件所在目录重锚);无 = nil
     private func currentDrawerRoot() -> URL? {
-        directoryMode ? drawerRootURL : fileURL?.deletingLastPathComponent()
+        drawerRootURL ?? fileURL?.deletingLastPathComponent()
+    }
+
+    /// 目标是否在当前锚点子树内
+    private func isWithinDrawerRoot(_ url: URL) -> Bool {
+        guard let root = drawerRootURL else { return false }
+        let p = url.standardizedFileURL.path
+        let r = root.standardizedFileURL.path
+        return p == r || p.hasPrefix(r + "/")
+    }
+
+    /// 锚点下拉框选择:把某父级目录锚定为抽屉根(仅改树根;目录模式下窗口标题跟随锚点)
+    func anchorDrawer(at url: URL) {
+        let target = url.standardizedFileURL
+        var isDir: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: target.path, isDirectory: &isDir), isDir.boolValue else {
+            return
+        }
+        drawerRootURL = target
+        refreshDrawer()
+        if directoryMode { updateTitle() }
     }
 
     /// 抽屉内容刷新(打开文件/切换根后调用):load 内部对同根只重扫
@@ -1165,6 +1201,9 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
     func selectForDiagnostics(url: URL) {
         drawerView.select(url: url)
     }
+
+    /// 诊断/自检用:当前锚定目录
+    var anchorRootForDiagnostics: URL? { drawerRootURL }
 
     // MARK: - 拖放文件
 
