@@ -197,6 +197,16 @@ if isSelftest {
             print("[DRAWER] SKIP ⌘O 响应链断言(无 key window)")
         }
 
+        // 「打开最近使用」底层语义:当前窗口覆盖打开(菜单动作 openRecentFile 经此 helper)
+        doc.openDocument(at: fileA) // 先切回 fileA,再经 helper 打开 fileB 验证同窗
+        let _ = waitForFileURL(fileA, timeout: 8.0)
+        if let fileB {
+            AppDelegate.shared?.openInCurrentWindowOrNew(at: fileB)
+            let opened = waitForFileURL(fileB, timeout: 8.0)
+            report(opened && AppDelegate.shared?.documents.count == 1,
+                   "openInCurrentWindowOrNew 当前窗口覆盖打开(菜单打开语义)")
+        }
+
         // 收起抽屉:窗宽缩回 drawerWidth(下限 minSize)
         let widthBeforeCollapse = doc.window?.frame.width ?? 0
         doc.toggleDrawer()

@@ -307,7 +307,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     @objc private func openRecentFile(_ sender: NSMenuItem) {
         guard let url = sender.representedObject as? URL else { return }
-        openInNewWindow(at: url)
+        openInCurrentWindowOrNew(at: url)
+    }
+
+    /// 程序内菜单打开动作的统一语义:当前窗口覆盖打开(与抽屉双击/⌘O 一致),
+    /// 无文档窗口时才新建窗口。Finder/命令行等外部打开仍走 openInNewWindow(多窗口模型)。
+    func openInCurrentWindowOrNew(at url: URL) {
+        if let current = currentDocument {
+            current.openDocument(at: url)
+        } else {
+            openInNewWindow(at: url)
+        }
     }
 
     @objc private func clearRecentFiles(_ sender: NSMenuItem) {
