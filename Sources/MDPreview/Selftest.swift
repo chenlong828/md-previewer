@@ -116,9 +116,9 @@ func greet() -> String {
         // ── 等待页面脚本加载
         waitFor("页面脚本加载(boot)", timeout: 30) { self.bootReceived }
 
-        // ── 初始化编辑器
+        // ── 初始化编辑器(baseDir 供图片源码编辑框做相对路径换算)
         let pluginSet = ProcessInfo.processInfo.environment["MDP_PLUGINS"] ?? "full"
-        let optsJSON = "{\"theme\":\"light\",\"zoom\":1,\"plugins\":\"\(pluginSet)\"}"
+        let optsJSON = "{\"theme\":\"light\",\"zoom\":1,\"plugins\":\"\(pluginSet)\",\"baseDir\":\"/tmp\"}"
         evaluate("void window.mdbridge.init(\(JSArgs.string(SelftestRunner.sampleMarkdown)), \(optsJSON))") { _ in }
         waitFor("编辑器初始化(ready)", timeout: 30) { self.readyReceived }
         // 条件轮询替代纯睡:mermaid 异步渲染以 svg 挂载为准
@@ -546,8 +546,15 @@ func greet() -> String {
         }
         if bigOK { pass("大文档 PDF 完整性") } else { fail("大文档 PDF 完整性") }
 
-        // ── Swift 侧图片路径改写
+        // ── Swift 侧图片路径改写与落盘导入
         testPathRewriter()
+        testImageStore()
+
+        // ── 图片节点渲染/编辑框/插入桥(点击编辑与 Esc 还原的 web 行为往返)
+        testImageNodeView()
+
+        // ── 图片编辑框窄窗口几何(关键视口:编辑列收缩下限生效时不破布局)
+        testImageEditBoxNarrowWindow()
 
         // ── OQ-1/pluginSet 配置可达性:_init 必须先解析 opts 再建编辑器,
         //    no-diagram 轻量模式真正生效(mermaid 围栏保持代码块、math 仍加载)。
@@ -713,7 +720,264 @@ func greet() -> String {
         } else {
             fail("缺失文件保持原样 → \(missing)")
         }
+
+        // ── 空格路径(wechat-offline 导出形态):严格 CommonMark 不认为它是图片,
+        //    改写器必须接住并输出 %20 编码的 file:// URL,保存后以 <> 包裹还原,
+        //    二次加载回到同一改写结果(定点)。
+        let spacedDir = baseURL.appendingPathComponent("res dir", isDirectory: true)
+        try? fm.createDirectory(at: spacedDir, withIntermediateDirectories: true)
+        fm.createFile(atPath: spacedDir.appendingPathComponent("img_001.jpg").path, contents: Data([1, 2, 3]))
+        let spacedMD = "![图](res dir/img_001.jpg)"
+        let rewrittenSpaced = ImagePathRewriter.forLoad(spacedMD, baseURL: baseURL)
+        if rewrittenSpaced.contains("res%20dir/img_001.jpg"), rewrittenSpaced.contains("file://"),
+           !rewrittenSpaced.contains(" ") {
+            pass("空格路径改写(加载)")
+        } else {
+            fail("空格路径改写(加载) → \(rewrittenSpaced)")
+        }
+        let savedSpaced = ImagePathRewriter.forSave(rewrittenSpaced, baseURL: baseURL)
+        if savedSpaced == "![图](<res dir/img_001.jpg>)" {
+            pass("空格路径还原(保存,< 包裹定点)")
+        } else {
+            fail("空格路径还原(保存) → \(savedSpaced)")
+        }
+        let reloaded = ImagePathRewriter.forLoad(savedSpaced, baseURL: baseURL)
+        if reloaded == rewrittenSpaced {
+            pass("空格路径二次加载一致")
+        } else {
+            fail("空格路径二次加载一致 → \(reloaded)")
+        }
+
+        // ── 标题保留:加载时保留 "title",保存后回到原写法
+        let titled = "![图](pic.png \"标题\")"
+        let rewrittenTitled = ImagePathRewriter.forLoad(titled, baseURL: baseURL)
+        if rewrittenTitled.contains("file://"), rewrittenTitled.contains("\"标题\"") {
+            pass("标题保留改写")
+        } else {
+            fail("标题保留改写 → \(rewrittenTitled)")
+        }
+        let savedTitled = ImagePathRewriter.forSave(rewrittenTitled, baseURL: baseURL)
+        if savedTitled == titled {
+            pass("标题还原(保存)")
+        } else {
+            fail("标题还原(保存) → \(savedTitled)")
+        }
+
+        // ── 远程图与 <> 包裹目的地不误改
+        let remote = ImagePathRewriter.forLoad("![r](https://e.com/a.png)", baseURL: baseURL)
+        if remote.contains("https://e.com/a.png") && !remote.contains("file://") {
+            pass("远程图不改写")
+        } else {
+            fail("远程图不改写 → \(remote)")
+        }
+        let bracketed = ImagePathRewriter.forLoad("![b](<pic.png>)", baseURL: baseURL)
+        if bracketed.contains(baseURL.appendingPathComponent("pic.png").absoluteString) {
+            pass("<> 包裹目的地改写")
+        } else {
+            fail("<> 包裹目的地改写 → \(bracketed)")
+        }
         try? fm.removeItem(at: baseURL)
+    }
+
+    // MARK: - 图片落盘导入测试
+
+    private func testImageStore() {
+        let fm = FileManager.default
+        let docURL = URL(fileURLWithPath: "/tmp/selftest-store-\(getpid())/文档.md")
+        let srcDir = URL(fileURLWithPath: "/tmp/selftest-store-src-\(getpid())")
+        defer {
+            try? fm.removeItem(at: docURL.deletingLastPathComponent())
+            try? fm.removeItem(at: srcDir)
+        }
+        let png = Data([0x89, 0x50, 0x4E, 0x47])
+        do {
+            let a = try ImageStore.import(.blob(png, mime: "image/png"), docURL: docURL)
+            if a.fileName == "img_001.png", fm.fileExists(atPath: a.url.path) {
+                pass("图片落盘-剪贴板位图(img_001.png)")
+            } else { fail("图片落盘-剪贴板位图 → \(a.fileName)") }
+
+            let b = try ImageStore.import(.blob(Data([1, 2]), mime: "image/jpeg"), docURL: docURL)
+            if b.fileName == "img_002.jpg" {
+                pass("图片落盘-序号递增按 mime 定扩展名")
+            } else { fail("图片落盘-序号递增 → \(b.fileName)") }
+
+            try fm.createDirectory(at: srcDir, withIntermediateDirectories: true)
+            let src = srcDir.appendingPathComponent("照片.jpg")
+            fm.createFile(atPath: src.path, contents: png)
+            let c = try ImageStore.import(.file(src), docURL: docURL)
+            let d = try ImageStore.import(.file(src), docURL: docURL)
+            if c.fileName == "照片.jpg", d.fileName == "照片-2.jpg" {
+                pass("图片落盘-文件导入保留原名,冲突加后缀")
+            } else { fail("图片落盘-文件导入 → \(c.fileName) / \(d.fileName)") }
+
+            let expectDir = docURL.deletingLastPathComponent()
+                .appendingPathComponent("resource", isDirectory: true)
+                .appendingPathComponent("文档", isDirectory: true)
+            if a.url.deletingLastPathComponent() == expectDir {
+                pass("图片落盘-目录布局 resource/<md文件名>")
+            } else { fail("图片落盘-目录布局 → \(a.url.path)") }
+
+            let txt = srcDir.appendingPathComponent("a.txt")
+            fm.createFile(atPath: txt.path, contents: Data([1]))
+            do {
+                _ = try ImageStore.import(.file(txt), docURL: docURL)
+                fail("图片落盘-非图片拒绝(未拒绝)")
+            } catch {
+                pass("图片落盘-非图片拒绝")
+            }
+
+            // 缺陷复现(红→绿守门):目录可写但不可列举(chmod 0o300,缺 r 位)时,
+            // 列目录若被静默当空目录,img 序号回绕到 001,.atomic 写盘会覆盖
+            // 既有 img_001.png。正确行为:列目录失败原样抛错,拒绝导入。
+            do {
+                try fm.setAttributes([.posixPermissions: 0o300], ofItemAtPath: expectDir.path)
+                do {
+                    _ = try ImageStore.import(.blob(Data([7, 7, 7]), mime: "image/png"), docURL: docURL)
+                    fail("图片落盘-不可列举目录拒绝(未拒绝,存在覆盖风险)")
+                } catch {
+                    pass("图片落盘-不可列举目录拒绝(防覆盖)")
+                }
+                try fm.setAttributes([.posixPermissions: 0o755], ofItemAtPath: expectDir.path)
+                if (try? Data(contentsOf: a.url)) == png {
+                    pass("图片落盘-不可列举时既有图片未被覆盖")
+                } else {
+                    fail("图片落盘-不可列举时既有图片未被覆盖")
+                }
+            } catch {
+                fail("图片落盘-不可列举目录用例异常 → \(error)")
+            }
+        } catch {
+            fail("图片落盘异常 → \(error)")
+        }
+    }
+
+    // MARK: - 图片节点渲染与编辑框(web 行为往返)
+
+    private func testImageNodeView() {
+        // 注入带图文档并断言 NodeView 生效(渲染 img + 预置隐藏编辑框)
+        evaluate("window.mdbridge.setMarkdown(\(JSArgs.string("![原图](x.png)")))") { _ in }
+        evaluate(#"(function(){var d=document.querySelector('.md-image');var s=d?d.querySelector('.md-image-src'):null;return JSON.stringify({img:d?d.querySelectorAll('img').length:0,form:!!s,hidden:!!s&&s.style.display==='none'})})()"#) { r in
+            guard let json = r as? String,
+                  let d = (try? JSONSerialization.jsonObject(with: json.data(using: .utf8)!)) as? [String: Any],
+                  (d["img"] as? Int) == 1, (d["form"] as? Bool) == true,
+                  (d["hidden"] as? Bool) == true else {
+                self.fail("图片 NodeView 渲染 → \(String(describing: r))")
+                return
+            }
+            self.pass("图片 NodeView 渲染")
+        }
+        // 点击 → 源码编辑块出现,内容与文件写法同构(相对路径按 baseDir 还原)
+        evaluate(#"(function(){var d=document.querySelector('.md-image');d.dispatchEvent(new MouseEvent('mousedown',{bubbles:true}));var s=d.querySelector('.md-image-src');return JSON.stringify({shown:s&&s.style.display!=='none',text:s?s.textContent:''})})()"#) { r in
+            guard let json = r as? String,
+                  let d = (try? JSONSerialization.jsonObject(with: json.data(using: .utf8)!)) as? [String: Any],
+                  (d["shown"] as? Bool) == true,
+                  d["text"] as? String == "![原图](x.png)" else {
+                self.fail("图片点击进源码编辑块 → \(String(describing: r))")
+                return
+            }
+            self.pass("图片点击进源码编辑块")
+        }
+        // 改源码 + Enter 提交 → doc 更新(三字段同块编辑)
+        evaluate(#"(function(){var s=document.querySelector('.md-image-src');s.textContent='![新描述](file:///tmp/img-a.png "标题T")';s.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));return window.mdbridge.getMarkdown()})()"#) { r in
+            if let md = r as? String,
+               md.contains("![新描述](file:///tmp/img-a.png"), md.contains("标题T") {
+                self.pass("图片源码编辑提交生效")
+            } else { self.fail("图片源码编辑提交生效 → \(String(describing: r))") }
+        }
+        // file:// 源码展示时按 baseDir 相对化还原
+        evaluate(#"(function(){var d=document.querySelector('.md-image');d.dispatchEvent(new MouseEvent('mousedown',{bubbles:true}));return d.querySelector('.md-image-src').textContent})()"#) { r in
+            if let text = r as? String, text == "![新描述](img-a.png \"标题T\")" {
+                self.pass("源码编辑块相对化展示")
+            } else { self.fail("源码编辑块相对化展示 → \(String(describing: r))") }
+        }
+        // 解析不出图片语法的提交还原不动(Esc 同理)
+        evaluate(#"(function(){var s=document.querySelector('.md-image-src');s.textContent='![x](broken.png';s.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));return window.mdbridge.getMarkdown()})()"#) { r in
+            if let md = r as? String, md.contains("file:///tmp/img-a.png"), !md.contains("broken.png") {
+                self.pass("非法源码提交还原")
+            } else { self.fail("非法源码提交还原 → \(String(describing: r))") }
+        }
+        // 清空源码提交 = 删除图片
+        evaluate(#"(function(){var d=document.querySelector('.md-image');d.dispatchEvent(new MouseEvent('mousedown',{bubbles:true}));var s=d.querySelector('.md-image-src');s.textContent='';s.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));return window.mdbridge.getMarkdown()})()"#) { r in
+            if let md = r as? String, !md.contains("img-a.png") {
+                self.pass("清空源码删除图片")
+            } else { self.fail("清空源码删除图片 → \(String(describing: r))") }
+        }
+        // 中文路径解码展示 + 相对路径提交回规范 file://(%20 编码)
+        evaluate("window.mdbridge.setMarkdown(\(JSArgs.string("![编](file:///tmp/%E4%B8%AD%E6%96%87/a.png)")))") { _ in }
+        evaluate(#"(function(){var d=document.querySelector('.md-image');d.dispatchEvent(new MouseEvent('mousedown',{bubbles:true}));var s=d.querySelector('.md-image-src');var shown=s.textContent;s.textContent='![改](dir two/b.png)';s.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));return JSON.stringify({shown:shown,md:window.mdbridge.getMarkdown()})})()"#) { r in
+            guard let json = r as? String,
+                  let d = (try? JSONSerialization.jsonObject(with: json.data(using: .utf8)!)) as? [String: Any],
+                  d["shown"] as? String == "![编](中文/a.png)",
+                  let md = d["md"] as? String,
+                  md.contains("![改](file:///tmp/dir%20two/b.png)") else {
+                self.fail("图片路径解码展示与回解析 → \(String(describing: r))")
+                return
+            }
+            self.pass("图片路径解码展示与回解析")
+        }
+        // insertImage 桥:光标在正文段落时插入图片节点
+        evaluate("(function(){var p=document.querySelector('.ProseMirror p');var r=p.getBoundingClientRect();return JSON.stringify(window.mdbridge.focusAt(r.left+5,r.top+5))})()") { _ in }
+        evaluate("window.mdbridge.insertImage('file:///tmp/ins.png','别名','')") { r in
+            if (r as? Bool) == true { self.pass("insertImage 桥插入") } else { self.fail("insertImage 桥插入 → \(String(describing: r))") }
+        }
+        evaluate("window.mdbridge.getMarkdown()") { r in
+            if let md = r as? String, md.contains("![别名](file:///tmp/ins.png)") {
+                self.pass("insertImage 桥内容生效")
+            } else { self.fail("insertImage 桥内容生效 → \(String(describing: r))") }
+        }
+        // 剪贴板载荷识别:截图 blob / 图片路径文本 / 普通文本不误判
+        evaluate(#"(function(){var f=new File([new Uint8Array([1,2,3])],'shot.png',{type:'image/png'});var r1=window.mdbridge.testImagePayload({files:[f],getData:function(){return ''}});var r2=window.mdbridge.testImagePayload({files:[],getData:function(k){return k==='text/plain'?'/tmp/x y/a.jpg':''}});var r3=window.mdbridge.testImagePayload({files:[],getData:function(){return '普通文本见 a.png'}});return JSON.stringify({k1:r1&&r1.kind,k2:r2&&r2.kind,none:r3===null})})()"#) { r in
+            guard let json = r as? String,
+                  let d = (try? JSONSerialization.jsonObject(with: json.data(using: .utf8)!)) as? [String: Any],
+                  d["k1"] as? String == "blob", d["k2"] as? String == "file",
+                  (d["none"] as? Bool) == true else {
+                self.fail("剪贴板图片载荷识别 → \(String(describing: r))")
+                return
+            }
+            self.pass("剪贴板图片载荷识别")
+        }
+    }
+
+    // MARK: - 图片编辑框窄窗口几何
+
+    /// 窄窗口下的关键视口验证。宽度策略是设计契约:正文列收缩下限 860px
+    /// (--editor-max-width),窄窗页面横向滚动属预期行为;编辑块在此前提下
+    /// 仍须满足:可打开、宽度不超正文栏、长路径在块内换行、页面横向溢出
+    /// 不超过 #app 的 min-width 下限(长路径不得加剧溢出)。
+    /// min-width 取计算样式而非复制常量,避免与 typora.css 双源。
+    private func testImageEditBoxNarrowWindow() {
+        let longName = "narrow-" + String(repeating: "long-image-file-name-", count: 5) + "img.png"
+        evaluate("window.mdbridge.setMarkdown(\(JSArgs.string("![窄窗](file:///tmp/\(longName))")))") { _ in }
+        window.setContentSize(NSSize(width: 480, height: 600))
+        defer { window.setContentSize(NSSize(width: 1000, height: 800)) }
+        // 条件等待(非纯睡):视口真实收窄且编辑块已打开,再测几何
+        waitForValue("窄窗-窗口收窄且编辑块可打开", timeout: 5,
+            script: #"(function(){var d=document.querySelector('.md-image');if(!d)return 'no-node';d.dispatchEvent(new MouseEvent('mousedown',{bubbles:true}));var s=d.querySelector('.md-image-src');return JSON.stringify({open:!!s&&s.style.display!=='none',vw:window.innerWidth})})()"#,
+            test: { value in
+                guard let json = value as? String,
+                      let d = (try? JSONSerialization.jsonObject(with: json.data(using: .utf8)!)) as? [String: Any],
+                      (d["open"] as? Bool) == true,
+                      let vw = (d["vw"] as? NSNumber)?.doubleValue, vw > 0, vw < 500 else { return false }
+                return true
+            })
+        evaluate(#"(function(){var d=document.querySelector('.md-image');var s=d.querySelector('.md-image-src');var app=document.getElementById('app');return JSON.stringify({srcScroll:s.scrollWidth,srcClient:s.clientWidth,srcRight:s.getBoundingClientRect().right,appRight:app.getBoundingClientRect().right,doc:document.documentElement.scrollWidth,appMin:parseFloat(getComputedStyle(app).minWidth)})})()"#) { r in
+            guard let json = r as? String,
+                  let d = (try? JSONSerialization.jsonObject(with: json.data(using: .utf8)!)) as? [String: Any],
+                  let srcScroll = (d["srcScroll"] as? NSNumber)?.doubleValue,
+                  let srcClient = (d["srcClient"] as? NSNumber)?.doubleValue,
+                  let srcRight = (d["srcRight"] as? NSNumber)?.doubleValue,
+                  let appRight = (d["appRight"] as? NSNumber)?.doubleValue,
+                  let doc = (d["doc"] as? NSNumber)?.doubleValue,
+                  let appMin = (d["appMin"] as? NSNumber)?.doubleValue else {
+                self.fail("窄窗-编辑块几何(数据缺失 → \(String(describing: r)))")
+                return
+            }
+            if srcScroll <= srcClient + 0.5 && srcRight <= appRight + 0.5 && doc <= appMin + 0.5 {
+                self.pass("窄窗-编辑块不溢出(长路径换行/不超正文栏/页面溢出≤min-width)")
+            } else {
+                self.fail("窄窗-编辑块不溢出 → 换行 \(srcScroll)/\(srcClient),块右 \(srcRight)/\(appRight),页面 \(doc)/\(appMin)")
+            }
+        }
     }
 
     // MARK: - 基础设施(全部走 RunLoop 泵送)

@@ -43,7 +43,25 @@ final class ScreenshotRunner: NSObject {
                 // 内容注入完成 + 额外 3.5s 给 mermaid/katex 异步渲染
                 if controller.isReady && !controller.isLoadingContent && self.waited >= 3.5 {
                     timer.invalidate()
-                    self.capture()
+                    // e2e 钩子(MDP_IMPORT_IMAGE=<图片路径>):验证 导入→落盘→插入
+                    // 全链路再截图(拖放/菜单同一入口)。
+                    // MDP_EDIT_IMAGE=1:打开第一张图片的源码编辑块再截图(编辑框视觉/几何验证)。
+                    let importPath = ProcessInfo.processInfo.environment["MDP_IMPORT_IMAGE"]
+                    let editMode = ProcessInfo.processInfo.environment["MDP_EDIT_IMAGE"] == "1"
+                    if importPath != nil || editMode {
+                        if let importPath {
+                            controller.importImage(at: URL(fileURLWithPath: importPath))
+                        }
+                        if editMode {
+                            controller.evaluateForDiagnostics(
+                                "(function(){var d=document.querySelector('.md-image');if(!d)return 'no-image';d.dispatchEvent(new MouseEvent('mousedown',{bubbles:true}));var s=d.querySelector('.md-image-src');return JSON.stringify({open:s&&s.style.display!=='none',text:s?s.textContent.slice(0,80):'',width:s?s.clientWidth:0})})()") { r in
+                                print("SCREENSHOT editbox:", r ?? "nil")
+                            }
+                        }
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { self.capture() }
+                    } else {
+                        self.capture()
+                    }
                 } else if self.waited > 30 {
                     timer.invalidate()
                     self.capture() // 超时也要尽力截图
@@ -56,7 +74,7 @@ final class ScreenshotRunner: NSObject {
         guard let webView = controller?.webViewIfNeeded else { exit(3) }
         // 诊断:确认 DOM 内容与窗口状态
         controller?.evaluateForDiagnostics(
-            "JSON.stringify({mdReady: !!window.mdbridge, pmLen: (document.querySelector('.ProseMirror')||{innerHTML:''}).innerHTML.length, readyState: document.readyState, theme: document.documentElement.getAttribute('data-theme')})") { result in
+            "JSON.stringify({mdReady: !!window.mdbridge, pmLen: (document.querySelector('.ProseMirror')||{innerHTML:''}).innerHTML.length, readyState: document.readyState, theme: document.documentElement.getAttribute('data-theme'), images: Array.prototype.map.call(document.querySelectorAll('.md-image-render img'), function(i){return {src: (i.getAttribute('src')||'').slice(0,120), w: i.naturalWidth, complete: i.complete}})})") { result in
             print("SCREENSHOT dom:", result ?? "nil")
         }
         if let win = controller?.window {

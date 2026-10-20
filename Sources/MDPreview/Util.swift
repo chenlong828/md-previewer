@@ -28,36 +28,28 @@ enum TextFile {
 
 // MARK: - 本地图片路径改写
 // 所见即所得渲染需要绝对可访问的图片 URL;保存时还原为原文写法。
+// 解析刻意宽松(仿 Typora):允许目的地里出现空格与一层平衡括号——
+// wechat-offline 等工具导出的文档常写 `![a](dir with space/img.jpg)`,
+// 严格 CommonMark 会把这行判成纯文本,改写器必须先于解析器接住它。
 // 只处理围栏代码块之外的行,避免破坏代码示例。
 
 enum ImagePathRewriter {
+    /// 宽松捕获 `![alt](inner)`:inner 惰性匹配到第一个 `)`,允许一层平衡括号
+    /// (如 `file(1).png`);alt 内不允许 `]`(与 CommonMark 一致的既有限制)
     private static let imagePattern = try! NSRegularExpression(
-        pattern: "(!\\[[^\\]]*\\]\\()\\s*(<[^>]*>|[^)\\s]+)\\s*(\"[^\"]*\")?\\s*\\)",
+        pattern: "(!\\[[^\\]]*\\]\\()((?:[^()]|\\([^()]*\\))*?)\\)",
         options: [])
 
-    static func forLoad(_ markdown: String, baseURL: URL) -> String {
-        mapLinesOutsideFences(markdown) { line in
-            replaceImages(in: line) { rawPath, title in
-                let resolved = resolveForLoad(rawPath, baseURL: baseURL)
-                let titleSeg = title.isEmpty ? "" : " \"\(title)\""
-                return wrappedIfNeeded(resolved) + titleSeg
-            }
-        }
-    }
+    /// inner 尾部带引号标题:`path "title"` 或 `path 'title'`
+    private static let titlePattern = try! NSRegularExpression(
+        pattern: "^\\s*(.*?)\\s+(\"[^\"]*\"|'[^']*')\\s*$",
+        options: [])
 
-    static func forSave(_ markdown: String, baseURL: URL) -> String {
-        mapLinesOutsideFences(markdown) { line in
-            replaceImages(in: line) { rawPath, title in
-                let restored = resolveForSave(rawPath, baseURL: baseURL)
-                let titleSeg = title.isEmpty ? "" : " \"\(title)\""
-                return wrappedIfNeeded(restored) + titleSeg
-            }
-        }
-    }
-
-    /// 对一行内所有 `![alt](path "title")` 应用 transform,重组整行
+    /// 对一行内所有 `![alt](path "title")` 应用 transform,重组整行。
+    /// transform 返回 nil 表示「不必改写」,整段保持原文(不做无害重组,
+    /// 避免把 `<带空格路径>` 等合法写法规范化掉)。
     private static func replaceImages(
-        in line: String, transform: (_ rawPath: String, _ title: String) -> String
+        in line: String, transform: (_ rawPath: String, _ title: String) -> String?
     ) -> String {
         let ns = line as NSString
         let matches = imagePattern.matches(
@@ -68,23 +60,70 @@ enum ImagePathRewriter {
         for match in matches {
             let full = match.range
             guard full.location != NSNotFound, full.location + full.length <= ns.length else { continue }
+            let innerRange = match.range(at: 2)
+            guard let inner = splitInner(ns.substring(with: innerRange)) else { continue }
+            guard let newPath = transform(inner.path, inner.title) else { continue }
             result += ns.substring(with: NSRange(location: cursor, length: full.location - cursor))
-            let prefix = ns.substring(with: match.range(at: 1))
-            var rawPath = match.range(at: 2).location == NSNotFound
-                ? "" : ns.substring(with: match.range(at: 2))
-            if rawPath.hasPrefix("<") && rawPath.hasSuffix(">") {
-                rawPath = String(rawPath.dropFirst().dropLast())
-            }
-            var title = match.range(at: 3).location == NSNotFound
-                ? "" : ns.substring(with: match.range(at: 3))
-            if title.hasPrefix("\"") && title.hasSuffix("\"") {
-                title = String(title.dropFirst().dropLast())
-            }
-            result += prefix + transform(rawPath, title) + ")"
+            result += ns.substring(with: match.range(at: 1))
+            result += wrappedIfNeeded(newPath)
+            if !inner.title.isEmpty { result += " \"\(inner.title)\"" }
+            result += ")"
             cursor = full.location + full.length
         }
         result += ns.substring(from: cursor)
         return result
+    }
+
+    /// 拆 inner 为 (path, title):`<>` 包裹目的地优先,其次尾部引号标题,
+    /// 否则整体为路径(可含空格)。解析不出合法形态返回 nil(保持原文)。
+    static func splitInner(_ inner: String) -> (path: String, title: String)? {
+        let s = inner
+        if s.hasPrefix("<") {
+            guard let close = s.firstIndex(of: ">") else { return nil }
+            let path = String(s[s.index(after: s.startIndex)..<close])
+            if path.isEmpty { return nil }
+            let rest = String(s[s.index(after: close)...]).trimmingCharacters(in: .whitespaces)
+            if rest.isEmpty { return (path, "") }
+            guard let title = unquoted(rest) else { return nil }
+            return (path, title)
+        }
+        if let m = titlePattern.firstMatch(
+            in: s, options: [], range: NSRange(location: 0, length: (s as NSString).length)),
+           m.range(at: 1).location != NSNotFound, m.range(at: 2).location != NSNotFound {
+            let ns = s as NSString
+            let path = ns.substring(with: m.range(at: 1)).trimmingCharacters(in: .whitespaces)
+            let title = unquoted(ns.substring(with: m.range(at: 2))) ?? ""
+            guard !path.isEmpty else { return nil }
+            return (path, title)
+        }
+        let path = s.trimmingCharacters(in: .whitespaces)
+        return path.isEmpty ? nil : (path, "")
+    }
+
+    /// 剥掉成对引号;非纯引号串返回 nil
+    private static func unquoted(_ s: String) -> String? {
+        guard s.count >= 2 else { return nil }
+        let first = s.first!, last = s.last!
+        guard first == last, first == "\"" || first == "'" else { return nil }
+        return String(s.dropFirst().dropLast())
+    }
+
+    // MARK: load / save
+
+    static func forLoad(_ markdown: String, baseURL: URL) -> String {
+        mapLinesOutsideFences(markdown) { line in
+            replaceImages(in: line) { rawPath, _ in
+                resolveForLoad(rawPath, baseURL: baseURL)
+            }
+        }
+    }
+
+    static func forSave(_ markdown: String, baseURL: URL) -> String {
+        mapLinesOutsideFences(markdown) { line in
+            replaceImages(in: line) { rawPath, _ in
+                resolveForSave(rawPath, baseURL: baseURL)
+            }
+        }
     }
 
     // MARK: helpers
@@ -94,13 +133,16 @@ enum ImagePathRewriter {
             ? "<\(path)>" : path
     }
 
-    private static func resolveForLoad(_ raw: String, baseURL: URL) -> String {
+    /// 相对/根相对路径 → 绝对 file:// URL(百分号编码,空格→%20,
+    /// 消除 CommonMark 目的地不容空格的问题)。远程/data/锚点/缺失文件
+    /// 返回 nil,原文保持不动。
+    private static func resolveForLoad(_ raw: String, baseURL: URL) -> String? {
         let trimmed = raw.trimmingCharacters(in: .whitespaces)
         if trimmed.isEmpty
             || trimmed.hasPrefix("http://") || trimmed.hasPrefix("https://")
             || trimmed.hasPrefix("data:") || trimmed.hasPrefix("file://")
             || trimmed.hasPrefix("#") {
-            return raw
+            return nil
         }
         let abs: URL
         if trimmed.hasPrefix("/") {
@@ -108,18 +150,20 @@ enum ImagePathRewriter {
         } else {
             abs = baseURL.appendingPathComponent(trimmed)
         }
-        // 文件不存在则原样保留(交由编辑器显示为普通文本)
-        return FileManager.default.fileExists(atPath: abs.path) ? abs.absoluteString : raw
+        // 文件不存在则保持原文(交由编辑器显示为破图或纯文本)
+        return FileManager.default.fileExists(atPath: abs.path) ? abs.absoluteString : nil
     }
 
-    private static func resolveForSave(_ raw: String, baseURL: URL) -> String {
-        guard raw.hasPrefix("file://"), let url = URL(string: raw) else { return raw }
+    /// file:// URL → 文档目录内相对路径(保留原始空格写法);
+    /// 目录外的绝对路径保留绝对写法(空格/括号由 wrappedIfNeeded 包裹)。
+    private static func resolveForSave(_ raw: String, baseURL: URL) -> String? {
+        guard raw.hasPrefix("file://"), let url = URL(string: raw) else { return nil }
         let path = url.path
         let base = baseURL.path
         if path.hasPrefix(base + "/") {
             return String(path.dropFirst(base.count + 1))
         }
-        return path // 目录外的绝对路径保留为绝对路径
+        return path
     }
 
     /// 逐行处理,跳过 ``` / ~~~ 围栏内的内容

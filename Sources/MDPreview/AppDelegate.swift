@@ -385,6 +385,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             EditorCommands.append([.deleteRow, .deleteColumn, .deleteTable], to: tableMenu)
             menu.addItem(tableItem)
             if let hr = EditorCommands.menuItem(for: .insertHr) { menu.addItem(hr) }
+            menu.addItem(.separator())
+            menu.addItem(
+                withTitle: "插入图片…",
+                action: #selector(DocumentWindowController.insertImageAction(_:)),
+                keyEquivalent: "")
         }
 
         // ─── 视图

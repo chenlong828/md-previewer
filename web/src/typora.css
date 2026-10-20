@@ -160,6 +160,32 @@ img, [data-type="image"] img {
     margin: 0.4em 0;
 }
 
+/* 图片 NodeView(image-view.js):渲染态与点击进入的源码编辑块 */
+.md-image { display: inline-block; max-width: 100%; }
+.md-image.editing { display: block; width: 100%; }
+.md-image.ProseMirror-selectednode img {
+    outline: 2px solid var(--link-color);
+    outline-offset: 1px;
+}
+.md-image-src {
+    display: block;
+    width: 100%;
+    margin: 0.4em 0;
+    padding: 8px 12px;
+    font-family: var(--monospace);
+    font-size: 0.9em;
+    line-height: 1.6;
+    text-align: left;
+    background: var(--code-fence-bg);
+    border: 1px solid var(--link-color);
+    border-radius: 4px;
+    white-space: pre-wrap;
+    word-break: break-all;
+    outline: none;
+    min-height: 3em;
+    caret-color: var(--link-color);
+}
+
 /* ---------- 代码 ---------- */
 
 code, tt, pre, kbd {

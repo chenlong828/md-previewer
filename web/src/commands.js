@@ -14,6 +14,7 @@ import {
     wrapInOrderedListCommand,
     insertHrCommand,
     createCodeBlockCommand,
+    insertImageCommand,
 } from '@milkdown/preset-commonmark'
 import {
     insertTableCommand,
@@ -25,4 +26,6 @@ export const commandRegistry = {
     wrapInHeadingCommand, wrapInBlockquoteCommand, wrapInBulletListCommand, wrapInOrderedListCommand,
     insertHrCommand, createCodeBlockCommand, turnIntoTextCommand,
     insertTableCommand, toggleStrikethroughCommand,
+    // Swift 经 onImageImported 回灌/拖放导入后转发(插入图片节点,唯一入口)
+    insertImageCommand,
 }

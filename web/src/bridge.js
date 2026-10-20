@@ -13,6 +13,7 @@ import { openFindBar, closeFindBar, stepFind } from './find-bar.js'
 import { tableCommandImpls } from './tables.js'
 import { commandRegistry } from './commands.js'
 import { exportStandaloneHTML } from './export.js'
+import { handleImported, extractImagePayload } from './image-paste.js'
 
 window.mdbridge = {
     async init(markdown, opts = {}) {
@@ -25,10 +26,11 @@ window.mdbridge = {
     },
 
     async _init(markdown, opts = {}) {
-        // 先解析配置(theme/zoom/plugins/title)再创建编辑器:
+        // 先解析配置(theme/zoom/plugins/title/baseDir)再创建编辑器:
         // 首帧 DOM 与 mermaid 都按目标主题初始化,pluginSet 条件加载真正可达。
         state.pluginSet = opts.plugins || 'full'
         state.theme = opts.theme === 'dark' ? 'dark' : 'light'
+        if (typeof opts.baseDir === 'string') state.baseDir = opts.baseDir
         applyThemeDom()
         if (!state.editor) await createEditor()
         if (opts.zoom) this.setZoom(opts.zoom)
@@ -40,8 +42,9 @@ window.mdbridge = {
         return 'ok'
     },
 
-    setMarkdown(md, flush = false) {
+    setMarkdown(md, opts = {}, flush = false) {
         if (!state.ready) return
+        if (opts && typeof opts.baseDir === 'string') state.baseDir = opts.baseDir
         state.editor.action(replaceAll(md || '', flush))
         // 确定性基线:同步序列化 replaceAll 落定后的 doc(与保存取回同一口径),
         // 不依赖异步回调的到达时机——并发编辑的防抖回调由 editor 的过期过滤处理
@@ -62,6 +65,12 @@ window.mdbridge = {
     /** 原生在文件名变化时同步 web 层 document.title(HTML 导出标题的来源) */
     setTitle(title) {
         document.title = title || 'MDPreview'
+        return true
+    },
+
+    /** 另存为等场景同步文档目录(图片路径换算基准);加载路径经 setMarkdown opts 携带 */
+    setBaseDir(path) {
+        state.baseDir = path || ''
         return true
     },
 
@@ -259,6 +268,22 @@ window.mdbridge = {
     insertMarkdown(md) {
         if (!state.ready) return
         state.editor.action(insert(md))
+    },
+
+    /** 在当前选区插入图片节点(拖放导入/插入菜单等原生入口共用) */
+    insertImage(src, alt, title) {
+        return this.formatCommand('insertImageCommand', { src: src || '', alt: alt || '', title: title || '' })
+    },
+
+    /** 粘贴图片导入回灌:原生 ImageStore 落盘后按 requestId 恢复选区插入 */
+    onImageImported(requestId, payload) {
+        return handleImported(requestId, payload)
+    },
+
+    /** 测试辅助:剪贴板图片载荷识别(blob=截图位图 / file=本地图片路径) */
+    testImagePayload(data) {
+        const payload = extractImagePayload(data)
+        return payload ? { kind: payload.kind, path: payload.path || '' } : null
     },
 
     focus() {

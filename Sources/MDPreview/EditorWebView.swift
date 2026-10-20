@@ -9,6 +9,8 @@ final class EditorWebView: WKWebView, WKScriptMessageHandler, WKNavigationDelega
     var onBridgeMessage: ((String, [String: Any]) -> Void)?
     var onDocumentLinkActivated: ((URL) -> Void)?
     var onPageReady: (() -> Void)?
+    /// 拖入的是图片文件时交控制器导入(其余文件仍走开新窗)
+    var onImageFileDropped: ((URL) -> Void)?
     /// 由控制器异步提供右键菜单(先定位光标再构建);返回 nil 时本次不弹菜单
     var contextMenuHandler: ((_ x: CGFloat, _ y: CGFloat, _ done: @escaping (NSMenu?) -> Void) -> Void)?
     // 全局/局部事件监视器句柄集中管理:窗口关闭或实例释放时统一移除,

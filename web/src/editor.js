@@ -27,6 +27,8 @@ import { findKey, findUI, findProsePlugin } from './find.js'
 import { updateFindCount, runFind } from './find-bar.js'
 import { selInfoProse } from './selinfo.js'
 import { getMermaidView } from './mermaid-view.js'
+import { getImageView } from './image-view.js'
+import { setupImagePaste } from './image-paste.js'
 
 export function applyThemeDom() {
     document.documentElement.dataset.theme = state.theme
@@ -91,6 +93,7 @@ export async function createEditor() {
         .use(usePrism ? prism : [])
         .use(useDiagram ? diagram : [])
         .use(useDiagram ? getMermaidView() : [])
+        .use(getImageView())
         .use(clipboard)
         .use(trailing)
         .use(findProsePlugin)
@@ -147,6 +150,12 @@ export async function createEditor() {
 
     state.editor = editor
     state.ready = true
+
+    // 图片粘贴拦截(需挂在已创建的编辑器 DOM 上,捕获阶段先于 ProseMirror)
+    editor.action((ctx) => {
+        setupImagePaste(ctx.get(editorViewCtx))
+    })
+
     return editor
 }
 

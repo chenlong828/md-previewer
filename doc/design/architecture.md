@@ -2,7 +2,7 @@
 layer: design
 module: global
 status: current
-updated: 2026-10-14
+updated: 2026-10-20
 ---
 
 # 系统架构与设计取舍
@@ -66,19 +66,56 @@ WKWebView 承载 Milkdown 7.7（ProseMirror）前端。本文记录跨模块的�
 
 ## 2. 行为取舍
 
-### 2.1 ImagePathRewriter 正则改写的覆盖边界
+### 2.1 ImagePathRewriter 宽松解析与改写边界
 
-- **决策**：图片路径改写采用单行正则匹配（`!\[...\](path "title")` 形态），
-  仅处理围栏代码块之外的行；解析失败时**静默保留原文**。
-- **覆盖边界（明确不支持的写法）**：
-  1. 引用式图片 `![alt][ref]` 不改写（保存/加载保持原样）；
-  2. 路径含嵌套括号 `![a](dir(1)/x.png)` 不改写；
-  3. 路径内转义字符（如 `\ ` 空格转义）不展开；
-  4. 跨行书写（`![alt](` 与路径分行）不改写。
-- **理由**：覆盖以上长尾需引入完整 Markdown 内联解析，复杂度与收益不成比例；
-  静默保留原文是安全退化——不改写最多导致图片不显示，不会破坏文件内容。
-- **失效条件**：若用户群出现大量引用式图片/嵌套括号路径的文档，需升级为
-  AST 级改写；静默策略需同步改为可提示（状态栏提示改写失败计数）。
+- **决策**:图片路径改写采用单行两段式解析(2026-10-20 图片支持工序重写):
+  宽松捕获 `![alt](inner)`(inner 惰性匹配到首个 `)`,允许**空格与一层平衡
+  括号**),再在 inner 内拆 `<>` 包裹目的地 / 尾部引号标题 / 裸路径;仅处理
+  围栏代码块之外的行。加载时把存在的相对/根相对路径改写为 `%20` 编码的
+  `file://` URL(消除 CommonMark 目的地不容空格的限制),解析失败或文件
+  缺失时**静默保留原文**;保存时 file:// 还原为文档目录内相对路径(空格/
+  括号以 `<>` 包裹,合法 CommonMark),目录外保留绝对路径。
+- **基点契约**:`injectMarkdown` 以**文档 URL** 为唯一入参,目录由其内部
+  推导(此前 openDocument 传文件 URL、forceReload 传目录,前者恒解析出
+  `doc.md/resource/…` 不存在 → 相对路径图片全不显示,2026-10-20 修复)。
+- **覆盖边界(明确不支持的写法)**:
+  1. 引用式图片 `![alt][ref]` 不改写(保存/加载保持原样);
+  2. 两层以上嵌套括号的路径不改写;
+  3. 路径内转义字符(如 `\ ` 空格转义)不展开;
+  4. 跨行书写(`![alt](` 与路径分行)不改写。
+- **理由**:覆盖以上长尾需引入完整 Markdown 内联解析,复杂度与收益不成比例;
+  静默保留原文是安全退化——不改写最多导致图片不显示,不会破坏文件内容。
+  空格路径是 wechat-offline 等工具导出文档的常态,必须接住(实证样例
+  `resource/…AI 六轮降价…/img_001.jpg`)。
+- **失效条件**:若用户群出现大量引用式图片/深层嵌套括号路径的文档,需升级为
+  AST 级改写;静默策略需同步改为可提示(状态栏提示改写失败计数)。
+
+### 2.1a 图片显示/编辑/导入
+
+- **决策**:图片节点以自定义 NodeView 渲染(web/src/image-view.js):正常态
+  `<img>`;点击切换为**源码编辑块**(2026-10-20 二次定稿,替代三字段小表单)——
+  与 mermaid 图「点选进编辑、失焦提交」同一交互模式:整块框起、宽度为编辑器
+  100%、长路径自动换行,内容是该图的 markdown 源码 `![alt](path "title")`。
+  失焦/Enter 解析提交,Esc 还原;地址清空即删除该图(可撤销);解析不出图片
+  语法则还原不动。路径换算与文件同构:显示时 file:// 按 baseDir(文档目录,
+  随 setMarkdown opts/setBaseDir 同步)相对化为原始写法,提交时相对路径按
+  baseDir 解析回规范 file:// URL(%20 编码,与 Swift 加载改写同口径);输入/
+  输出对称保证"点开不动=无脏标记"。
+- **导入落盘约定**(ImageStore 单点定义):粘贴截图/图片文件路径、拖入图片
+  文件、格式→插入图片菜单,统一把图片复制到 `<文档目录>/resource/<md文件名>/`,
+  剪贴板位图命名 `img_NNN.ext`(目录内序号递增,mime 定扩展名),文件导入保留
+  原名(冲突加 `-2` 后缀);编辑器内插入的 src 为绝对 file:// URL,保存时由
+  ImagePathRewriter 还原为相对路径。落盘失败(目录不可列举/不可写、非图片等)
+  一律原样抛错、由原生弹窗提示,绝不静默降级——序号命名依赖目录列举,静默
+  当空目录会让序号回绕、`.atomic` 写盘覆盖既有图片(selftest 防覆盖用例守门)。
+- **路径分离**:导入是偶发慢路径——web 捕获阶段拦截 paste(非图片载荷放行给
+  milkdown clipboard 文本链路)→ 桥 op `importImage` → 原生落盘 → 回灌
+  `onImageImported(requestId,{ok,src})` → 恢复粘贴时刻选区插入节点;失败由
+  原生弹窗,web 只清挂起表。未保存文档(无归属目录)原生弹「请先保存」。
+- **边界**:一次粘贴只取第一张图片;手敲空格路径在编辑器内即时成图
+  (milkdown input rule),相对 src 在保存+重载前可能破图;导出 HTML 不内联
+  图片(保持 file:// 引用);图片缩放(width/height)需扩展 schema 与往返
+  语法,未做。
 
 ### 2.2 保存无条件补尾换行
 
@@ -110,17 +147,25 @@ WKWebView 承载 Milkdown 7.7（ProseMirror）前端。本文记录跨模块的�
 | 进程内截图 | `MDPreview --screenshot out.png [input.md]` | `SCREENSHOT …` | 0=成功；2/3/4/5/6/7=各阶段失败（见 Screenshot.swift） |
 | 多窗口诊断 | `MDPreview --multiwindow-test --fileA=/path/a.md --fileB=/path/b.md` | `[MULTIWINDOW] PASS/FAIL 检查项` + info 行 | 0=全过 / 1=有失败 |
 
-- web 侧诊断留痕：`window.__exportedHTML`（自检轮询用，页面级临时变量）。
+- 截图模式环境钩子 `MDP_IMPORT_IMAGE=<图片路径>` / `MDP_EDIT_IMAGE=1`:
+  加载文档后执行一次「导入→落盘→插入」全链路 / 打开第一张图片的源码编辑块
+  再截图(图片导入与编辑框几何的 e2e 验证口)。
+- web 侧诊断留痕：`window.__exportedHTML`（自检轮询用，页面级临时变量）、
+  `mdbridge.testImagePayload(data)`(剪贴板载荷识别,自检断言用)。
 - WebLocator（`#filePath` 唯一用点）仅服务于诊断/开发定位，W3 已限定在
   Util.swift 单点。
 
 ## 4. 桥协议
 
 - JS → Swift：`window.webkit.messageHandlers.mdbridge.postMessage({op, ...})`，
-  op 集合见 `DocumentWindowController.handleBridgeMessage`。
+  op 集合见 `DocumentWindowController.handleBridgeMessage`
+  (boot/ready/changed/stats/sourceMode/selinfo/jserror/importImage)。
 - Swift → JS：`window.mdbridge.*` 方法调用；异步方法返回 Promise，
   **Promise 不可跨桥序列化**，跨桥取值须页侧 `.then` 落到全局变量后由原生轮询
   （自检 D2 即此模式）。
+- 图片导入双向对(2026-10-20):JS→Swift `importImage`(requestId/kind=
+  blob|file/mime/dataBase64/path),Swift→JS `onImageImported(requestId,
+  {ok,src})`;插入唯一入口是 `insertImageCommand`(formatCommand 转发)。
 - 命令转发：菜单/右键 → `performEditorAction` → spec.jsCommand →
   `formatCommand`/`tableCommand`；milkdown 命令为**位置参数**形态
   （如 `wrapInHeadingCommand(2)`），payload 标量需 `.fragmentsAllowed` 序列化。

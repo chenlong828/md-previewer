@@ -144,6 +144,10 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
                 }
             }
         }
+        // 拖入图片文件:导入 resource/ 目录并插入引用(.md 等其余文件仍是开新窗)
+        webView.onImageFileDropped = { [weak self] url in
+            self?.importImage(at: url)
+        }
     }
 
     override func showWindow(_ sender: Any?) {
@@ -188,15 +192,22 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
         updateTitle()
         updateStateLabel()
         AppDelegate.shared?.addRecentFile(target)
-        injectMarkdown(text, baseURL: target)
+        injectMarkdown(text, docURL: target)
     }
 
     /// 将已读取的文本注入编辑器——加载与外部变更重载的唯一入口(仅限编辑器就绪后调用)。
     /// 两路径唯一历史差异(是否重启文件监视)按"重启"收敛:重载后以磁盘现状为新基线。
-    private func injectMarkdown(_ text: String, baseURL: URL) {
+    /// docURL 是图片相对路径的唯一解析基准(此前 openDocument 传文件 URL、
+    /// forceReload 传目录,前者解析出 doc.md/resource/... 恒不存在 → 图片全不显示)。
+    private func injectMarkdown(_ text: String, docURL: URL) {
         isLoadingContent = true
-        let rewritten = ImagePathRewriter.forLoad(text, baseURL: baseURL)
-        callJS("window.mdbridge.setMarkdown(\(JSArgs.string(rewritten)))") { [weak self] _ in
+        let rewritten = ImagePathRewriter.forLoad(text, baseURL: docURL.deletingLastPathComponent())
+        // baseDir 供图片源码编辑框做 相对路径⇄绝对 file:// 的同构换算
+        let optsJSON = (try? JSONSerialization.data(
+            withJSONObject: ["baseDir": docURL.deletingLastPathComponent().path],
+            options: [.fragmentsAllowed]))
+            .flatMap { String(data: $0, encoding: .utf8) } ?? "{}"
+        callJS("window.mdbridge.setMarkdown(\(JSArgs.string(rewritten)), \(optsJSON))") { [weak self] _ in
             DispatchQueue.main.async {
                 guard let self else { return }
                 self.isLoadingContent = false
@@ -271,6 +282,8 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
                     try TextFile.write(restored, to: url)
                     self.isDirty = false
                     self.callJS("window.mdbridge.markClean()")
+                    // 另存为后文档目录变化,同步 web 层的图片路径换算基准
+                    self.callJS("window.mdbridge.setBaseDir(\(JSArgs.string(url.deletingLastPathComponent().path)))") { _ in }
                     self.updateTitle()
                     self.updateStateLabel()
                     self.startFileMonitor()
@@ -347,9 +360,107 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
             let where_ = payload["where"] as? String ?? ""
             let stack = payload["stack"] as? String ?? ""
             print("WEB-JS-ERROR: \(msg) @ \(where_)\n\(stack)")
+        case "importImage":
+            handleImportImage(payload)
         default:
             break
         }
+    }
+
+    // MARK: - 图片导入(粘贴请求 / 拖放 / 插入菜单 共用的偶发路径)
+    // 偶发路径独立成路:落盘失败只弹窗,不进编辑主路径,不拖垮编辑器。
+
+    /// web 粘贴拦截后的落盘请求:blob(剪贴板位图字节)或 file(本地图片路径)。
+    /// 完成后回灌 mdbridge.onImageImported(requestId, {ok, src}) — 失败也回灌
+    /// (ok:false,web 只清挂起表,提示由原生弹窗负责)。
+    private func handleImportImage(_ payload: [String: Any]) {
+        guard let requestId = payload["requestId"] as? String else { return }
+        // 回灌统一出口:成功携带 src;失败只置 ok:false,提示由原生负责
+        func reply(_ imported: ImageStore.Imported?) {
+            var body: [String: Any] = ["ok": imported != nil]
+            if let imported { body["src"] = imported.url.absoluteString }
+            let json = (try? JSONSerialization.data(withJSONObject: body, options: [.fragmentsAllowed]))
+                .flatMap { String(data: $0, encoding: .utf8) } ?? "{\"ok\":false}"
+            callJS("window.mdbridge.onImageImported(\(JSArgs.string(requestId)), \(json))")
+        }
+        guard let fileURL else {
+            promptSaveBeforeImagePaste()
+            reply(nil)
+            return
+        }
+        do {
+            let imported: ImageStore.Imported
+            if let base64 = payload["data"] as? String, payload["kind"] as? String == "blob" {
+                guard let data = Data(base64Encoded: base64) else {
+                    throw ImageStore.ImportError.emptyData
+                }
+                imported = try ImageStore.import(
+                    .blob(data, mime: payload["mime"] as? String), docURL: fileURL)
+            } else if let rawPath = payload["path"] as? String {
+                imported = try ImageStore.import(.file(imageURL(fromPathText: rawPath)), docURL: fileURL)
+            } else {
+                throw ImageStore.ImportError.emptyData
+            }
+            reply(imported)
+        } catch {
+            alertImportFailure(error)
+            reply(nil)
+        }
+    }
+
+    /// 文本形态的图片路径(file:// URL / 绝对路径 / ~/ 相对)→ 文件 URL
+    private func imageURL(fromPathText raw: String) -> URL {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.hasPrefix("file://"), let url = URL(string: trimmed) {
+            return url
+        }
+        var path = trimmed
+        if path.hasPrefix("~") {
+            path = NSString(string: path).expandingTildeInPath
+        }
+        return URL(fileURLWithPath: path)
+    }
+
+    /// 导入一张既有图片文件(拖入编辑器 / 插入菜单入口)并在光标处插入引用
+    func importImage(at url: URL) {
+        guard isReady else { return }
+        guard fileURL != nil else {
+            promptSaveBeforeImagePaste()
+            return
+        }
+        do {
+            let imported = try ImageStore.import(.file(url.standardizedFileURL), docURL: fileURL!)
+            callJS("window.mdbridge.insertImage(\(JSArgs.string(imported.url.absoluteString)), \"\", \"\")")
+        } catch {
+            alertImportFailure(error)
+        }
+    }
+
+    private func promptSaveBeforeImagePaste() {
+        let alert = NSAlert()
+        alert.messageText = "请先保存文档"
+        alert.informativeText = "插入图片需要先保存文档,图片将存入文档旁的 resource/ 目录。"
+        alert.alertStyle = .informational
+        alert.runModal()
+    }
+
+    private func alertImportFailure(_ error: Error) {
+        let alert = NSAlert()
+        alert.messageText = "导入图片失败"
+        alert.informativeText = error.localizedDescription
+        alert.alertStyle = .warning
+        alert.runModal()
+    }
+
+    /// 格式 → 插入图片…:文件选择器选中后走统一导入路径
+    @objc func insertImageAction(_ sender: Any?) {
+        guard isReady else { return }
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.image]
+        panel.allowsMultipleSelection = false
+        panel.canChooseDirectories = false
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        importImage(at: url)
     }
 
     // MARK: - 编辑命令转发
@@ -684,7 +795,7 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
     /// 外部变更后的重载:与加载共用注入入口
     private func forceReload(from url: URL) {
         guard let (text, _) = TextFile.read(at: url) else { return }
-        injectMarkdown(text, baseURL: url.deletingLastPathComponent())
+        injectMarkdown(text, docURL: url)
     }
 
     // MARK: - 关闭 / 退出确认
@@ -852,6 +963,11 @@ extension EditorWebView {
     override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
         let urls = fileURLs(from: sender)
         if let first = urls.first {
+            // 图片文件不是要打开的文档:导入 resource/ 并在光标处插入引用
+            if ImageStore.isImageFile(first) {
+                onImageFileDropped?(first)
+                return true
+            }
             AppDelegate.shared?.openInNewWindow(at: first)
             return true
         }
