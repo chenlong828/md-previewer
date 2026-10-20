@@ -145,6 +145,15 @@ if isSelftest {
         let expectedChain = DirectoryTree.ancestorChain(of: dirURL).count
         report(doc.drawerForDiagnostics?.anchorItemCountForDiagnostics == expectedChain,
                "锚点下拉框条目=父级链(\(doc.drawerForDiagnostics?.anchorItemCountForDiagnostics ?? -1)/\(expectedChain))")
+        // lazy 点击展开链路回归(用户实测曾失效):点三角→取数同步装载→子行出现
+        if let clickURL = flagValue("--clickExpand").map({ URL(fileURLWithPath: $0) }) {
+            let childRows = doc.drawerForDiagnostics?.debugExpandByClick(url: clickURL) ?? -1
+            report(childRows > 0, "点击展开装载子层(子行数 \(childRows))")
+            if let clickExpect = flagValue("--clickExpect").map({ URL(fileURLWithPath: $0) }) {
+                report(doc.drawerForDiagnostics?.debugTreeContains(clickExpect) ?? false,
+                       "点击展开后子层在树中(\(clickExpect.lastPathComponent))")
+            }
+        }
         report(doc.directoryMode, "目录模式标志(directoryMode=true)")
         report(doc.fileURL == nil, "目录模式无文档(fileURL=nil)")
         report(doc.isDrawerVisible, "目录模式抽屉展开")

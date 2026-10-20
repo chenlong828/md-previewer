@@ -1,12 +1,14 @@
 import AppKit
 import UniformTypeIdentifiers
 
-/// 左侧文件抽屉:头部(目录名 + 刷新)+ 大纲视图树形目录。
+/// 左侧文件抽屉:头部(锚点下拉框 + 刷新)+ 大纲视图树形目录。
 /// 契约:load(root:) 装入扫描根;onOpenFile(URL) 双击 md 文件回调;
-/// select(url:) 高亮定位当前文档;reload() 重扫。
+/// onAnchorSelected(URL) 锚点下拉框重锚回调;select(url:) 高亮定位当前文档;reload() 重扫。
 /// 树数据是 DirectoryTree 的展示投影(权威在磁盘),lazy 按层装载:
-/// 展开未装载目录时拦截展开 → 后台 readdir 下一层 → 回填并续展;
-/// 选中定位走同步装载链(低频动作,本地 readdir 每层毫秒级)。
+/// **数据源内同步装载**——NSOutlineView 展开取数(numberOfChildrenOfItem)那一刻
+/// 同步 readdir 该层,展开即出子行,无拦截/无异步/无续展(AppKit 缓存时序无关);
+/// 选中定位同口径(同步装载祖先链)。两者都是低频交互,本地单层 readdir 毫秒级;
+/// node_modules/包已在单层跳过,无大目录单层阻塞风险。
 final class FileDrawerView: NSView, NSOutlineViewDataSource, NSOutlineViewDelegate {
     /// 抽屉固定宽度(窗口伸出/收敛计算与布局共用同一出处)
     static let width: CGFloat = 240
@@ -16,17 +18,15 @@ final class FileDrawerView: NSView, NSOutlineViewDataSource, NSOutlineViewDelega
     /// 锚点下拉框选择回调:用户把某父级目录选为新抽屉根
     var onAnchorSelected: ((URL) -> Void)?
 
-    /// 当前扫描根(目录模式 = 打开的目录;文件模式 = 文档所在目录)
+    /// 当前锚定目录(抽屉扫描根)
     private(set) var rootURL: URL?
     private var root: DirectoryTree.Node?
     /// 当前高亮的文档 url(rescan 后保持选中)
     private var selectedURL: URL?
-    /// 展开态记忆(按目录路径;重扫重建树后恢复,惰性续读到磁盘现状)
+    /// 展开态记忆(按目录路径;重扫重建树后恢复,子层同步装载逐级展开)
     private var expandedPaths = Set<String>()
     /// 根层扫描代际:后台扫描完成回主线程时只应用最新一代,过期结果丢弃
     private var scanGeneration = 0
-    /// 展开被拦截、等待后台装载后续展的目录路径
-    private var pendingExpandPaths = Set<String>()
 
     private let headerBackground = NSVisualEffectView()
     /// 锚点下拉框:列出当前锚点向上到文件系统根的父级目录链(面包屑式缩进),
@@ -164,14 +164,14 @@ final class FileDrawerView: NSView, NSOutlineViewDataSource, NSOutlineViewDelega
         }
     }
 
-    /// 应用根层扫描结果:重建模型、恢复展开(惰性续读)、刷新头部与空态、恢复选中
+    /// 应用根层扫描结果:重建模型、恢复展开(逐级同步装载)、刷新空态、恢复选中
     private func apply(node: DirectoryTree.Node?, rootURL: URL) {
         captureExpandedPaths()
         root = node
         outlineView.reloadData()
         if let node {
             outlineView.expandItem(node) // 根恒展开(根层已装载)
-            expandRememberedChildren(of: node)
+            expandRememberedDescendants(of: node)
         }
         rebuildAnchorMenu()
         let isEmpty = node?.children.isEmpty ?? true
@@ -179,11 +179,12 @@ final class FileDrawerView: NSView, NSOutlineViewDataSource, NSOutlineViewDelega
         if let selectedURL { select(url: selectedURL) }
     }
 
-    /// 恢复记忆中的展开目录:仅一层触发展开,子层装载完成后由 attach 续展
-    private func expandRememberedChildren(of node: DirectoryTree.Node) {
+    /// 恢复记忆中的展开目录:逐级展开(展开取数时同步装载该层,可继续深入)
+    private func expandRememberedDescendants(of node: DirectoryTree.Node) {
         for child in node.children where child.isFolder {
             if expandedPaths.contains(child.url.standardizedFileURL.path) {
-                outlineView.expandItem(child) // 未装载 → shouldExpand 拦截 → 后台装载续展
+                outlineView.expandItem(child)
+                expandRememberedDescendants(of: child)
             }
         }
     }
@@ -198,75 +199,52 @@ final class FileDrawerView: NSView, NSOutlineViewDataSource, NSOutlineViewDelega
         }
     }
 
-    // MARK: - 按层装载(lazy 核心)
+    // MARK: - 按层装载(lazy 核心:数据源内同步)
 
-    /// 异步装载目录子层:完成回主线程回填;重复装载/已装载静默幂等
-    private func loadLevelAsync(_ node: DirectoryTree.Node) {
-        guard !node.childrenLoaded else { return }
-        let url = node.url
-        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            let level = try? DirectoryTree.scanLevel(of: url)
-            DispatchQueue.main.async { [weak self] in
-                guard let self else { return }
-                self.attachChildren(from: level, to: node)
-                // 若装载期间该节点被同步装载(select 链),此处幂等跳过
-            }
+    /// 装载目录子层(幂等):未装载即同步 readdir 该层。装载失败(无权限等)
+    /// 也置为已装载且子层为空——与 Finder 空目录语义一致,避免无限重试。
+    private func ensureLoaded(_ node: DirectoryTree.Node) {
+        guard node.isFolder, !node.childrenLoaded else { return }
+        guard let level = try? DirectoryTree.scanLevel(of: node.url) else {
+            node.childrenLoaded = true
+            return
         }
-    }
-
-    /// 同步装载目录子层(选中定位用):本地 readdir 每层毫秒级,低频动作可接受
-    private func loadLevelSync(_ node: DirectoryTree.Node) {
-        guard !node.childrenLoaded, let level = try? DirectoryTree.scanLevel(of: node.url) else { return }
-        attachChildren(from: level, to: node)
-    }
-
-    /// 回填子层:替换 children、标记已装载、刷新该节点并续展挂起的展开/记忆展开
-    private func attachChildren(from level: DirectoryTree.Node?, to node: DirectoryTree.Node) {
-        guard !node.childrenLoaded else { return }
-        node.children = level?.children ?? []
+        node.children = level.children
         for child in node.children { child.parent = node }
         node.childrenLoaded = true
-        outlineView.reloadItem(node, reloadChildren: true)
-        // 续展:用户点击触发的挂起展开 + 记忆中的展开态(逐层惰性续读)
-        let path = node.url.standardizedFileURL.path
-        let shouldReveal = pendingExpandPaths.remove(path) != nil
-        if shouldReveal {
-            outlineView.expandItem(node)
-        }
-        for child in node.children where child.isFolder {
-            if expandedPaths.contains(child.url.standardizedFileURL.path) {
-                outlineView.expandItem(child)
-            }
-        }
     }
 
-    // MARK: - 选中同步
-
-    /// 高亮并滚动到指定文档行(打开文件后由控制器调用)。
-    /// lazy 下先沿路径同步装载祖先链(缺层即读),再展开选中;找不到时静默。
-    func select(url: URL) {
-        selectedURL = url
-        guard let root else { return }
+    /// 定位文件节点:沿路径同步装载祖先链(缺层即读),返回(祖先链, 文件节点)
+    private func locateFile(at url: URL) -> (chain: [DirectoryTree.Node], file: DirectoryTree.Node)? {
+        guard let root else { return nil }
         let target = url.standardizedFileURL
         let rootPath = root.url.standardizedFileURL.path
-        guard target.path.hasPrefix(rootPath + "/") || target.path == rootPath else { return }
-        // 根 → 文件所在目录 的节点链(按路径段逐层同步装载)
+        guard target.path.hasPrefix(rootPath + "/") || target.path == rootPath else { return nil }
         var chain: [DirectoryTree.Node] = []
         var cursor = root
         let segments = target.path.dropFirst(rootPath.count)
             .split(separator: "/", omittingEmptySubsequences: true).map(String.init)
         for name in segments.dropLast() { // 最后一段是文件本身
-            loadLevelSync(cursor)
-            guard let next = cursor.children.first(where: { $0.isFolder && $0.name == name }) else { return }
+            ensureLoaded(cursor)
+            guard let next = cursor.children.first(where: { $0.isFolder && $0.name == name }) else { return nil }
             chain.append(next)
             cursor = next
         }
-        loadLevelSync(cursor) // 文件所在目录层
-        for node in chain { outlineView.expandItem(node) }
-        guard let fileNode = cursor.children.first(where: { !$0.isFolder && $0.url.standardizedFileURL == target }) else {
-            return
+        ensureLoaded(cursor) // 文件所在目录层
+        guard let file = cursor.children.first(where: { !$0.isFolder && $0.url.standardizedFileURL == target }) else {
+            return nil
         }
-        let row = outlineView.row(forItem: fileNode)
+        return (chain, file)
+    }
+
+    // MARK: - 选中同步
+
+    /// 高亮并滚动到指定文档行(打开文件后由控制器调用);找不到时静默。
+    func select(url: URL) {
+        selectedURL = url
+        guard let located = locateFile(at: url) else { return }
+        for node in located.chain { outlineView.expandItem(node) } // 展开取数时子层已在
+        let row = outlineView.row(forItem: located.file)
         guard row >= 0 else { return }
         outlineView.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
         outlineView.scrollRowToVisible(row)
@@ -276,6 +254,7 @@ final class FileDrawerView: NSView, NSOutlineViewDataSource, NSOutlineViewDelega
 
     func outlineView(_ outlineView: NSOutlineView, numberOfChildrenOfItem item: Any?) -> Int {
         guard let node = item as? DirectoryTree.Node ?? root else { return 0 }
+        ensureLoaded(node) // lazy 核心:展开取数时同步装载该层
         return node.children.count
     }
 
@@ -290,15 +269,6 @@ final class FileDrawerView: NSView, NSOutlineViewDataSource, NSOutlineViewDelega
     }
 
     // MARK: - NSOutlineViewDelegate
-
-    func outlineView(_ outlineView: NSOutlineView, shouldExpand item: Any) -> Bool {
-        guard let node = item as? DirectoryTree.Node, node.isFolder else { return true }
-        guard !node.childrenLoaded else { return true }
-        // 拦截展开:后台装载完成后续展(点击路径不阻塞主线程)
-        pendingExpandPaths.insert(node.url.standardizedFileURL.path)
-        loadLevelAsync(node)
-        return false
-    }
 
     func outlineView(_ outlineView: NSOutlineView, viewFor tableColumn: NSTableColumn?, item: Any) -> NSView? {
         guard let node = item as? DirectoryTree.Node else { return nil }
@@ -358,23 +328,20 @@ final class FileDrawerView: NSView, NSOutlineViewDataSource, NSOutlineViewDelega
         onAnchorSelected?(url)
     }
 
-    /// 模拟双击打开指定文件:走 doubleClicked 同一回调路径(onOpenFile → 控制器 openDocument)
-    func debugOpenByDoubleClick(url: URL) {
-        guard let node = root?.descendant(at: url) else { return }
-        for ancestor in Self.ancestorChain(of: node) where ancestor.isFolder {
-            outlineView.expandItem(ancestor)
-        }
-        onOpenFile?(node.url)
+    /// 模拟用户点击三角展开指定目录(锁定 点击→取数同步装载→子行出现 全链路);
+    /// 返回展开后可见的子行数(定位失败返回 -1)
+    @discardableResult
+    func debugExpandByClick(url: URL) -> Int {
+        guard let root, let node = root.descendant(at: url), node.isFolder else { return -1 }
+        outlineView.expandItem(node) // numberOfChildrenOfItem 内同步装载
+        return node.children.filter { outlineView.row(forItem: $0) >= 0 }.count
     }
 
-    private static func ancestorChain(of node: DirectoryTree.Node) -> [DirectoryTree.Node] {
-        var chain: [DirectoryTree.Node] = []
-        var cursor = node.parent
-        while let parent = cursor {
-            chain.append(parent)
-            cursor = parent.parent
-        }
-        return chain.reversed()
+    /// 模拟双击打开指定文件:沿路径装载祖先链并展开,走 onOpenFile 同一回调路径
+    func debugOpenByDoubleClick(url: URL) {
+        guard let located = locateFile(at: url) else { return }
+        for node in located.chain { outlineView.expandItem(node) }
+        onOpenFile?(located.file.url)
     }
 
     // MARK: - 锚点下拉框
@@ -407,6 +374,7 @@ final class FileDrawerView: NSView, NSOutlineViewDataSource, NSOutlineViewDelega
     }
 
     /// 双击行:md 文件 → 回调打开(同窗口覆盖);文件夹 → 切换展开
+    /// (展开取数时由 numberOfChildrenOfItem 同步装载,无需特判)
     @objc private func doubleClicked() {
         let row = outlineView.clickedRow
         guard row >= 0, let node = outlineView.item(atRow: row) as? DirectoryTree.Node else { return }
