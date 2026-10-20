@@ -152,6 +152,17 @@ if isSelftest {
             waited += 0.1
         }
         report((doc.drawerForDiagnostics?.rowCountForDiagnostics ?? 0) > 0, "抽屉树装载(\(doc.drawerForDiagnostics?.rowCountForDiagnostics ?? 0) 行)")
+        // 真实仓库根验证:传入 --expect=<树内应有文件> 时断言其出现在树中
+        // (回归哨兵:node_modules 大子树曾把扫描预算耗尽,兄弟目录被截断)
+        if let expect = flagValue("--expect").map({ URL(fileURLWithPath: $0) }) {
+            var waitedExpect = 0.0
+            while !(doc.drawerForDiagnostics?.debugTreeContains(expect) ?? false) && waitedExpect < 5.0 {
+                RunLoop.main.run(mode: .default, before: Date().addingTimeInterval(0.1))
+                waitedExpect += 0.1
+            }
+            report(doc.drawerForDiagnostics?.debugTreeContains(expect) ?? false,
+                   "树包含 \(expect.lastPathComponent)(\(expect.deletingLastPathComponent().lastPathComponent)/)")
+        }
 
         // 窗口宽度收敛断言:初始 1000pt + 抽屉 240pt,超出屏幕可视宽度则收敛到屏宽
         if let window = doc.window, let visible = (window.screen ?? NSScreen.main)?.visibleFrame {

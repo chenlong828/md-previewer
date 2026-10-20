@@ -30,12 +30,18 @@ enum DirectoryTree {
         }
     }
 
-    /// 扫描上限(防挂起的硬闸):条目预算与递归深度。
-    /// 8000 条目 ≈ 中型仓库规模,超过即截断(宁少勿卡);深度 10 覆盖一切合理文档树。
+    /// 扫描上限(防挂起的硬闸):枚举预算与递归深度。
+    /// 预算按「实际枚举的条目数」计——node_modules/包目录在递归入口被整棵跳过,
+    /// 其内部条目不进枚举(修复:17k 条目的 node_modules 曾把 8000 预算耗尽,
+    /// readdir 顺序靠后的兄弟目录全部被截断)。20000 ≈ 大型文档库规模,
+    /// 超过即截断(宁少勿卡);深度 10 覆盖一切合理文档树。
     enum Limits {
-        static let maxEntries = 8000
+        static let maxEntries = 20000
         static let maxDepth = 10
     }
+
+    /// 整棵跳过的目录名(依赖目录约定,其内 README 等与文档树无关且体量巨大)
+    private static let skippedDirectoryNames: Set<String> = ["node_modules"]
 
     /// 根目录本身不可读(不存在/无权限)时抛出;子目录不可读只剪枝不报错。
     enum ScanError: Error { case inaccessible }
@@ -73,9 +79,13 @@ enum DirectoryTree {
         for child in contents {
             if child.lastPathComponent.hasPrefix(".") { continue } // 隐藏条目(.DS_Store/.git 等)
             let values = try? child.resourceValues(
-                forKeys: [.isDirectoryKey, .isSymbolicLinkKey, .isRegularFileKey])
+                forKeys: [.isDirectoryKey, .isSymbolicLinkKey, .isRegularFileKey, .isPackageKey])
             if values?.isSymbolicLink == true { continue } // 不跟随符号链接,杜绝环
             if values?.isDirectory == true {
+                // 依赖目录与包(.app/.bundle 等,Finder 同款不透明语义)整棵跳过:
+                // 内部条目不进枚举,预算不会被体量巨大的无关子树吃掉
+                if let packageValues = values, packageValues.isPackage == true { continue }
+                if skippedDirectoryNames.contains(child.lastPathComponent) { continue }
                 if let sub = try? scanFolder(child, depth: depth + 1, budget: &budget, isRoot: false),
                    !sub.children.isEmpty {
                     folders.append(sub)

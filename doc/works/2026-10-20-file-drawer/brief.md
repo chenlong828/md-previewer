@@ -75,6 +75,15 @@ AppDelegate ──CLI目录/拖入目录/打开文件夹菜单──▶ Document
 5. selftest 全绿(含新增 DirectoryTree 扫描用例);--multiwindow-test 不回归;
    --drawer-test(新增)通过。
 
+## 设计决策变更(2026-10-20 用户实测反馈)
+
+- **现象**:打开本仓库 README.md,抽屉不显示 doc/。根因:web/node_modules
+  有 17,410 条目,把 8000 枚举预算在 readdir 顺序中提前耗尽,靠后的兄弟目录
+  (doc/samples 等)全被截断。
+- **修正**:`node_modules` 与包目录(.app/.bundle 等,Finder 同款不透明语义)
+  在递归入口**整棵跳过**(内部条目不进枚举,预算不再被无关子树吃掉);
+  枚举预算 8000 → 20000。「无 md 后代目录剪枝」规则保持不变。
+
 ## 边界(本工序不做)
 
 - 目录内容的自动监听(手动刷新按钮 + 展开时重扫;FSEvents 目录监听另立工序)。

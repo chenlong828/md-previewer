@@ -708,6 +708,11 @@ func greet() -> String {
             try mkdir("sub")
             try mkdir("sub/deep")
             try mkdir("empty") // 无 md 后代 → 剪枝
+            try mkdir("web/node_modules/pkg") // 依赖目录 → 整棵跳过(内部 md 不进树)
+            try mkdir("MyApp.app/Contents") // 包目录 → 整棵跳过(Finder 同款不透明语义)
+            put("web/keep.md")
+            put("web/node_modules/pkg/README.md")
+            put("MyApp.app/Contents/inside.md")
             put("a.md")
             put("b.txt") // 非 md → 排除
             put(".hidden.md") // 隐藏 → 排除
@@ -720,10 +725,18 @@ func greet() -> String {
 
             let tree = try DirectoryTree.scan(root: root)
             let rootNames = tree.children.map(\.name)
-            if rootNames == ["sub", "a.md"] {
+            if rootNames == ["sub", "web", "a.md"] {
                 pass("目录扫描-根层过滤与排序(文件夹在前,得 \(rootNames))")
             } else {
-                fail("目录扫描-根层过滤与排序 → \(rootNames),期望 [sub, a.md]")
+                fail("目录扫描-根层过滤与排序 → \(rootNames),期望 [sub, web, a.md]")
+            }
+            let webChildren = tree.children.first { $0.name == "web" }?.children.map(\.name) ?? []
+            if tree.descendant(at: root.appendingPathComponent("web/node_modules/pkg/README.md")) == nil,
+               tree.descendant(at: root.appendingPathComponent("MyApp.app/Contents/inside.md")) == nil,
+               webChildren == ["keep.md"] {
+                pass("目录扫描-node_modules 与包整棵跳过(内部 md 不进树)")
+            } else {
+                fail("目录扫描-node_modules/包跳过 → web 子项 \(webChildren)")
             }
             let sub = tree.children.first { $0.name == "sub" }
             let subNames = sub?.children.map(\.name) ?? []

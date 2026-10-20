@@ -276,6 +276,11 @@ final class FileDrawerView: NSView, NSOutlineViewDataSource, NSOutlineViewDelega
     /// 当前大纲行数(自检等待树装载完成)
     var rowCountForDiagnostics: Int { outlineView.numberOfRows }
 
+    /// 当前树中是否包含指定文件(自检断言目录内容正确性,如真实仓库的 doc/ 是否在树)
+    func debugTreeContains(_ url: URL) -> Bool {
+        root?.descendant(at: url) != nil
+    }
+
     /// 模拟双击打开指定文件:走 doubleClicked 同一回调路径(onOpenFile → 控制器 openDocument)
     func debugOpenByDoubleClick(url: URL) {
         guard let node = root?.descendant(at: url) else { return }
