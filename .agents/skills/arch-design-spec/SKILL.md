@@ -7,9 +7,10 @@ description: 架构规格层：改动触碰模块切分/合并、公共契约、
 
 架构规格不是组件清单，而是一组可检查的约束：模块为什么存在、依赖允许指向哪里、契约承诺什么、热路径允许经过谁、数据由谁写、每块如何验证、这次改动由谁拍板。缺任何一项，架构会在第一次跨模块需求时腐化。它不替代详细设计：类图、时序、算法与具体框架用法，在架构规格冻结后再展开。
 
-本 skill 与两份既有 skill 的分工：
+本 skill 与既有三个 skill 的分工：
 
 - **design-before-coding**：负责从业务问题到组件级修改方案的通用设计流程；本 skill 是其架构规格层，负责模块切分、分层依赖、契约、冷热路径、数据所有权、验证计划与定级。
+- **dev-execution-spec**：负责编码执行、验收与提交纪律；本 skill 定下的改动级别与人工确认门（P1 未确认不编码、P2 未确认不合并）在它那里作为动工前置核对。
 - **doc-layout-spec**：负责这些产物放在哪里；本 skill 只决定内容与判据。架构规格落到 `design/architecture.md` 或 `design/<module>/spec.md`，过程文件落到 `works/<工序>/`，决策落到 `history/decisions/`。
 
 ## 一、核心判据
@@ -369,9 +370,10 @@ P0 阻塞简报至少写：目标与现状、已知事实、未知与冲突、�
 
 ## 六、与其他 skill 的协作
 
-- 先走 **design-before-coding** 的业务复述、现状盘点、模式选择与场景走查；本 skill 在其上补架构规格。若只做架构评审，可跳过模式选择，但业务能力盘点与现状依赖图不能省。
+- 先走 **design-before-coding** 的业务复述、现状盘点、模式选择与场景走查；本 skill 在其上补架构规格。若只做架构评审，可跳过模式选择，但业务能力盘点与现状依赖图不能省。同一修改只画一张地图：本 skill 的分层模块地图就是组件地图的架构细化，不两图并行维护。
+- 编码执行、验收与提交纪律遵循 **dev-execution-spec**；本 skill 定下的改动级别与人工确认门是它动工前的前置核对——P1 未确认不编码，P2 未确认不合并。
 - 架构规格、模块卡、依赖矩阵、契约卡属于现行真相，按 **doc-layout-spec** 落到 `design/architecture.md` 或 `design/<module>/spec.md`；评审过程、候选方案、被否决理由落到 `works/<工序>/`；定稿决策落到 `history/decisions/`；踩过的坑落到 `history/pitfalls.md`。
-- 冲突时：文档放哪里听 doc-layout-spec；通用设计流程听 design-before-coding；架构内容判据听本 skill。
+- 冲突时：文档放哪里听 doc-layout-spec；通用设计流程听 design-before-coding；架构内容判据听本 skill；动手到交付的执行纪律听 dev-execution-spec。
 
 ## 七、完成定义
 
