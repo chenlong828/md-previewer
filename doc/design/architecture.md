@@ -2,7 +2,7 @@
 layer: design
 module: global
 status: current
-updated: 2026-10-20
+updated: 2026-10-21
 ---
 
 # 系统架构与设计取舍
@@ -212,6 +212,11 @@ WKWebView 承载 Milkdown 7.7（ProseMirror）前端。本文记录跨模块的�
 
 ## 4. 桥协议
 
+- **v2 目标契约：已评审、暂缓实施（2026-10-21）**：可移植内核评审有条件通过，
+  三决策已定（桥统一消息协议 v2 / 路径语义入内核 / 规格壳技术中立），完整目标
+  规格与迁移方案（存档 spec §4.6）见
+  [history/decisions/2026-10-21-editor-kernel-spec.md](../history/decisions/2026-10-21-editor-kernel-spec.md)。
+  用户决定暂缓该工作，恢复壳工作时从存档重启；**本节 v1 描述即现行真相**。
 - JS → Swift：`window.webkit.messageHandlers.mdbridge.postMessage({op, ...})`，
   op 集合见 `DocumentWindowController.handleBridgeMessage`
   (boot/ready/changed/stats/sourceMode/selinfo/jserror/importImage)。

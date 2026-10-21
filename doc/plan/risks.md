@@ -2,7 +2,7 @@
 layer: plan
 module: global
 status: current
-updated: 2026-10-20
+updated: 2026-10-21
 ---
 
 # 风险清单与缓解
@@ -112,3 +112,20 @@ result.md 记录实证，并回改本文件状态——已消除条目**保留�
 - **缓解**：①交互类工序收口必附「待人工实证」清单（真人点验是验收的一部分）；
   ②修复取确定性机制而非时序补丁，使自动化断言重新有效；③同类交互功能立项时
   把真人点验写入 brief 验收标准。
+
+## R9 跨壳路径语义漂移（严重度：高，多平台正确性）
+
+- **现象**：图片路径语义（加载改写/保存还原/GC 引用收集/落盘命名）当前在 Swift
+  （ImagePathRewriter / referencedLocalImagePaths）与 JS（image-view.js）双头实现，
+  同口径靠注释与 selftest 维持。Windows/Linux 壳各自重写 Swift 侧后，同一文档
+  在不同 OS 上渲染/往返结果可能不一致；壳数量越多暴露面越大。
+- **存续条件**：语义规则存在「每壳一份」的实现——即 editor-kernel spec §4.6
+  迁移未完成期间。
+- **承接**：[2026-10-21-portable-kernel](../history/works/2026-10-21-portable-kernel/brief.md)（已归档）。
+- **缓解**：文本级语义单点收进内核（存档规格决策 D2：
+  [history/decisions/2026-10-21-editor-kernel-spec.md](../history/decisions/2026-10-21-editor-kernel-spec.md)）；
+  黄金夹具 + 往返属性测试守门；架构测试禁止壳解析 markdown、禁止内核
+  transport 层外出现宿主符号。
+- **状态（2026-10-21）：搁置（未缓解）**。用户决定暂缓该工作：规格已评审但
+  第二次门未走、零代码实施；风险本体未消除，暴露面暂不增长（不新增壳）。
+  恢复壳工作时必须先重启承接工序完成语义入内核迁移。

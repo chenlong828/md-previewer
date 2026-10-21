@@ -17,6 +17,9 @@
 4. **要了解系统现状** → 仓库根 [README](../README.md)（架构图与桥协议）；
    跨模块设计取舍见 [design/architecture.md](design/architecture.md)
    （安全/行为取舍、诊断面、桥协议）。
+5. **要做平台壳或动桥协议** → 先读存档
+   [history/decisions/2026-10-21-editor-kernel-spec.md](history/decisions/2026-10-21-editor-kernel-spec.md)：
+   内核/壳分界、桥协议 v2 契约与迁移方案（2026-10-21 评审暂缓，恢复时从存档重启工序）。
 
 ## 约定
 
