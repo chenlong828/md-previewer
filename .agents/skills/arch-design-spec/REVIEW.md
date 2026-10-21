@@ -192,3 +192,13 @@
 | doc-layout-spec | 下级安排段是正文泄漏：「每态内部的下一级安排均有明确规定——…（模块清单由目录名推导）…分决策、归档工序与坑档案三区」对目录扫描者太细 | 压缩至约 120 字：四态身份保留，每态一句特征，删除括号与下级枚举 |
 
 共性观察：design-before-coding 与 arch-design-spec 的「适用于」触发词高度重叠（模块拆分/重构/评审两边都写）。重叠是真实的（架构任务两个都加载），不需要在 description 里消歧——分工在各自正文开头声明。doc-layout-spec 存在全局副本 `~/.dsh/skills/doc-layout-spec/SKILL.md`，本次只改了项目副本；全局副本是否同步由你决定。
+
+## 10. 开发过程规则沉淀（2026-10-21）
+
+用户提供五组开发过程规则（工作方式/验收标准/错误处理/安全边界/工作区卫生），审视后按用户决定沉淀：
+
+- **新建 `dev-execution-spec`**（执行纪律）：五组规则独立成第四个技能，与 design-before-coding（动手前怎么想）、arch-design-spec（架构怎么定）、doc-layout-spec（文档放哪）各管一段；它管「动手到交付怎么干」。开篇即「规则分层：先硬拦截，再自律」。
+- **design-before-coding 第 1 步补强**：目标/非目标/至少 3 个验收场景三件套，定义处唯一，执行侧由 dev-execution-spec 引用；第七步末尾增加与 dev-execution-spec 的交接句。
+- **常驻上浮**：高危操作确认（发布/删数据/付费/权限/删除覆盖/递归清理/reset --hard/git clean/外发）与密钥禁区写入全局 `~/.dsh/AGENTS.md`——确认类规则不能依赖 skill 按需加载而生效。
+- **硬拦截建议**（见新技能第一节表格）：gitleaks、lint no-restricted-syntax、pre-commit diff 输出、审批与受保护分支；commit 纪律与测试有效性难自动化，留 skill 纪律 + CR。
+- **未做**：项目内 lint/hook 配置文件未创建，按项目实际技术栈落地时再配；doc-layout-spec 全局副本同步仍待用户决定。
