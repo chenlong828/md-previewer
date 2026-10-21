@@ -1,6 +1,13 @@
+---
+layer: history
+module: global
+status: frozen
+updated: 2026-10-21
+---
+
 # arch-design-spec 规格整合与评审备忘
 
-> 状态：待评审。本文只记录「原始意图如何被整合成 skill」的裁决、冲突处理与未决问题；skill 正文见同目录 [SKILL.md](SKILL.md)。
+> 状态：已评审并确认（2026-10-21，第 7 节 8 问结论与后续决策见同目录 result.md）。本文记录「原始意图如何被整合成 skill」的裁决、冲突处理与评审过程；skill 正文见 `.agents/skills/arch-design-spec/SKILL.md`。
 
 ## 1. 整合目标
 
