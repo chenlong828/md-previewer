@@ -368,6 +368,9 @@ final class FileDrawerView: NSView, NSOutlineViewDataSource, NSOutlineViewDelega
     /// 锚点菜单每条是否都带 Finder 文件夹图标(用户可见的核心承诺,自检守门)
     var anchorMenuItemsHaveIconsForDiagnostics: Bool { anchorControl.allMenuItemsHaveIcons }
 
+    /// 锚点菜单的缩进层级(自检断言「根 → 当前逐级递进」)
+    var anchorMenuIndentationLevelsForDiagnostics: [Int] { anchorControl.menuIndentationLevels }
+
     /// 头部三块的对齐矩形(约束求解所用的几何;按钮 frame 含 alignmentRectInsets,
     /// 按 frame 断言会差半像素,按对齐矩形才是约束算出来的真几何)
     var headerFramesForDiagnostics: (control: NSRect, home: NSRect, refresh: NSRect) {

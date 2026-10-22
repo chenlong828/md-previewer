@@ -149,6 +149,9 @@ if isSelftest {
         // 锚点菜单的 Finder 文件夹图标(用户可见承诺)与头部宽度账(控件铺满抽屉宽扣除按钮)
         if let drawer = doc.drawerForDiagnostics {
             report(drawer.anchorMenuItemsHaveIconsForDiagnostics, "锚点菜单每条都带 Finder 文件夹图标")
+            let levels = drawer.anchorMenuIndentationLevelsForDiagnostics
+            report(levels == Array(0..<levels.count),
+                   "锚点菜单逐级递进缩进(实际 \(levels))")
             let frames = drawer.headerFramesForDiagnostics
             let spacing = FileDrawerView.HeaderMetrics.spacing
             let drawerWidth = drawer.frame.width

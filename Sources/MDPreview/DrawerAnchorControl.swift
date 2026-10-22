@@ -1,8 +1,8 @@
 import AppKit
 
 /// 抽屉头部的锚点控件:显示当前锚点目录(Finder 同款文件夹图标 + 名称 + 展开箭头),
-/// 点击弹出父级链菜单——根 → 当前的平坦顺序、每条带同一套文件夹图标、当前锚点勾选,
-/// 与 Finder 标题栏的路径菜单同构。
+/// 点击弹出父级链菜单——根 → 当前的顺序、每条带同一套文件夹图标、当前锚点勾选,
+/// 并按层级逐级右移(与下方大纲树同一套「越深越右」的视觉语言)。
 /// 职责单一:只负责「当前锚点」的展示与菜单交互;菜单条目来自 `DirectoryTree.ancestorChain`,
 /// 选中后经 `onSelect` 交给 FileDrawerView 转发重锚,控件本身不装载目录、不改抽屉根。
 /// 宽度由头部布局决定(抽屉宽减去右侧 Home/刷新两个按钮),不做固有宽度。
@@ -109,7 +109,8 @@ final class DrawerAnchorControl: NSView {
 
     // MARK: - 装载
 
-    /// 装载锚点链:标签/图标取链末(当前锚点),菜单按根 → 当前顺序重建。
+    /// 装载锚点链:标签/图标取链末(当前锚点),菜单按根 → 当前顺序重建并逐级缩进
+    /// (`indentationLevel` = 链上序号,图标与标题一起右移,呈现与树同构的层次递进)。
     /// 空链(尚无锚点)时整个控件隐藏,头部只剩两个按钮。
     func update(chain: [DirectoryTree.AnchorEntry]) {
         let current = chain.last
@@ -123,6 +124,7 @@ final class DrawerAnchorControl: NSView {
             item.target = self
             item.representedObject = entry.url
             item.image = FinderIcon.folder(at: entry.url, size: Metrics.menuIconSize)
+            item.indentationLevel = index // 根在顶层,子级逐层右移(与下方树形同构)
             item.toolTip = entry.url.path
             // 当前锚点是链末:与 Finder 路径菜单一致地打勾
             item.state = index == chain.count - 1 ? .on : .off
@@ -139,6 +141,9 @@ final class DrawerAnchorControl: NSView {
     var allMenuItemsHaveIcons: Bool {
         !anchorMenu.items.isEmpty && anchorMenu.items.allSatisfy { $0.image != nil }
     }
+
+    /// 菜单条目的缩进层级(自检断言「根 → 当前逐级递进」,与树同构)
+    var menuIndentationLevels: [Int] { anchorMenu.items.map(\.indentationLevel) }
 
     // MARK: - 菜单交互
 

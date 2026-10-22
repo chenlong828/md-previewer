@@ -169,7 +169,8 @@ WKWebView 承载 Milkdown 7.7（ProseMirror）前端。本文记录跨模块的�
   − Home/刷新两个按钮 − 间距」,显示当前锚点的 Finder 同款文件夹图标 + 目录名
   + 展开箭头;点击弹出当前锚点到文件系统根的父级链(`DirectoryTree.ancestorChain`,
   纯路径逻辑)菜单——每条带同一套 Finder 图标(FinderIcon 单点)、当前锚点勾选,
-  与 Finder 标题栏路径菜单同构,选中即重锚。右侧 Home 按钮把抽屉根切回
+  并按链上序号 `indentationLevel` 逐级右移(图标与标题一起缩进,与下方大纲树
+  共用「越深越右」的视觉语言),选中即重锚。右侧 Home 按钮把抽屉根切回
   `homeDirectoryForCurrentUser`(与菜单选择同一 `onAnchorSelected` 路径,已在
   Home 时置灰),刷新按钮重扫(单点 rescan)。锚点
   单字段两模式共用:目录模式 = 打开的目录;文件模式 = 最近一次锚定。
