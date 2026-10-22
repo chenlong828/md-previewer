@@ -127,6 +127,7 @@ if isSelftest {
     UserDefaults.standard.removeObject(forKey: "NSWindow Frame MDPreviewMainWindow")
     UserDefaults.standard.removeObject(forKey: "MDPreviewMainWindow")
     UserDefaults.standard.removeObject(forKey: "fileDrawerVisible")
+    UserDefaults.standard.removeObject(forKey: FileDrawerView.widthDefaultsKey) // 宽度记忆:断言从默认宽度起算
 
     // 0.8s:默认窗口就绪后切入目录模式再断言(等待树装载用轮询,非盲等)
     Timer.scheduledTimer(withTimeInterval: 0.8, repeats: false) { _ in
@@ -145,6 +146,24 @@ if isSelftest {
         let expectedChain = DirectoryTree.ancestorChain(of: dirURL).count
         report(doc.drawerForDiagnostics?.anchorItemCountForDiagnostics == expectedChain,
                "锚点下拉框条目=父级链(\(doc.drawerForDiagnostics?.anchorItemCountForDiagnostics ?? -1)/\(expectedChain))")
+        // 锚点菜单的 Finder 文件夹图标(用户可见承诺)与头部宽度账(控件铺满抽屉宽扣除按钮)
+        if let drawer = doc.drawerForDiagnostics {
+            report(drawer.anchorMenuItemsHaveIconsForDiagnostics, "锚点菜单每条都带 Finder 文件夹图标")
+            let frames = drawer.headerFramesForDiagnostics
+            let spacing = FileDrawerView.HeaderMetrics.spacing
+            let drawerWidth = drawer.frame.width
+            report(abs(frames.control.minX) < 0.5, "锚点控件贴抽屉左缘(实际 \(frames.control.minX))")
+            report(abs(frames.control.maxX - (frames.home.minX - spacing)) < 0.5,
+                   "锚点控件右缘=Home 按钮左缘-\(spacing)(实际 \(frames.control.maxX))")
+            report(abs(frames.home.maxX - (frames.refresh.minX - spacing)) < 0.5,
+                   "Home 按钮右缘=刷新按钮左缘-\(spacing)(实际 \(frames.home.maxX))")
+            report(abs(frames.refresh.maxX - (drawerWidth - FileDrawerView.HeaderMetrics.trailingInset)) < 0.5,
+                   "刷新按钮贴抽屉右缘(实际 \(frames.refresh.maxX)/\(drawerWidth))")
+            let expectedControlWidth = drawerWidth - frames.home.width - frames.refresh.width
+                - 2 * spacing - FileDrawerView.HeaderMetrics.trailingInset
+            report(abs(frames.control.width - expectedControlWidth) < 0.5,
+                   "锚点控件宽度=抽屉宽-两个按钮-间距(期望 \(expectedControlWidth) 实际 \(frames.control.width))")
+        }
         // lazy 点击展开链路回归(用户实测曾失效):点三角→取数同步装载→子行出现
         if let clickURL = flagValue("--clickExpand").map({ URL(fileURLWithPath: $0) }) {
             let childRows = doc.drawerForDiagnostics?.debugExpandByClick(url: clickURL) ?? -1
@@ -248,13 +267,88 @@ if isSelftest {
                    "openInCurrentWindowOrNew 当前窗口覆盖打开(菜单打开语义)")
         }
 
-        // 收起抽屉:窗宽缩回 drawerWidth(下限 minSize)
+        // Home 按钮:一键回到当前用户 Home 目录(与锚点菜单选择同一重锚路径;
+        // 已在 Home 时置灰)。菜单条目在后台重扫回填,轮询等信号而非盲等
+        if let drawer = doc.drawerForDiagnostics {
+            let homeTarget = drawer.homeTargetForDiagnostics
+            let homeChain = DirectoryTree.ancestorChain(of: homeTarget).count
+            drawer.debugHomePress()
+            var waitedHome = 0.0
+            while drawer.anchorItemCountForDiagnostics != homeChain && waitedHome < 3.0 {
+                RunLoop.main.run(mode: .default, before: Date().addingTimeInterval(0.1))
+                waitedHome += 0.1
+            }
+            report(doc.anchorRootForDiagnostics == homeTarget, "Home 按钮重锚到 Home 目录")
+            report(drawer.anchorItemCountForDiagnostics == homeChain,
+                   "Home 锚点菜单=Home 父级链(\(drawer.anchorItemCountForDiagnostics)/\(homeChain))")
+            report(!drawer.homeButtonEnabledForDiagnostics, "已在 Home 时 Home 按钮置灰")
+        }
+
+        // 边界拖拽调宽:宽度随位移变化、窗口宽度不动、收起按当前宽度缩回
+        if let window = doc.window, doc.isDrawerVisible {
+            let windowWidthBeforeResize = window.frame.width
+            doc.simulateDrawerResizeForDiagnostics(dx: 80)
+            let resizedWidth = doc.drawerWidthForDiagnostics
+            let expectedWidth = FileDrawerView.width + 80
+            report(abs(resizedWidth - expectedWidth) < 0.5,
+                   "拖拽后抽屉宽度=\(expectedWidth)(实际 \(resizedWidth))")
+            report(abs(window.frame.width - windowWidthBeforeResize) < 0.5,
+                   "拖拽调整不改变窗口宽度(实际 \(window.frame.width))")
+            report(abs((doc.drawerForDiagnostics?.frame.width ?? 0) - resizedWidth) < 1.0,
+                   "抽屉视图宽度与拖拽宽度一致")
+            // 越界夹取:大幅拖拽被夹在上界内
+            doc.simulateDrawerResizeForDiagnostics(dx: 5000)
+            report(doc.drawerWidthForDiagnostics <= max(FileDrawerView.maxWidth, FileDrawerView.minWidth),
+                   "拖拽越界夹取上界(实际 \(doc.drawerWidthForDiagnostics))")
+            // 拖回基准宽度,后续收起断言用固定值
+            doc.simulateDrawerResizeForDiagnostics(dx: -(doc.drawerWidthForDiagnostics - FileDrawerView.width))
+            report(abs(doc.drawerWidthForDiagnostics - FileDrawerView.width) < 0.5,
+                   "拖回默认宽度(实际 \(doc.drawerWidthForDiagnostics))")
+            report(abs((UserDefaults.standard.double(forKey: FileDrawerView.widthDefaultsKey) - FileDrawerView.width)) < 0.5,
+                   "拖拽结束落盘 fileDrawerWidth")
+
+            // 边界命中测试:边界处的点击必须落在分隔条上(不被 webView 吃掉);
+            // 真实事件拖动只在窗口为 key 时有效(非 key 窗口的首次点击按 AppKit 语义
+            // 被激活逻辑吞掉,不是产品缺陷——无头环境常拿不到 key window,故 SKIP)
+            if let contentView = window.contentView, let dividerHost = doc.drawerForDiagnostics {
+                let boundary = NSPoint(x: dividerHost.frame.maxX, y: contentView.bounds.midY)
+                report(contentView.hitTest(boundary) is DrawerResizeDivider,
+                       "边界命中测试落在分隔条上(实际 \(String(describing: contentView.hitTest(boundary))))")
+                window.makeKeyAndOrderFront(nil)
+                NSApp.activate(ignoringOtherApps: true)
+                RunLoop.main.run(mode: .default, before: Date().addingTimeInterval(0.2))
+                if window.isKeyWindow {
+                    let startWidth = doc.drawerWidthForDiagnostics
+                    let inWindow = contentView.convert(boundary, to: nil)
+                    func mouse(_ type: NSEvent.EventType, _ point: NSPoint) -> NSEvent? {
+                        NSEvent.mouseEvent(with: type, location: point, modifierFlags: [],
+                                           timestamp: ProcessInfo.processInfo.systemUptime,
+                                           windowNumber: window.windowNumber, context: nil,
+                                           eventNumber: 1, clickCount: 1, pressure: 1)
+                    }
+                    if let down = mouse(.leftMouseDown, inWindow),
+                       let drag = mouse(.leftMouseDragged, NSPoint(x: inWindow.x + 40, y: inWindow.y)),
+                       let up = mouse(.leftMouseUp, NSPoint(x: inWindow.x + 40, y: inWindow.y)) {
+                        window.sendEvent(down)
+                        window.sendEvent(drag)
+                        window.sendEvent(up)
+                        report(abs(doc.drawerWidthForDiagnostics - (startWidth + 40)) < 1.0,
+                               "边界按下拖动真实事件生效(期望 \(startWidth + 40) 实际 \(doc.drawerWidthForDiagnostics))")
+                        doc.simulateDrawerResizeForDiagnostics(dx: -(doc.drawerWidthForDiagnostics - FileDrawerView.width))
+                    }
+                } else {
+                    print("[DRAWER] SKIP 真实事件拖动(无 key window,首次点击被激活逻辑吞掉)")
+                }
+            }
+        }
+
+        // 收起抽屉:窗宽缩回当前抽屉宽度(下限 minSize)
         let widthBeforeCollapse = doc.window?.frame.width ?? 0
         doc.toggleDrawer()
         RunLoop.main.run(mode: .default, before: Date().addingTimeInterval(0.5))
         report(!doc.isDrawerVisible, "抽屉收起")
         if let window = doc.window {
-            let expectedAfter = max(window.minSize.width, widthBeforeCollapse - FileDrawerView.width)
+            let expectedAfter = max(window.minSize.width, widthBeforeCollapse - doc.drawerWidthForDiagnostics)
             report(abs(window.frame.width - expectedAfter) < 1.0, "收起后窗宽=\(expectedAfter)(实际 \(window.frame.width))")
         }
         finish()

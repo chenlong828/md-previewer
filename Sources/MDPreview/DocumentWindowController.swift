@@ -49,6 +49,14 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
     private var drawerRootURL: URL?
     private var drawerView: FileDrawerView!
     private var drawerWidthConstraint: NSLayoutConstraint!
+    /// 抽屉当前宽度(拖拽可调):开合动画与窗口宽度收敛都以此为准,
+    /// 收起时不变、展开时复原;初值取自全局记忆(缺省 240)
+    private var drawerWidth = FileDrawerView.rememberedWidth
+    /// 拖拽起点宽度(拖动中只按「起点宽度 + 位移」计算,不随中间值累积漂移)
+    private var drawerResizeStartWidth: CGFloat = 0
+    /// 拖拽调宽时正文最小宽度:再宽就会把编辑器挤成不可用宽度,夹取上界据此二次收紧
+    private static let minEditorWidthForDrawerResize: CGFloat = 320
+    private var drawerDivider: DrawerResizeDivider!
 
     // MARK: - 初始化
 
@@ -100,6 +108,16 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
 
         container.addSubview(webView)
 
+        // 抽屉/编辑器边界的拖拽分隔条:透明热区跨边界各 4pt,透出两侧内容,
+        // 只画 1pt 分界线;加在 webView 之后 → 位于两者之上,按下即进入调宽
+        drawerDivider = DrawerResizeDivider()
+        drawerDivider.translatesAutoresizingMaskIntoConstraints = false
+        drawerDivider.isHidden = true
+        drawerDivider.onDragBegan = { [weak self] in self?.beginDrawerResize() }
+        drawerDivider.onDragMoved = { [weak self] dx in self?.updateDrawerResize(by: dx) }
+        drawerDivider.onDragEnded = { [weak self] in self?.endDrawerResize() }
+        container.addSubview(drawerDivider)
+
         // 底部状态栏
         let statusBar = NSVisualEffectView()
         statusBar.material = .titlebar
@@ -134,6 +152,12 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
             drawerView.topAnchor.constraint(equalTo: container.topAnchor),
             drawerView.bottomAnchor.constraint(equalTo: statusBar.topAnchor),
             drawerWidthConstraint,
+
+            // 分隔条中心钉在抽屉右缘:热区左右各占 4pt,两侧内容都不留缝
+            drawerDivider.centerXAnchor.constraint(equalTo: drawerView.trailingAnchor),
+            drawerDivider.widthAnchor.constraint(equalToConstant: DrawerResizeDivider.hotZoneHalfWidth * 2),
+            drawerDivider.topAnchor.constraint(equalTo: container.topAnchor),
+            drawerDivider.bottomAnchor.constraint(equalTo: statusBar.topAnchor),
 
             webView.leadingAnchor.constraint(equalTo: drawerView.trailingAnchor),
             webView.trailingAnchor.constraint(equalTo: container.trailingAnchor),
@@ -1104,23 +1128,55 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
             drawerView.isHidden = false
             refreshDrawer()
         }
-        let target: CGFloat = visible ? FileDrawerView.width : 0
-        let delta: CGFloat = visible ? FileDrawerView.width : -FileDrawerView.width
+        // 开合按「当前宽度」(拖拽可调、跨窗记忆),不再用常量
+        let target: CGFloat = visible ? drawerWidth : 0
+        let delta: CGFloat = visible ? drawerWidth : -drawerWidth
+        if visible {
+            drawerDivider.isHidden = false
+        }
         if animated {
             NSAnimationContext.runAnimationGroup({ context in
                 context.duration = Timing.drawerAnimationDuration
                 context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
                 drawerWidthConstraint.animator().constant = target
             }, completionHandler: { [weak self] in
-                if !(self?.isDrawerVisible ?? true) { self?.drawerView.isHidden = true }
+                guard let self, !self.isDrawerVisible else { return }
+                self.drawerView.isHidden = true
+                self.drawerDivider.isHidden = true
             })
         } else {
             drawerWidthConstraint.constant = target
             drawerView.isHidden = !visible
+            drawerDivider.isHidden = !visible
         }
         // 窗口同步调整:向左伸出 drawerWidth;伸出超屏则整体收敛到屏幕宽度
         adjustWindowWidthForDrawer(delta: delta, animated: animated)
         AppDelegate.shared?.refreshViewMenuState()
+    }
+
+    // MARK: - 抽屉宽度拖拽
+
+    /// 拖拽起点:记下当前宽度(后续位移都相对它计算)
+    private func beginDrawerResize() {
+        drawerResizeStartWidth = drawerWidth
+    }
+
+    /// 拖拽中:新宽度 = 起点宽度 + 水平位移,夹取在 [抽屉下界, min(抽屉上界, 窗体宽 - 正文最小宽)];
+    /// 只改约束不改窗口宽度——拖拽是「抽屉与正文之间重新分配空间」
+    private func updateDrawerResize(by dx: CGFloat) {
+        guard isDrawerVisible, let contentView = window?.contentView else { return }
+        let upperBound = max(FileDrawerView.minWidth,
+                             min(FileDrawerView.maxWidth,
+                                 contentView.bounds.width - Self.minEditorWidthForDrawerResize))
+        let clamped = min(max(drawerResizeStartWidth + dx, FileDrawerView.minWidth), upperBound)
+        drawerWidth = clamped
+        drawerWidthConstraint.constant = clamped
+        contentView.layoutSubtreeIfNeeded() // 拖动过程中即时重排,松手前就能看到两侧宽度
+    }
+
+    /// 拖拽结束:落盘宽度(读取侧 rememberedWidth 负责越界兜底),窗口宽度不动
+    private func endDrawerResize() {
+        UserDefaults.standard.set(drawerWidth, forKey: FileDrawerView.widthDefaultsKey)
     }
 
     /// 抽屉开合的窗口宽度收敛:
@@ -1204,6 +1260,16 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
 
     /// 诊断/自检用:当前锚定目录
     var anchorRootForDiagnostics: URL? { drawerRootURL }
+
+    /// 诊断/自检用:抽屉当前宽度(拖拽调整后的有效值,开合与窗口收敛都按它)
+    var drawerWidthForDiagnostics: CGFloat { drawerWidth }
+
+    /// 诊断/自检用:模拟在边界拖拽 dx(与真实拖拽同一入口:起点 → 位移 → 收尾)
+    func simulateDrawerResizeForDiagnostics(dx: CGFloat) {
+        beginDrawerResize()
+        updateDrawerResize(by: dx)
+        endDrawerResize()
+    }
 
     // MARK: - 拖放文件
 

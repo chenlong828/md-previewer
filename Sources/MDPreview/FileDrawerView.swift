@@ -1,21 +1,32 @@
 import AppKit
-import UniformTypeIdentifiers
 
-/// 左侧文件抽屉:头部(锚点下拉框 + 刷新)+ 大纲视图树形目录。
+/// 左侧文件抽屉:头部(锚点控件 + 刷新)+ 大纲视图树形目录。
 /// 契约:load(root:) 装入扫描根;onOpenFile(URL) 双击 md 文件回调;
-/// onAnchorSelected(URL) 锚点下拉框重锚回调;select(url:) 高亮定位当前文档;reload() 重扫。
+/// onAnchorSelected(URL) 锚点控件重锚回调;select(url:) 高亮定位当前文档;reload() 重扫。
 /// 树数据是 DirectoryTree 的展示投影(权威在磁盘),lazy 按层装载:
 /// **数据源内同步装载**——NSOutlineView 展开取数(numberOfChildrenOfItem)那一刻
 /// 同步 readdir 该层,展开即出子行,无拦截/无异步/无续展(AppKit 缓存时序无关);
 /// 选中定位同口径(同步装载祖先链)。两者都是低频交互,本地单层 readdir 毫秒级;
 /// node_modules/包已在单层跳过,无大目录单层阻塞风险。
 final class FileDrawerView: NSView, NSOutlineViewDataSource, NSOutlineViewDelegate {
-    /// 抽屉固定宽度(窗口伸出/收敛计算与布局共用同一出处)
+    /// 抽屉默认宽度(首次展开的宽度;用户拖拽后以记忆宽度为准)
     static let width: CGFloat = 240
+    /// 拖拽可调宽度的下界:再窄目录名与层级缩进就没有展示空间
+    static let minWidth: CGFloat = 160
+    /// 拖拽可调宽度的上界:抽屉过宽会挤掉正文,配合「正文最小宽」二次夹取
+    static let maxWidth: CGFloat = 480
+    /// 宽度记忆键(全局,与 fileDrawerVisible 同口径;非法值由读取侧回落默认)
+    static let widthDefaultsKey = "fileDrawerWidth"
+
+    /// 记忆宽度:缺失/越界一律回落默认宽度(抽屉开合动画与窗口宽度收敛以它为准)
+    static var rememberedWidth: CGFloat {
+        let stored = UserDefaults.standard.double(forKey: widthDefaultsKey)
+        return (minWidth...maxWidth).contains(stored) ? stored : width
+    }
 
     /// 双击 md 文件回调(唯一对外动作;文件夹双击只切换展开)
     var onOpenFile: ((URL) -> Void)?
-    /// 锚点下拉框选择回调:用户把某父级目录选为新抽屉根
+    /// 锚点控件选择回调:用户把某父级目录选为新抽屉根
     var onAnchorSelected: ((URL) -> Void)?
 
     /// 当前锚定目录(抽屉扫描根)
@@ -28,16 +39,33 @@ final class FileDrawerView: NSView, NSOutlineViewDataSource, NSOutlineViewDelega
     /// 根层扫描代际:后台扫描完成回主线程时只应用最新一代,过期结果丢弃
     private var scanGeneration = 0
 
+    /// 头部尺寸:锚点控件与两个按钮共用同一组量,避免两处数字各自演化。
+    /// 自检(drawer-test)按同一常量断言「控件宽度 = 抽屉宽 - 两个按钮 - 间距」,不复制数字
+    enum HeaderMetrics {
+        static let height: CGFloat = 32
+        /// 刷新按钮与抽屉右缘的间距
+        static let trailingInset: CGFloat = 6
+        /// 锚点控件与按钮之间、按钮彼此之间的间距
+        /// (控件宽度 = 抽屉宽 - Home 按钮 - 刷新按钮 - 两处间距);
+        /// 两个图标按钮间留 4pt:Home 换根是有观感代价的动作,不和刷新挤到一起
+        static let spacing: CGFloat = 4
+        /// 图标按钮热区宽度:符号本身 16pt,补到 22pt 才好点(不小于系统侧栏按钮)
+        static let buttonWidth: CGFloat = 22
+    }
+
     private let headerBackground = NSVisualEffectView()
-    /// 锚点下拉框:列出当前锚点向上到文件系统根的父级目录链(面包屑式缩进),
-    /// 选中任一父级即重新锚定抽屉根;选中项恒为当前锚点(兼作当前目录名显示)
-    private let anchorPopup = NSPopUpButton(frame: .zero, pullsDown: false)
+    /// 锚点控件:显示当前锚点(文件夹图标 + 目录名 + 展开箭头),点击弹出父级链菜单
+    /// 供重新锚定;宽度铺满头部扣除 Home/刷新按钮后的剩余空间,选中项恒为当前锚点
+    private let anchorControl = DrawerAnchorControl()
+    private let homeButton: NSButton
     private let refreshButton: NSButton
     private let scrollView = NSScrollView()
     private let outlineView = NSOutlineView()
     private let emptyLabel = NSTextField(labelWithString: "")
 
     override init(frame frameRect: NSRect) {
+        homeButton = NSButton(image: NSImage(systemSymbolName: "house", accessibilityDescription: "Home 目录")!,
+                              target: nil, action: nil)
         refreshButton = NSButton(image: NSImage(systemSymbolName: "arrow.clockwise", accessibilityDescription: "刷新")!,
                                  target: nil, action: nil)
         super.init(frame: frameRect)
@@ -57,15 +85,18 @@ final class FileDrawerView: NSView, NSOutlineViewDataSource, NSOutlineViewDelega
         headerBackground.translatesAutoresizingMaskIntoConstraints = false
         addSubview(headerBackground)
 
-        anchorPopup.target = self
-        anchorPopup.action = #selector(anchorItemAction(_:))
-        anchorPopup.font = .systemFont(ofSize: 11, weight: .semibold)
-        anchorPopup.isBordered = false
-        anchorPopup.contentTintColor = .secondaryLabelColor
-        anchorPopup.toolTip = "锚定抽屉根目录(选择父级目录)"
-        anchorPopup.translatesAutoresizingMaskIntoConstraints = false
-        anchorPopup.setAccessibilityIdentifier("drawerAnchorPopup")
-        headerBackground.addSubview(anchorPopup)
+        anchorControl.onSelect = { [weak self] url in self?.onAnchorSelected?(url) }
+        anchorControl.translatesAutoresizingMaskIntoConstraints = false
+        anchorControl.setAccessibilityIdentifier("drawerAnchorPopup")
+        headerBackground.addSubview(anchorControl)
+
+        homeButton.target = self
+        homeButton.action = #selector(homeAction)
+        homeButton.isBordered = false
+        homeButton.contentTintColor = .secondaryLabelColor
+        homeButton.toolTip = "回到当前用户 Home 目录"
+        homeButton.translatesAutoresizingMaskIntoConstraints = false
+        headerBackground.addSubview(homeButton)
 
         refreshButton.target = self
         refreshButton.action = #selector(refreshAction)
@@ -111,14 +142,24 @@ final class FileDrawerView: NSView, NSOutlineViewDataSource, NSOutlineViewDelega
             headerBackground.topAnchor.constraint(equalTo: topAnchor),
             headerBackground.leadingAnchor.constraint(equalTo: leadingAnchor),
             headerBackground.trailingAnchor.constraint(equalTo: trailingAnchor),
-            headerBackground.heightAnchor.constraint(equalToConstant: 28),
+            headerBackground.heightAnchor.constraint(equalToConstant: HeaderMetrics.height),
 
-            anchorPopup.leadingAnchor.constraint(equalTo: headerBackground.leadingAnchor, constant: 10),
-            anchorPopup.centerYAnchor.constraint(equalTo: headerBackground.centerYAnchor),
-            anchorPopup.trailingAnchor.constraint(lessThanOrEqualTo: refreshButton.leadingAnchor, constant: -8),
+            // 锚点控件铺满头部扣除 Home/刷新按钮后的剩余宽度(不做固有宽度,不吃成「文字那么长」)
+            anchorControl.leadingAnchor.constraint(equalTo: headerBackground.leadingAnchor),
+            anchorControl.trailingAnchor.constraint(
+                equalTo: homeButton.leadingAnchor, constant: -HeaderMetrics.spacing),
+            anchorControl.topAnchor.constraint(equalTo: headerBackground.topAnchor),
+            anchorControl.bottomAnchor.constraint(equalTo: headerBackground.bottomAnchor),
 
-            refreshButton.trailingAnchor.constraint(equalTo: headerBackground.trailingAnchor, constant: -6),
+            homeButton.trailingAnchor.constraint(
+                equalTo: refreshButton.leadingAnchor, constant: -HeaderMetrics.spacing),
+            homeButton.centerYAnchor.constraint(equalTo: headerBackground.centerYAnchor),
+            homeButton.widthAnchor.constraint(equalToConstant: HeaderMetrics.buttonWidth),
+
+            refreshButton.trailingAnchor.constraint(
+                equalTo: headerBackground.trailingAnchor, constant: -HeaderMetrics.trailingInset),
             refreshButton.centerYAnchor.constraint(equalTo: headerBackground.centerYAnchor),
+            refreshButton.widthAnchor.constraint(equalToConstant: HeaderMetrics.buttonWidth),
 
             scrollView.topAnchor.constraint(equalTo: headerBackground.bottomAnchor),
             scrollView.leadingAnchor.constraint(equalTo: leadingAnchor),
@@ -299,9 +340,10 @@ final class FileDrawerView: NSView, NSOutlineViewDataSource, NSOutlineViewDelega
                 return cell
             }()
         cell.textField?.stringValue = node.name
-        // 系统图标:文件夹用 UTType.folder 通用图标,md 文件按真实文件取(深浅色自动适配)
+        // 图标与 Finder 同口径(FinderIcon 单点):文件夹按真实路径取系统图标
+        // (特殊目录图标与 Finder 一致),md 文件取真实文件图标(深浅色自动适配)
         cell.imageView?.image = node.isFolder
-            ? NSWorkspace.shared.icon(for: UTType.folder)
+            ? FinderIcon.folder(at: node.url, size: 16)
             : NSWorkspace.shared.icon(forFile: node.url.path)
         return cell
     }
@@ -320,12 +362,34 @@ final class FileDrawerView: NSView, NSOutlineViewDataSource, NSOutlineViewDelega
         root?.descendant(at: url) != nil
     }
 
-    /// 锚点下拉框当前条目数(自检断言父级链长度)
-    var anchorItemCountForDiagnostics: Int { anchorPopup.numberOfItems }
+    /// 锚点菜单当前条目数(自检断言父级链长度)
+    var anchorItemCountForDiagnostics: Int { anchorControl.menuItemCount }
 
-    /// 模拟在锚点下拉框中选择某父级目录(走 onAnchorSelected 同一回调路径)
+    /// 锚点菜单每条是否都带 Finder 文件夹图标(用户可见的核心承诺,自检守门)
+    var anchorMenuItemsHaveIconsForDiagnostics: Bool { anchorControl.allMenuItemsHaveIcons }
+
+    /// 头部三块的对齐矩形(约束求解所用的几何;按钮 frame 含 alignmentRectInsets,
+    /// 按 frame 断言会差半像素,按对齐矩形才是约束算出来的真几何)
+    var headerFramesForDiagnostics: (control: NSRect, home: NSRect, refresh: NSRect) {
+        (anchorControl.alignmentRect(forFrame: anchorControl.frame),
+         homeButton.alignmentRect(forFrame: homeButton.frame),
+         refreshButton.alignmentRect(forFrame: refreshButton.frame))
+    }
+
+    /// 模拟在锚点菜单中选择某父级目录(走 onAnchorSelected 同一回调路径)
     func debugAnchor(to url: URL) {
         onAnchorSelected?(url)
+    }
+
+    /// Home 按钮的目标目录(自检断言重锚落点)
+    var homeTargetForDiagnostics: URL { homeURL }
+
+    /// Home 按钮当前是否可用(已在 Home 时置灰;自检断言状态判断)
+    var homeButtonEnabledForDiagnostics: Bool { homeButton.isEnabled }
+
+    /// 模拟点击 Home 按钮(走 homeAction 同一路径)
+    func debugHomePress() {
+        homeAction()
     }
 
     /// 模拟用户点击三角展开指定目录(锁定 点击→取数同步装载→子行出现 全链路);
@@ -344,30 +408,27 @@ final class FileDrawerView: NSView, NSOutlineViewDataSource, NSOutlineViewDelega
         onOpenFile?(located.file.url)
     }
 
-    // MARK: - 锚点下拉框
+    // MARK: - 锚点控件
 
-    /// 按当前锚点重建父级目录链:根在顶(逐级缩进),当前锚点在末且选中
+    /// 按当前锚点重建锚点链:标签/图标取当前锚点,菜单为根 → 当前的父级链
+    /// (当前项勾选),选中即经 onAnchorSelected 重锚
     private func rebuildAnchorMenu() {
-        anchorPopup.removeAllItems()
-        guard let rootURL else { return }
-        let chain = DirectoryTree.ancestorChain(of: rootURL)
-        for (index, entry) in chain.enumerated() {
-            let item = NSMenuItem(title: entry.name, action: #selector(anchorItemAction(_:)), keyEquivalent: "")
-            item.target = self
-            item.representedObject = entry.url
-            item.indentationLevel = index
-            item.toolTip = entry.url.path
-            anchorPopup.menu?.addItem(item)
-        }
-        anchorPopup.selectItem(at: chain.count - 1) // 编程选中不触发 action
+        let chain = rootURL.map { DirectoryTree.ancestorChain(of: $0) } ?? []
+        anchorControl.update(chain: chain)
+        homeButton.isEnabled = rootURL?.standardizedFileURL != homeURL // 已在 Home 时置灰
     }
 
-    @objc private func anchorItemAction(_ sender: NSMenuItem) {
-        guard let url = sender.representedObject as? URL else { return }
-        onAnchorSelected?(url)
+    /// 当前用户 Home 目录(Home 按钮的回退目标)
+    private var homeURL: URL {
+        FileManager.default.homeDirectoryForCurrentUser.standardizedFileURL
     }
 
     // MARK: - 动作
+
+    /// Home 按钮:抽屉根切回当前用户 Home 目录(与锚点菜单选择同一重锚路径)
+    @objc private func homeAction() {
+        onAnchorSelected?(homeURL)
+    }
 
     @objc private func refreshAction() {
         rescan()
