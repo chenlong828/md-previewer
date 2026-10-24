@@ -30,7 +30,7 @@ updated: 2026-10-24
 | [2026-10-20-image-cleanup](../history/works/2026-10-20-image-cleanup/brief.md) | 图片资源生命周期（撤销不残留、关闭统一 GC 清理） | 功能 | S | 图片支持 | ✅ 已完成（已归档） |
 | [2026-10-20-file-drawer](../works/2026-10-20-file-drawer/brief.md) | 文件抽屉与目录模式（lazy 按层装载、锚定下拉框、同窗覆盖打开） | 功能 | L | 无 | 🔄 收口中（自动化全绿，待人工实证） |
 | [2026-10-21-portable-kernel](../history/works/2026-10-21-portable-kernel/brief.md) | 可移植内核与壳契约（桥协议 v2、路径语义入内核；评审有条件通过，决策 D1–D5） | 功能 | M–L | 无 | ⏸ 暂缓（评审+规格已归档，零实施；恢复时从存档重启） |
-| [2026-10-22-doc-split](../works/2026-10-22-doc-split/brief.md) | design 文档按读者下沉（architecture.md 拆出 image/drawer/诊断面） | 文档 | S | 无 | 📝 立项（待执行） |
+| [2026-10-22-doc-split](../works/2026-10-22-doc-split/brief.md) | design 文档按读者下沉（architecture.md 拆出 image/drawer/诊断面） | 文档 | S | 无 | 🔄 执行中（§3 诊断面已下沉；§2.1/§2.4 与收口待做） |
 | [2026-10-24-list-indent-four-space](../history/works/2026-10-24-list-indent-four-space/brief.md) | 列表 Tab 嵌套的 markdown 缩进（2 空格 → 标准 4 空格，首行标记不补齐） | 缺陷 | S | 无 | ✅ 已完成（已归档） |
 
 ## 批次与依赖链

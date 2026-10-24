@@ -41,7 +41,8 @@ updated: 2026-10-24
   b) 剥离到独立测试 target / 条件编译 → 生产二进制不含。
 - **结论（2026-10-14）：a**。保留为官方诊断面并文档化：三入口
   （--selftest / --screenshot / --multiwindow-test）统一 flag 语法、输出前缀、
-  退出码表，登记于 design/architecture.md §3；无人调用的 debug 桥 API 已在 W2 删除，
+  退出码表，登记于 [design/diagnostics.md](../design/diagnostics.md)（2026-10-24 自
+  architecture.md「诊断面」小节下沉）；无人调用的 debug 桥 API 已在 W2 删除，
   `window.__mdStage` 已在重构中消除。实证：W7 result.md。
 
 ## OQ-4 生产 bundle 的 minify/sourcemap 策略
