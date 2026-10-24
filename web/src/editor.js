@@ -29,6 +29,7 @@ import { selInfoProse } from './selinfo.js'
 import { getMermaidView } from './mermaid-view.js'
 import { getImageView } from './image-view.js'
 import { setupImagePaste } from './image-paste.js'
+import { fourSpaceListItem } from './list-indent.js'
 
 export function applyThemeDom() {
     document.documentElement.dataset.theme = state.theme
@@ -82,7 +83,16 @@ export async function createEditor() {
             )
             ctx.update(
                 remarkStringifyOptionsCtx,
-                (prev) => ({ ...prev, bullet: '-', emphasis: '*', strong: '*', listItemIndent: 'one' }),
+                (prev) => ({
+                    ...prev,
+                    bullet: '-',
+                    emphasis: '*',
+                    strong: '*',
+                    // 列表嵌套每级 4 空格(标准 Tab 等价缩进);缩进规则单点在
+                    // list-indent.js,不用 mdast 的 listItemIndent:'tab'
+                    // (会把首行标记也补成 "-   a"),见该文件头注释。
+                    handlers: { ...(prev.handlers || {}), listItem: fourSpaceListItem },
+                }),
             )
         })
         .use(commonmark)

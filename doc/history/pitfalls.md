@@ -2,7 +2,7 @@
 layer: history
 module: global
 status: frozen
-updated: 2026-10-20
+updated: 2026-10-24
 ---
 
 # 坑档案
@@ -109,3 +109,24 @@ updated: 2026-10-20
     不可复现,交互类工序收口必附真人点验清单);
   - 同类判据:AppKit 数据源懒加载优先在数据源内同步供给,避免
     「拦截+异步+续展」的时序重组。
+
+## P7 mdast `listItemIndent: 'tab'` 不是「4 空格缩进」,覆盖 handlers.listItem 还会顶掉 GFM 复选框
+
+- **现象**:修「列表 Tab 嵌套只缩 2 空格」时,最直觉的两步都踩坑(2026-10-24 实证):
+  1) 改 `listItemIndent: 'tab'` —— 它把首行标记也补到 4 列(`- a` → `-   a`、
+     `1. a` → `1.  a`),不是标准形态;
+  2) 改用 `handlers.listItem` 自定义 handler 后,若照抄默认 handler,任务列表
+     保存会丢掉复选框(`- [x] done` → `- done`)——GFM 的 listItem handler 在
+     选项层被顶掉(configure 顺序:extensions 先、options.handlers 后;
+     而 remark-stringify 又只读 processor data 的 `toMarkdownExtensions`,
+     用户传 `extensions` 无效)。
+- **存续条件**:仍在。库行为不改就持续存在;凡用 `handlers` 覆盖 mdast 输出,
+  都可能顶掉上游扩展(任务列表/脚注等)的同类 handler。
+- **对策落点**:
+  - `web/src/list-indent.js`:自定义 handler 内复刻复选框语义(`node.checked`),
+    首行单空格 + 续行 `max(4, 标记宽+1)`;
+  - selftest 三条断言守门(Tab 端到端 4 空格、多级 4/8 空格、任务列表复选框保留),
+    实证见 [works/2026-10-24-list-indent-four-space](works/2026-10-24-list-indent-four-space/result.md);
+  - 判据:凡为「输出格式」换 handler,先确认被顶掉的上游 handler 做了什么
+    (grep `toMarkdownExtensions` 与同名 handler),并为本工序关心的每种语法
+    各留一条断言,别只测自己改的那一种。

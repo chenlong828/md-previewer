@@ -2,7 +2,7 @@
 layer: design
 module: global
 status: current
-updated: 2026-10-21
+updated: 2026-10-24
 ---
 
 # 系统架构与设计取舍
@@ -203,6 +203,23 @@ WKWebView 承载 Milkdown 7.7（ProseMirror）前端。本文记录跨模块的�
   自然退出目录模式。目录入参的收敛点在 AppDelegate.openInNewWindow
   (CLI/拖放/LaunchServices/文档链接统一路由),目录窗口 = 空文档窗口 +
   抽屉展开。
+
+### 2.5 Markdown 序列化：列表每级 4 空格
+
+- **决策**：保存 / 源码模式切回渲染时，列表嵌套每级缩进 **4 空格**（标准
+  Tab 等价缩进），首行标记保持紧凑（`- a`、`1. a`，不是 `-   a`）。尺寸规则
+  `max(4, 标记宽 + 1)`：`- ` / `1. ` 取 4，`100. ` 这类长标记取 5，保证续行
+  不低于内容列、CommonMark 解析层级不变。
+- **理由**：用户报告 2 空格输出「不是标准 markdown 缩进、只是多了一个 Tab
+  字符」；4 空格是跨渲染器最不易误读的形态，也与「Tab = 一级缩进」的直觉一致。
+- **实现单点**：`web/src/list-indent.js` 的 `fourSpaceListItem`，经
+  `remarkStringifyOptionsCtx.handlers` 注入；解析、渲染、桥协议均不受影响。
+- **失效条件与陷阱**：mdast 的 `listItemIndent: 'tab'` 并不是「4 空格缩进」——
+  它同时把首行补到 4 列（`-   a`）。且覆盖 `handlers.listItem` 会顶掉 GFM
+  任务列表 handler（选项层晚于 extensions 生效），复选框必须在自定义 handler
+  内复刻，否则保存会吞掉 `[x]`（坑档案 P7）。
+- **保存即规范化**：既有 2 空格缩进文件可正常解析，保存时输出 4 空格（与
+  bullet/emphasis 规范化同一口径）；不做静默改写，只有用户保存才落盘。
 
 ## 3. 诊断面（OQ-3 结论：保留为官方诊断面并文档化）
 

@@ -2,7 +2,7 @@
 layer: plan
 module: global
 status: current
-updated: 2026-10-14
+updated: 2026-10-24
 ---
 
 # 跨工序开放问题
@@ -63,3 +63,15 @@ updated: 2026-10-14
 - **结论（2026-10-14）：a**。main.js 拆为 11 个职责模块（最大 bridge.js 282 行），
   state 字面量显式声明全部字段；接入 ESLint flat config 0 error；不迁 TypeScript。
   实证：W4 result.md（含拆分前后 selftest 留档）。
+
+## OQ-6 有序列表起始序号在保存后归一化为 1
+
+- **背景**：2026-10-24 列表缩进工序实测发现：输入 `100. a`（下嵌 `- b`）经编辑器
+  往返后保存为 `1. a`——Milkdown 的 ordered_list 节点在 toMarkdown 时只输出
+  `ordered: true, start: 1`（preset-commonmark `ordered-list.ts` 的 toMarkdown
+  分支硬编码 `start: 1`），起始序号丢失、序号被重排。属既有缺陷，与本次
+  缩进修复无关（自定义 handler 只按 `parent.start` 输出，mdast 层原型正确）。
+- **选项**：a) toMarkdown 读取节点 `order` 属性输出真实 `start`（改 Milkdown 层
+  序列化分支，补 selftest 往返断言）；b) 接受序号归一化，在 README「已知边界」写明。
+- **待定**：未领取。建议按 a 处理（保存路径上的内容改写，用户可感知）；
+  领取时注意与 P7 同源——覆盖/修改 mdast 序列化 handler 要先确认上游扩展行为。

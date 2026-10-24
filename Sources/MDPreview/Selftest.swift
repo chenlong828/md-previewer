@@ -560,6 +560,10 @@ func greet() -> String {
         // ── 图片编辑框窄窗口几何(关键视口:编辑列收缩下限生效时不破布局)
         testImageEditBoxNarrowWindow()
 
+        // ── 列表序列化:Tab 嵌套每级 4 空格(标准 Tab 等价缩进),首行标记紧凑。
+        //    红→绿守门:修复前 listItemIndent:'one' 每级只缩 2 空格。
+        testListIndent()
+
         // ── OQ-1/pluginSet 配置可达性:_init 必须先解析 opts 再建编辑器,
         //    no-diagram 轻量模式真正生效(mermaid 围栏保持代码块、math 仍加载)。
         //    修复前 opts 在创建之后才赋值,条件分支不可达,这里恒红。
@@ -1165,6 +1169,88 @@ func greet() -> String {
             } else {
                 self.fail("窄窗-编辑块不溢出 → 换行 \(srcScroll)/\(srcClient),块右 \(srcRight)/\(appRight),页面 \(doc)/\(appMin)")
             }
+        }
+    }
+
+    // MARK: - 列表序列化缩进(每级 4 空格)
+
+    /// 列表 Tab 嵌套的序列化宽度:每级 4 空格、首行标记紧凑(`- a` 而非 `-   a`)。
+    /// 端到端走真实 Tab 键(合成 KeyboardEvent → Milkdown listItemKeymap 的 SinkListItem);
+    /// 另断言多级嵌套与任务列表复选框不被自定义 handler 吞掉。
+    /// 红→绿:修复前 `listItemIndent: 'one'` 只缩 2 空格;`listItemIndent: 'tab'`
+    /// 则会把首行补成 `-   a`,两条断言同时守住。
+    private func testListIndent() {
+        // 1) 端到端:光标落在第二项行首,按 Tab 后序列化必须是 4 空格嵌套
+        evaluate("window.mdbridge.setMarkdown(\(JSArgs.string("- alpha\n- beta\n- gamma\n")))") { _ in }
+        // 选区设置与 Tab 派发放进页面定时器:ProseMirror 需要一拍把 DOM 选区同步进 State
+        evaluate("""
+        (function () {
+            window.__listIndentTab = null;
+            setTimeout(function () {
+                var view = document.querySelector('.ProseMirror');
+                view.focus();
+                var items = document.querySelectorAll('.ProseMirror li');
+                var p = items[1].querySelector('p') || items[1];
+                var range = document.createRange();
+                range.setStart(p.firstChild, 0);
+                range.collapse(true);
+                var sel = getSelection();
+                sel.removeAllRanges();
+                sel.addRange(range);
+                setTimeout(function () {
+                    view.dispatchEvent(new KeyboardEvent('keydown', {
+                        key: 'Tab', code: 'Tab', keyCode: 9, which: 9,
+                        bubbles: true, cancelable: true
+                    }));
+                    setTimeout(function () {
+                        window.__listIndentTab = window.mdbridge.getMarkdown();
+                    }, 150);
+                }, 150);
+            }, 150);
+        })()
+        """) { _ in }
+
+        var tabMarkdown: String?
+        let deadline = Date().addingTimeInterval(8)
+        while Date() < deadline {
+            var value: Any?
+            evaluate("window.__listIndentTab || ''") { value = $0 }
+            if let md = value as? String, !md.isEmpty {
+                tabMarkdown = md
+                break
+            }
+            pumpRunLoop(for: 0.1)
+        }
+        if let md = tabMarkdown {
+            let nested = md.contains("- alpha\n    - beta\n- gamma")
+            let compact = !md.contains("-   alpha")
+            if nested && compact {
+                pass("列表 Tab 嵌套-每级 4 空格且首行紧凑")
+            } else {
+                fail("列表 Tab 嵌套-缩进 → \(md.debugDescription)")
+            }
+        } else {
+            fail("列表 Tab 嵌套-未取到序列化结果")
+        }
+
+        // 2) 多级嵌套:2 空格旧文件注入后,输出按保存口径规范化为 4/8 空格
+        var multi = ""
+        evaluate("window.mdbridge.setMarkdown(\(JSArgs.string("- a\n  - b\n    - c\n")))") { _ in }
+        evaluate("window.mdbridge.getMarkdown()") { multi = ($0 as? String) ?? "" }
+        if multi.contains("- a\n    - b\n        - c") {
+            pass("列表多级嵌套-4/8 空格")
+        } else {
+            fail("列表多级嵌套-缩进 → \(multi.debugDescription)")
+        }
+
+        // 3) 任务列表复选框:自定义 listItem handler 必须复刻 GFM 语义,不得吞掉 [x]
+        var task = ""
+        evaluate("window.mdbridge.setMarkdown(\(JSArgs.string("- [x] done\n  - [ ] nested\n")))") { _ in }
+        evaluate("window.mdbridge.getMarkdown()") { task = ($0 as? String) ?? "" }
+        if task.contains("- [x] done\n    - [ ] nested") {
+            pass("任务列表复选框与 4 空格缩进")
+        } else {
+            fail("任务列表复选框 → \(task.debugDescription)")
         }
     }
 

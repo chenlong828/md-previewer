@@ -24,5 +24,4 @@
 ## 约定
 
 - 工序目录名即工序ID：`YYYY-MM-DD-<短名>`，立项日命名，归档不改名。
-- `history/` 现有：已归档工序（history/works/，技术债批次与 2026-10-20
-  图片两工序）与坑档案（pitfalls.md，P1–P6）。
+- `history/`：已归档工序（`history/works/`）与坑档案（`pitfalls.md`）。
