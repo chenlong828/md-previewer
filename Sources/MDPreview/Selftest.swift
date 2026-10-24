@@ -320,14 +320,19 @@ func greet() -> String {
         }
         if d2 { pass("D2 导出 HTML 标题") } else { fail("D2 导出 HTML 标题") }
 
-        // ── 主题切换
+        // ── 主题切换 + 代码高亮 token 调色板契约
+        //    调色板唯一真源是 typora.css;按语义组核对实测计算值(色值/背景/阴影),
+        //    守住两条规则:深色不得回落成浅色值(未覆盖即回落)、token 不得有背景
+        //    (第三方浅色主题带 50% 白底,即 2026-10-24 深色白块缺陷)。
         evaluate("window.mdbridge.setTheme('dark')") { _ in }
         var themeOK = false
         evaluate("document.documentElement.dataset.theme") { r in
             themeOK = (r as? String) == "dark"
         }
         if themeOK { pass("深色主题切换") } else { fail("深色主题切换") }
+        checkTokenPalette("深色", colors: SelftestRunner.darkTokenColors)
         evaluate("window.mdbridge.setTheme('light')") { _ in }
+        checkTokenPalette("浅色", colors: SelftestRunner.lightTokenColors)
 
         // ── 命令桥
         evaluate("window.mdbridge.insertTable(2,2)") { r in
@@ -690,6 +695,96 @@ func greet() -> String {
             link: document.querySelectorAll('a[href="https://example.com"]').length,
             mermaidSvg: document.querySelectorAll('[data-type="diagram"] svg').length
         });
+    })()
+    """
+
+    // MARK: - 代码高亮 token 调色板契约
+
+    /// 组名 = typora.css 的调色板变量名,成员 = 该组选择器覆盖的 token 类。
+    /// 分组语义与 CSS 一一对应:同组在浅/深两主题中共用一个变量。
+    private static let tokenGroups: [String: [String]] = [
+        "--tok-comment": ["comment", "prolog", "doctype", "cdata"],
+        "--tok-punctuation": ["punctuation"],
+        "--tok-property": ["property", "tag", "deleted"],
+        "--tok-number": ["number", "boolean", "constant", "symbol"],
+        "--tok-selector": ["selector"],
+        "--tok-string": ["string", "char", "builtin", "inserted", "attr-name"],
+        "--tok-operator": ["operator", "entity", "url"],
+        "--tok-keyword": ["keyword", "atrule"],
+        "--tok-attr-value": ["attr-value"],
+        "--tok-function": ["function", "class-name"],
+        "--tok-regex": ["regex"],
+        "--tok-important": ["important"],
+        "--tok-variable": ["variable"],
+    ]
+
+    /// 期望色值 = typora.css 两张变量表的展开(浅色取自 Prism 默认主题,
+    /// 深色为 Nord 调色板)。改色必须同步这里,否则断言失败——这是有意为之。
+    private static let lightTokenColors: [String: String] = [
+        "--tok-comment": "rgb(112, 128, 144)",
+        "--tok-punctuation": "rgb(153, 153, 153)",
+        "--tok-property": "rgb(153, 0, 85)",
+        "--tok-number": "rgb(153, 0, 85)",
+        "--tok-selector": "rgb(102, 153, 0)",
+        "--tok-string": "rgb(102, 153, 0)",
+        "--tok-operator": "rgb(154, 110, 58)",
+        "--tok-keyword": "rgb(0, 119, 170)",
+        "--tok-attr-value": "rgb(0, 119, 170)",
+        "--tok-function": "rgb(221, 74, 104)",
+        "--tok-regex": "rgb(238, 153, 0)",
+        "--tok-important": "rgb(238, 153, 0)",
+        "--tok-variable": "rgb(238, 153, 0)",
+    ]
+
+    private static let darkTokenColors: [String: String] = [
+        "--tok-comment": "rgb(127, 140, 152)",
+        "--tok-punctuation": "rgb(192, 197, 206)",
+        "--tok-property": "rgb(191, 97, 106)",
+        "--tok-number": "rgb(208, 135, 112)",
+        "--tok-selector": "rgb(180, 142, 173)",
+        "--tok-string": "rgb(163, 190, 140)",
+        "--tok-operator": "rgb(129, 161, 193)",
+        "--tok-keyword": "rgb(180, 142, 173)",
+        "--tok-attr-value": "rgb(163, 190, 140)",
+        "--tok-function": "rgb(136, 192, 208)",
+        "--tok-regex": "rgb(163, 190, 140)",
+        "--tok-important": "rgb(180, 142, 173)",
+        "--tok-variable": "rgb(208, 135, 112)",
+    ]
+
+    /// 合成 span 覆盖每个 token 类(不依赖具体语言的语法产出),同时回报
+    /// 真实渲染样本里带背景/阴影的 token 数。
+    private static let paletteProbeJS = """
+    (function () {
+        var classes = ['comment', 'prolog', 'doctype', 'cdata', 'punctuation', 'property',
+            'tag', 'boolean', 'number', 'constant', 'symbol', 'deleted', 'selector',
+            'attr-name', 'string', 'char', 'builtin', 'inserted', 'operator', 'entity',
+            'url', 'atrule', 'attr-value', 'keyword', 'function', 'class-name', 'regex',
+            'important', 'variable', 'bold', 'italic'];
+        var host = document.createElement('div');
+        host.style.cssText = 'position:absolute;left:-9999px;top:0';
+        document.body.appendChild(host);
+        var out = {};
+        classes.forEach(function (c) {
+            var s = document.createElement('span');
+            s.className = 'token ' + c;
+            s.textContent = 'x';
+            host.appendChild(s);
+            var cs = getComputedStyle(s);
+            out[c] = { color: cs.color, bg: cs.backgroundColor, shadow: cs.textShadow };
+        });
+        host.remove();
+        var tokens = Array.prototype.slice.call(document.querySelectorAll('.md-editor-view .token'));
+        out.__rendered = {
+            count: tokens.length,
+            withBg: tokens.filter(function (e) {
+                return getComputedStyle(e).backgroundColor !== 'rgba(0, 0, 0, 0)';
+            }).length,
+            shadowed: tokens.filter(function (e) {
+                return getComputedStyle(e).textShadow !== 'none';
+            }).length,
+        };
+        return JSON.stringify(out);
     })()
     """
 
@@ -1255,6 +1350,56 @@ func greet() -> String {
     }
 
     // MARK: - 基础设施(全部走 RunLoop 泵送)
+
+    /// token 调色板契约:逐组核对「成员类的色值 == 组色值」,并要求所有 token
+    /// 无背景、无阴影;同时核对真实渲染样本。任一不符列出前 6 条差异。
+    private func checkTokenPalette(_ label: String, colors: [String: String]) {
+        var probe: [String: Any] = [:]
+        evaluate(SelftestRunner.paletteProbeJS) { result in
+            if let json = result as? String,
+               let data = json.data(using: .utf8),
+               let dict = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] {
+                probe = dict
+            }
+        }
+        guard !probe.isEmpty else {
+            fail("\(label) token 调色板:探针无数据")
+            return
+        }
+        var bad: [String] = []
+        for (group, expected) in colors.sorted(by: { $0.key < $1.key }) {
+            for cls in SelftestRunner.tokenGroups[group] ?? [] {
+                guard let entry = probe[cls] as? [String: Any] else {
+                    bad.append("\(cls)=无数据")
+                    continue
+                }
+                if (entry["color"] as? String) != expected {
+                    bad.append("\(cls)=\(entry["color"] ?? "?")≠\(expected)")
+                }
+                if (entry["bg"] as? String) != "rgba(0, 0, 0, 0)" {
+                    bad.append("\(cls) 有背景 \(entry["bg"] ?? "?")")
+                }
+                if (entry["shadow"] as? String) != "none" {
+                    bad.append("\(cls) 有阴影 \(entry["shadow"] ?? "?")")
+                }
+            }
+        }
+        if let rendered = probe["__rendered"] as? [String: Any] {
+            let count = rendered["count"] as? Int ?? 0
+            let withBg = rendered["withBg"] as? Int ?? 0
+            let shadowed = rendered["shadowed"] as? Int ?? 0
+            if count < 3 { bad.append("渲染样本 token 数=\(count)") }
+            if withBg != 0 { bad.append("渲染样本 \(withBg) 个 token 带背景") }
+            if shadowed != 0 { bad.append("渲染样本 \(shadowed) 个 token 带阴影") }
+        } else {
+            bad.append("渲染样本无数据")
+        }
+        if bad.isEmpty {
+            pass("\(label) token 调色板(\(colors.count) 组 \((SelftestRunner.tokenGroups.values.flatMap { $0 }).count) 类无背景/无阴影,色值一致)")
+        } else {
+            fail("\(label) token 调色板 → " + bad.prefix(6).joined(separator: "、"))
+        }
+    }
 
     private func evaluate(_ js: String, on target: EditorWebView? = nil, completion: ((Any?) -> Void)? = nil) {
         var finished = false

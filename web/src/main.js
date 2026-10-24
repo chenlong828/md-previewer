@@ -9,7 +9,8 @@ import { setupFindBar } from './find-bar.js'
 import '@milkdown/prose/view/style/prosemirror.css'
 import '@milkdown/prose/tables/style/tables.css'
 import 'katex/dist/katex.min.css'
-import 'prismjs/themes/prism.css'
+// 代码高亮 token 调色板在 typora.css 内自持(唯一真源),不引入第三方整份主题:
+// 整份主题是浅色的,深色只能逐条打补丁,漏项会回落成浅色(token 白底缺陷成因)。
 import './typora.css'
 
 // 源码模式 textarea 编辑 → 标记脏状态

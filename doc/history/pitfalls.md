@@ -130,3 +130,19 @@ updated: 2026-10-24
   - 判据:凡为「输出格式」换 handler,先确认被顶掉的上游 handler 做了什么
     (grep `toMarkdownExtensions` 与同名 handler),并为本工序关心的每种语法
     各留一条断言,别只测自己改的那一种。
+
+## P8 整份引入第三方浅色主题 + 差量暗色覆盖,未覆盖项静默回落
+
+- **现象**:深色模式代码块里 `=` `<` `>` `:` 等运算符在灰色底上显示为浅色(`#999`)
+  实心块,`builtin` / `doctype` / `variable` 在深色下沿用浅色主题值(2026-10-24 实测:
+  暗色截图 `#999` 像素 29572,聚成 56 个 26×24 CSS px 矩形;`.token.operator`
+  计算背景 `rgba(255,255,255,0.5)`,`0.5×#fff + 0.5×#333 = #999`)。
+- **存续条件**:已消失(2026-10-24)。调色板自有化后 token 无背景、浅/深各自完整;
+  若将来重新整份引入第三方浅色主题,坑即复活——selftest「token 调色板」断言会先红。
+- **对策落点**:
+  - `web/src/typora.css`「代码高亮 token 调色板」:浅/深两张变量表 + 完整分组规则,
+    `.token { background: none }` 不变量;
+  - `Sources/MDPreview/Selftest.swift` `checkTokenPalette`:13 组 29 类逐类核对
+    实测色值/背景/阴影,浅/深各一条;
+  - 机制与失效条件见 `design/architecture.md` §2.6;实证见
+    [works/2026-10-24-code-token-palette](works/2026-10-24-code-token-palette/result.md)。
