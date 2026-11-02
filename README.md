@@ -78,7 +78,7 @@ open dist/MDPreview.app --args /path/to/folder      # 目录模式(抽屉导航)
 Sources/MDPreview/     Swift 壳(main / AppDelegate / DocumentWindowController
                        / EditorWebView / Selftest / Screenshot / Util)
 web/                   前端资源(src/main.js、src/typora.css、build.mjs、index.html)
-resources/             Info.plist、AppIcon.icns(取自 reference/Typora.app)
+resources/             Info.plist、AppIcon.icns(MP 字标,由 resources/icon/render-icon.swift 生成)
 samples/               功能演示文档
 dist/                  构建产物 MDPreview.app
 build.sh               一键构建

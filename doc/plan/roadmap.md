@@ -2,7 +2,7 @@
 layer: plan
 module: global
 status: current
-updated: 2026-10-24
+updated: 2026-11-02
 ---
 
 # 技术债修复路线图
@@ -33,6 +33,7 @@ updated: 2026-10-24
 | [2026-10-22-doc-split](../works/2026-10-22-doc-split/brief.md) | design 文档按读者下沉（architecture.md 拆出 image/drawer/诊断面） | 文档 | S | 无 | 🔄 执行中（§3 诊断面已下沉；§2.1/§2.4 与收口待做） |
 | [2026-10-24-list-indent-four-space](../history/works/2026-10-24-list-indent-four-space/brief.md) | 列表 Tab 嵌套的 markdown 缩进（2 空格 → 标准 4 空格，首行标记不补齐） | 缺陷 | S | 无 | ✅ 已完成（已归档） |
 | [2026-10-24-code-token-palette](../history/works/2026-10-24-code-token-palette/brief.md) | 代码高亮 token 调色板自有化（浅/深双值单规则，移除 Prism 浅色整主题与 prismjs 依赖） | 缺陷/重构 | S | 无 | ✅ 已完成（已归档） |
+| [2026-11-02-app-icon](../works/2026-11-02-app-icon/brief.md) | App 图标自有化（MP 字标替换 Typora 借图，16–1024 全尺寸 + 生成脚本） | 功能/视觉 | S | 无 | ✅ 已完成（待归档） |
 
 ## 批次与依赖链
 
