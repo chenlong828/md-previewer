@@ -2,7 +2,7 @@
 layer: plan
 module: global
 status: current
-updated: 2026-10-24
+updated: 2026-11-04
 ---
 
 # 跨工序开放问题
@@ -41,7 +41,7 @@ updated: 2026-10-24
   b) 剥离到独立测试 target / 条件编译 → 生产二进制不含。
 - **结论（2026-10-14）：a**。保留为官方诊断面并文档化：三入口
   （--selftest / --screenshot / --multiwindow-test）统一 flag 语法、输出前缀、
-  退出码表，登记于 [design/diagnostics.md](../design/diagnostics.md)（2026-10-24 自
+  退出码表，登记于 [design/components/CMP-diagnostics/spec.md](../design/components/CMP-diagnostics/spec.md)（2026-10-24 自
   architecture.md「诊断面」小节下沉）；无人调用的 debug 桥 API 已在 W2 删除，
   `window.__mdStage` 已在重构中消除。实证：W7 result.md。
 
@@ -76,3 +76,9 @@ updated: 2026-10-24
   序列化分支，补 selftest 往返断言）；b) 接受序号归一化，在 README「已知边界」写明。
 - **待定**：未领取。建议按 a 处理（保存路径上的内容改写，用户可感知）；
   领取时注意与 P7 同源——覆盖/修改 mdast 序列化 handler 要先确认上游扩展行为。
+
+## OQ-7 场景验证债的偿还顺序
+
+- **背景**：2026-11-04 清点后，15 个场景中只有抽屉与图片两组具备完整 3+1 自动入口，文件生命周期/外部变更/打印/打开路径/诊断失败路径仍缺反例；8 张 REQ 全部停在 `accepted`，不能转 `delivered`。
+- **选项**：a) 先复跑抽屉 + 图片两组（已有证据，成本最低），把 `SCN-0001/0011/0012` 升 `verified`；b) 先补文件编码/尾换行/外部变更的自动用例，打通 `REQ-0004`；c) 按 REQ 逐张推进，每张凑齐影响场景再转。
+- **待定**：未领取。建议 a 先建立“复跑记录”模板，再按 b 补文件生命周期，最后处理打印/打开路径等人工项。

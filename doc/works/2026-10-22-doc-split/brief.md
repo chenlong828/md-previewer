@@ -2,10 +2,12 @@
 layer: works
 module: global
 status: active
-updated: 2026-10-24
+updated: 2026-11-04
 ---
 
 # 工序 brief：design 文档按读者下沉（architecture.md 拆分层）
+
+> 2026-11-04 五态迁移：模块目录方案（`design/image/`、`design/drawer/`）由 `design/components/` 取代；诊断面已迁至 [design/components/CMP-diagnostics/spec.md](../../design/components/CMP-diagnostics/spec.md)。本工序剩余范围待重定，下文旧路径仅为当时记录。
 
 ## 需求
 

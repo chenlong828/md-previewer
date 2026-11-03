@@ -2,10 +2,12 @@
 layer: works
 module: global
 status: active
-updated: 2026-10-24
+updated: 2026-11-04
 ---
 
 # 过程记录：§3 诊断面下沉（切片 1，2026-10-24）
+
+> 2026-11-04 五态迁移：本文件中的 `design/diagnostics.md` 旧路径仅为当时记录；现行位置是 [design/components/CMP-diagnostics/spec.md](../../design/components/CMP-diagnostics/spec.md)。
 
 ## 切片选择
 

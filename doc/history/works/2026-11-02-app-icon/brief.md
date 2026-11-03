@@ -1,8 +1,8 @@
 ---
-layer: works
+layer: history
 module: global
-status: closed
-updated: 2026-11-02
+status: frozen
+updated: 2026-11-04
 ---
 
 # 工序 brief：App 图标自有化（MP 字标）

@@ -2,10 +2,12 @@
 layer: works
 module: global
 status: active
-updated: 2026-10-22
+updated: 2026-11-04
 ---
 
 # 工序: 抽屉锚点控件改版与宽度拖拽调整
+
+> 需求卡：[REQ-0001](../../requirements/REQ-0001-file-drawer.md)（本工序是文件抽屉需求的「锚点与宽度」切片）。
 
 ## 需求(2026-10-22 用户提出)
 

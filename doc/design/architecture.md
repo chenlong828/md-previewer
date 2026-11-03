@@ -2,7 +2,7 @@
 layer: design
 module: global
 status: current
-updated: 2026-10-24
+updated: 2026-11-04
 ---
 
 # 系统架构与设计取舍
@@ -11,7 +11,8 @@ MDPreview 是 Typora 风格的 macOS Markdown 所见即所得编辑器：Swift/A
 WKWebView 承载 Milkdown 7.7（ProseMirror）前端。本文记录跨模块的现行设计
 取舍，每条包含**决策、理由、失效条件**；细节实现以代码注释为准。
 
-> **2026-10-24 文档下沉**：诊断面已迁至 [diagnostics.md](diagnostics.md)（原 §3），
+> **2026-10-24 文档下沉 / 2026-11-04 五态迁移**：诊断面原 §3 于 10-24 下沉为独立文档，
+> 11-04 迁至 [components/CMP-diagnostics/spec.md](components/CMP-diagnostics/spec.md) 并补组件卡；
 > 桥协议由 §4 顺延为 §3；`history/` 冻结件中的旧编号（§3/§4）不回改，按小节标题对应。
 
 ```

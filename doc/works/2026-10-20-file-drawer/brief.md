@@ -2,10 +2,12 @@
 layer: works
 module: global
 status: active
-updated: 2026-10-20
+updated: 2026-11-04
 ---
 
 # 工序: 左侧文件抽屉(树形目录)与目录模式
+
+> 需求卡：[REQ-0001](../../requirements/REQ-0001-file-drawer.md)。本页是执行记录；why / 非目标 / 验收以卡为准。
 
 ## 需求
 

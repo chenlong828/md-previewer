@@ -1,8 +1,8 @@
 ---
-layer: works
+layer: history
 module: global
-status: closed
-updated: 2026-11-02
+status: frozen
+updated: 2026-11-04
 ---
 
 # 工序结果：App 图标自有化（MP 字标）
@@ -68,7 +68,7 @@ updated: 2026-11-02
 
 ## 遗留
 
-- 待用户确认后归档：`doc/works/2026-11-02-app-icon/` → `doc/history/works/`，
-  frontmatter 改 `layer: history` / `status: frozen`，目录名不变。
+- 已于 2026-11-04 五态迁移归档：`doc/works/2026-11-02-app-icon/` → `doc/history/works/`，
+  frontmatter 已改 `layer: history` / `status: frozen`，目录名不变。
 - 若后续想要深色 / 实心 / 无底等变体，改脚本顶部常量重跑即可，不影响应用逻辑。
 - `dist/MDPreview.zip` 为 10-27 的旧打包产物（gitignored），本次未重压；需要分发时再打包。
