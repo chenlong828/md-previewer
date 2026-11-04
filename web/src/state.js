@@ -25,6 +25,9 @@ export const state = {
     codeLanguage: '',
     codeAllowHighlight: true,
     codeTokenCount: 0,
+    // 行号显示偏好:全局阅读设置(原生 UserDefaults 是权威,setCode 时同步过来),
+    // 只影响代码视图布局;不是文档内容,不写文件、不产生 changed。
+    codeLineNumbers: true,
 }
 
 // 当前文档内容的单一真相源:渲染模式读编辑器 doc,源码模式读 textarea。

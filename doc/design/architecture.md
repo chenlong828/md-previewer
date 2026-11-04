@@ -258,6 +258,14 @@ WKWebView 承载 Milkdown 7.7（ProseMirror）前端。本文记录跨模块的�
 - **理由**：把代码塞进 Markdown 围栏块虽省事，但会让只读文件进入可编辑数据模型——
   一次 ⌘S 就把代码写成 md；且 ProseMirror 解析大文件成本高、围栏转义会改字符。
   独立只读面让「不写盘」成为结构约束，而不是靠禁菜单。
+- **行号与按行阅读（2026-11-04）**：`#code-view > code` 内部改为每个**逻辑行**一个
+  `.code-line` 块，高亮结果整体生成后按 `\n` 拆行（跨行 token 克隆同一属性），
+  不按行重新解析。行号由 `.code-line-number::before { content: attr(data-line) }`
+  生成，是表现层、不进入文本节点/复制/查找；空行用 `<br>` 保复制，末行空行不补。
+  行内容 `white-space: pre-wrap` + `overflow-wrap: anywhere`，行号对齐逻辑行首，
+  不产生横向代码滚动。当前行（点击/⌘F/方向键）只加 `.is-current`，会话级；
+  行号开关为全局 `UserDefaults["codeLineNumbersVisible"]`（默认 true），菜单入口在
+  `CMP-app-shell`，切换只改布局类、不重绘 token、不发 `changed`。
 - **不变量**：
   - 代码文档 `isDirty` 恒 false、不发 `changed`、关闭不弹保存确认；保存/另存为/
     源码模式/插入图片/HTML 导出在菜单与代码路径双重禁用。
@@ -270,15 +278,20 @@ WKWebView 承载 Milkdown 7.7（ProseMirror）前端。本文记录跨模块的�
   - 打开入口与 Markdown 完全一致（⌘O/抽屉/拖放/CLI/最近/文档链接）；外部打开
     仍新窗口、程序内覆盖当前窗口。
   - 代码查找用文本 Range 选区实现（命中计数 + 循环定位），不重建 DOM，避免打断
-    token 结构。
-- **实现单点**：Swift `FileSupport` + `DocumentWindowController` 的 kind 分支；
-  web `languages.js`（语法注册与 hast→DOM）、`code-view.js`（渲染/切换/查找/降级）、
-  `bridge.js`（`setCode`/`setCodeLanguage`/`isCodeMode`/`codeInfo`/`hasLanguages`）。
+    token 结构；行结构下偏移仍按原文本计算，再映射到行内容文本节点。
+  - 行结构是表现层：逐行 `.code-line-content` 以 `\n` 拼接必须等于 `state.codeText`；
+    行号数字不进入复制/查找/HTML 导出；开关不改变文件字节、不产生 `changed`。
+- **实现单点**：Swift `FileSupport` + `DocumentWindowController` 的 kind 分支与行号
+  偏好入口；web `languages.js`（语法注册与 hast→DOM）、`code-view.js`
+  （行拆/渲染/切换/当前行/查找/降级/开关）、`bridge.js`
+  （`setCode`/`setCodeLanguage`/`setCodeLineNumbers`/`isCodeMode`/`codeInfo`/
+  `hasLanguages`）。
 - **失效条件**：新增语言只加 Swift 表会让「双端语言清单一致」先红；只加 web 注册
   会表现为「未知语法回落纯文本」而不是报错；`#code-view` 样式若写回 `pre` 全局
-  规则会污染 Markdown 围栏代码块的底色/内边距。
-- **边界**：无扩展名文件（`Dockerfile`/`Makefile`）不识别；不做代码编辑、行号、
-  折叠与 LSP；HTML 导出对代码文档不可用。
+  规则会污染 Markdown 围栏代码块的底色/内边距；行号若改回文本节点会污染复制/
+  查找，selftest 选择断言先红。
+- **边界**：无扩展名文件（`Dockerfile`/`Makefile`）不识别；不做代码编辑、折叠、
+  minimap 与 LSP；Markdown 围栏代码块没有行号；HTML 导出对代码文档不可用。
 
 ## 3. 桥协议
 
@@ -297,9 +310,10 @@ WKWebView 承载 Milkdown 7.7（ProseMirror）前端。本文记录跨模块的�
   blob|file/mime/dataBase64/path),Swift→JS `onImageImported(requestId,
   {ok,src})`;插入唯一入口是 `insertImageCommand`(formatCommand 转发)。
 - 代码视图增量(2026-11-04,向后兼容,纯 Swift→JS):`setCode(text,
-  {language, allowHighlight})`、`setCodeLanguage(id)`、`isCodeMode()`、
-  `codeInfo()`、`hasLanguages(ids)`。JS→Swift 无新增 op:代码文档不发
-  `changed`/`stats`,行数与字符数由 Swift 侧按文本计算。
+  {language, allowHighlight, lineNumbers?})`、`setCodeLanguage(id)`、
+  `setCodeLineNumbers(visible)`、`isCodeMode()`、`codeInfo()`（含
+  `lineNumbers`/`currentLine`）、`hasLanguages(ids)`。JS→Swift 无新增 op:
+  代码文档不发 `changed`/`stats`,行数与字符数由 Swift 侧按文本计算。
 - 命令转发：菜单/右键 → `performEditorAction` → spec.jsCommand →
   `formatCommand`/`tableCommand`；milkdown 命令为**位置参数**形态
   （如 `wrapInHeadingCommand(2)`），payload 标量需 `.fragmentsAllowed` 序列化。

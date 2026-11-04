@@ -41,7 +41,7 @@ updated: 2026-11-04
 
 | 场景 | 状态 | 本次新增/修改的断言 |
 |---|---|---|
-| [SCN-0016 打开并查看代码文件](../design/scenarios/editing/document-lifecycle/view-code-file/scenario.md) | verified | 扩展名定语言与高亮；切换语言/纯文本；只读无脏；查找；PDF；大文件降级；未知扩展名拒绝（反例） |
+| [SCN-0016 打开并查看代码文件](../design/scenarios/editing/document-lifecycle/view-code-file/scenario.md) | verified（首版；行号增量在 REQ-0010 下 active） | 扩展名定语言与高亮；切换语言/纯文本；只读无脏；查找；PDF；大文件降级；未知扩展名拒绝（反例） |
 
 受影响行为：抽屉文件列表包含可打开的代码文件；文档内链接指向代码文件时在应用内打开；最近文件包含代码文件。
 
@@ -55,3 +55,5 @@ updated: 2026-11-04
 不另立测试。验收 = `SCN-0016` 全部 `verified` + 约束未违反。
 
 2026-11-04：SCN-0016 的 3+1 断言通过（`--selftest`），转 `delivered`；同日用户完成人工 GUI 核对并确认无问题，记录见 [工序 result](../history/works/2026-11-04-code-file-view/result.md)。
+
+后续（2026-11-04）：用户追加行号/软换行/当前行/开关，另立 [REQ-0010](REQ-0010-code-view-line-numbers.md)；本卡的「不做行号」是首版非目标，不被回写为已交付内容。

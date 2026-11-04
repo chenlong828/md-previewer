@@ -10,6 +10,7 @@ enum MenuID {
     static let recentsMenu = NSUserInterfaceItemIdentifier("recentsMenu")
     static let viewSourceMode = NSUserInterfaceItemIdentifier("view.sourceMode")
     static let viewDrawer = NSUserInterfaceItemIdentifier("view.drawer")
+    static let viewCodeLineNumbers = NSUserInterfaceItemIdentifier("view.codeLineNumbers")
     static let viewHighlightLanguage = NSUserInterfaceItemIdentifier("view.highlightLanguage")
     static let appearanceAuto = NSUserInterfaceItemIdentifier("appearance.auto")
     static let appearanceLight = NSUserInterfaceItemIdentifier("appearance.light")
@@ -204,6 +205,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
     }
 
+    /// 行号偏好变更后广播所有代码窗口;Markdown 窗口由控制器自行 no-op。
+    func applyCodeLineNumbersToAllDocuments() {
+        for controller in documents {
+            controller.applyCodeLineNumbersPreference()
+        }
+    }
+
     func setAppearanceMode(_ mode: String) {
         switch mode {
         case "light": pinnedAppearance = NSAppearance.Name.aqua
@@ -234,6 +242,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let inSource = currentDocument?.inSourceMode ?? false
         updateMenuItem(in: MenuID.viewMenu, id: MenuID.viewSourceMode, selected: inSource)
         updateMenuItem(in: MenuID.viewMenu, id: MenuID.viewDrawer, selected: currentDocument?.isDrawerVisible ?? false)
+        updateMenuItem(in: MenuID.viewMenu, id: MenuID.viewCodeLineNumbers, selected: DocumentWindowController.codeLineNumbersVisible)
     }
 
     private func updateMenuItem(in menuId: NSUserInterfaceItemIdentifier, id: NSUserInterfaceItemIdentifier, selected: Bool) {
@@ -439,6 +448,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             let sourceItem = menu.addItem(withTitle: "源码模式", action: #selector(DocumentWindowController.toggleSourceModeAction(_:)), keyEquivalent: "/")
             sourceItem.identifier = MenuID.viewSourceMode
             menu.addItem(.separator())
+            // 行号开关:代码文档专用(REQ-0010)。全局偏好,勾选状态由 validateMenuItem
+            // 与 refreshViewMenuState 同步;Markdown 文档置灰。
+            let lineNumberItem = menu.addItem(
+                withTitle: "显示行号",
+                action: #selector(DocumentWindowController.toggleCodeLineNumbersAction(_:)),
+                keyEquivalent: "")
+            lineNumberItem.identifier = MenuID.viewCodeLineNumbers
             // 高亮语言子菜单:代码文档专用(REQ-0009)。勾选状态由 menuNeedsUpdate 刷新,
             // 关闭自动置灰以避免 AppKit 默认校验覆盖我们的状态。
             Self.appendSubmenu("高亮语言", to: menu, id: MenuID.viewHighlightLanguage) { languageMenu in

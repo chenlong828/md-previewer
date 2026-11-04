@@ -14,7 +14,7 @@ updated: 2026-11-04
 - 单元：组件
 - 层 / 类型：L2 整合；技术边界 + 应用编排
 - 业务价值：为使用者提供「一个进程、一个 Dock 图标、多个文档窗口」的 macOS 应用外壳；没有它，文件无法被打开到正确的窗口，菜单/快捷键/最近文件也没有统一入口。
-- 负责：应用启动与参数路由、窗口创建/替换/关闭、菜单与快捷键、最近文件、缩放与外观的应用、退出前的脏文档确认；「视图 → 高亮语言」菜单只做入口与勾选同步，语言判定归 `CMP-code-view`。
+- 负责：应用启动与参数路由、窗口创建/替换/关闭、菜单与快捷键、最近文件、缩放与外观的应用、退出前的脏文档确认；「视图 → 高亮语言」菜单只做入口与勾选同步，语言判定归 `CMP-code-view`；「视图 → 显示行号」菜单只做入口/勾选与全局广播，偏好判定归 `CMP-code-view`。
 - 不负责：文件内容读写（`CMP-document-io`）、编辑器内部行为（`CMP-editor`）、抽屉树（`CMP-drawer`）、导出实现（`CMP-export`）。
 - 内部逻辑：`AppDelegate` 维护文档窗口集合与打开路由；`DocumentWindowController` 承载单文档窗口；`EditorCommands` 是菜单/右键共用的命令表。
 - 拥有的数据：窗口 frame、最近文件列表、缩放比例、外观锁定；不拥有文档正文。
@@ -26,6 +26,7 @@ updated: 2026-11-04
   - `CMP-app-shell#recent-files`：最近文件列表与清除。
   - `CMP-app-shell#menu-commands`：`EditorCommands` 为菜单与右键的唯一命令真源；`availableInCode` 标记只读代码文档下仍可用的命令（拷贝/全选/查找）。
   - `CMP-app-shell#highlight-language-menu`：视图 → 高亮语言子菜单；仅代码文档可用，勾选「自动/纯文本/语言 id」由窗口的当前选择同步。
+  - `CMP-app-shell#code-line-numbers-menu`：视图 →「显示行号」；仅代码文档可用，勾选反映全局偏好；点击写入偏好并广播所有代码窗口，Markdown 窗口不受影响。
   - `CMP-app-shell#zoom`：⌘+ / ⌘− / ⌘0，比例持久化。
   - `CMP-app-shell#appearance`：跟随系统或锁定浅/深色。
   - `CMP-app-shell#quit`：有脏文档时先确认，取消则不退出。
@@ -34,8 +35,10 @@ updated: 2026-11-04
   - `CMP-app-shell/Sources/MDPreview/AppDelegate.swift#applicationDidFinishLaunching`
   - `CMP-app-shell/Sources/MDPreview/AppDelegate.swift#openInNewWindow`
   - `CMP-app-shell/Sources/MDPreview/DocumentWindowController.swift#openDocument`
+  - `CMP-app-shell/Sources/MDPreview/DocumentWindowController.swift#toggleCodeLineNumbersAction`
   - `CMP-app-shell/Sources/MDPreview/EditorCommands.swift#EditorCommands`
   - `CMP-app-shell/Sources/MDPreview/AppDelegate.swift#buildMenus`
+  - `CMP-app-shell/Sources/MDPreview/AppDelegate.swift#applyCodeLineNumbersToAllDocuments`
 - 依赖：`CMP-document-io`（打开/保存）、`CMP-editor`（内容面）、`CMP-drawer`（目录导航）、`CMP-export`（导出）、`CMP-diagnostics`（测试入口）。
 - 冷热属性：冷路径；不进入编辑输入热路径。
 - 尺寸预算：目标 ≤120k token；当前约 1.1k 行（main 362 + AppDelegate 476 + EditorCommands 104 + 窗口编排部分），实测待脚本。
@@ -50,6 +53,7 @@ updated: 2026-11-04
 - `quit` 的错误模式：用户取消则 `applicationShouldTerminate` 返回 `.terminateCancel`，不丢未保存内容。
 - `menu-commands` 的不变量：`EditorCommands.all` 的动作集合与菜单/右键实际动作一致；新增命令只改一处；`availableInCode` 默认 false，代码文档只放行拷贝/全选/查找。
 - `highlight-language-menu` 的不变量：菜单项 representedObject = auto/plaintext/语言 id；勾选与窗口 `highlightMenuSelection` 同步；非代码文档整组置灰；点击只重绘不写文件。
+- `code-line-numbers-menu` 的不变量：菜单项 state 由 `DocumentWindowController.codeLineNumbersVisible` 单向派生；非代码文档置灰；切换写入 `UserDefaults["codeLineNumbersVisible"]` 并广播所有代码窗口；不写文件、不产生 `changed`；Markdown 窗口无效果。
 - `open-document` 的打开面板类型 = `FileSupport.openableUTTypes`（Markdown + 代码），与抽屉过滤/链接拦截同源。
 
 ## 验证计划
@@ -61,6 +65,7 @@ updated: 2026-11-04
 | `#zoom` | `--selftest`：「缩放应用」 |
 | `#appearance` | `--selftest`：「深色主题切换」 |
 | `#highlight-language-menu` | `--selftest`：「代码视图 语言表覆盖扩展名」「代码视图 双端语言清单一致」；勾选/置灰人工 |
+| `#code-line-numbers-menu` | `--selftest`：「代码视图 行号开关与复制文本」；勾选/跨窗口广播人工（R8，2026-11-04 用户确认） |
 | `#open-document` / `#quit` | 人工：CLI/拖放/⌘O/最近 + 脏文档退出 |
 
 ## 数据所有权与预算
@@ -70,6 +75,7 @@ updated: 2026-11-04
 | 最近文件 | `AppDelegate.addRecentFile` | 菜单 | 单进程 |
 | 窗口 frame / 缩放 / 外观 | 本组件 | 本组件 | UserDefaults |
 | 文档正文 | `CMP-document-io` | 本组件只传引用 | 不复制 |
+| 代码行号显示偏好 | `CMP-code-view`（控制器静态入口） | 本组件菜单勾选 | 单一来源，本组件不另存 |
 
 ## 删除测试
 

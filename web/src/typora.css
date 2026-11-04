@@ -22,6 +22,7 @@
     --body-font: -apple-system, BlinkMacSystemFont, "Helvetica Neue", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Segoe UI Emoji", sans-serif;
     --editor-max-width: 860px;
     --editor-padding: 30px;
+    --code-current-line-bg: #f1f6fb;
 }
 
 html[data-theme="dark"] {
@@ -37,6 +38,7 @@ html[data-theme="dark"] {
     --code-fence-bg: #333333;
     --select-bg: #2d5a8a;
     --hr-bg: #484848;
+    --code-current-line-bg: #343b45;
     color-scheme: dark;
 }
 
@@ -342,6 +344,8 @@ body.source-mode #source-editor { display: block; }
 
 #code-view {
     display: none;
+    --code-line-height: 1.55;
+    --code-gutter-digits: 2;
     margin: 0;
     width: 100%;
     min-width: calc(var(--editor-max-width) / var(--app-zoom)); /* 与 #app 同一视觉下限(补偿 zoom) */
@@ -351,10 +355,10 @@ body.source-mode #source-editor { display: block; }
     color: var(--text-color);
     font-family: var(--monospace);
     font-size: 13.5px;
-    line-height: 1.55;
+    line-height: var(--code-line-height);
     tab-size: 4;
-    white-space: pre;
-    overflow-x: auto;
+    white-space: normal;
+    overflow-x: hidden;
     border: none;
     border-radius: 0;
     outline: none;
@@ -367,21 +371,66 @@ body.code-mode #code-view { display: block; }
 
 /* 全局 code 规则给行内代码加了边框/底色,代码视图里要还原成纯文本块 */
 #code-view code {
+    display: block;
     border: none;
     background: none;
     padding: 0;
     border-radius: 0;
     font-size: inherit;
     font-family: inherit;
-    white-space: inherit;
+    white-space: normal;
 }
+
+/* 逻辑行网格:左行号槽 + 内容槽。行号数字用生成内容,不进入文本节点/复制。 */
+.code-line {
+    display: grid;
+    grid-template-columns: calc(var(--code-gutter-digits) * 1ch + 18px) minmax(0, 1fr);
+    column-gap: 12px;
+    align-items: start;
+    min-height: calc(1em * var(--code-line-height));
+    white-space: normal;
+}
+
+.code-line-number {
+    display: block;
+    align-self: stretch;
+    padding-right: 8px;
+    border-right: 1px solid var(--border-color);
+    color: var(--text-secondary);
+    text-align: right;
+    white-space: nowrap;
+    user-select: none;
+    -webkit-user-select: none;
+    font-variant-numeric: tabular-nums;
+}
+
+.code-line-number::before { content: attr(data-line); }
+
+.code-line-content {
+    min-width: 0;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+
+/* 行号关闭:列宽归零、隐藏行号槽;空行靠 min-height 保持高度。 */
+#code-view.no-line-numbers .code-line {
+    grid-template-columns: 0 minmax(0, 1fr);
+    column-gap: 0;
+}
+#code-view.no-line-numbers .code-line-number { display: none; }
+
+/* 当前行:点击/⌘F/方向键;只改背景,不改变文本与选区。 */
+.code-line.is-current { background: var(--code-current-line-bg); border-radius: 3px; }
+.code-line.is-current .code-line-number { color: var(--text-color); }
 
 /* ---------- 打印 / 导出 ---------- */
 
 @media print {
     html { font-size: 13px; }
     #app { max-width: none; padding: 0; zoom: 1; }
-    #code-view { padding: 0; zoom: 1; }
+    #code-view { padding: 0; zoom: 1; page-break-inside: auto; break-inside: auto; }
+    #code-view .code-line { break-inside: avoid; }
+    #code-view .code-line.is-current { background: transparent; }
     pre, table, blockquote, h1, h2, h3, h4, h5, h6, svg, [data-type="math_block"] { page-break-inside: avoid; }
     body { background: #fff; color: #000; }
     html[data-theme="dark"] { --bg-color: #fff; --text-color: #000; --table-border: #bbb; --border-color: #ccc; --code-fence-bg: #f5f5f5; --code-bg: #f0f0f0; --code-border: #ddd; --table-bg: #f8f8f8; --text-secondary: #555; --hr-bg: #ccc; --link-color: #0645ad; }

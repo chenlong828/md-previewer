@@ -10,7 +10,7 @@ import { computeStats } from './stats.js'
 import { createEditor, toggleSource as applySourceToggle, applyThemeDom, applyMermaidTheme } from './editor.js'
 import { findKey, findUI } from './find.js'
 import { openFindBar, closeFindBar, stepFind, runFind } from './find-bar.js'
-import { showCode, hideCode, setCodeLanguage as applyCodeLanguage, isCodeMode, codeInfo, codeFindCount } from './code-view.js'
+import { showCode, hideCode, setCodeLanguage as applyCodeLanguage, setCodeLineNumbers as applyCodeLineNumbers, isCodeMode, codeInfo, codeFindCount } from './code-view.js'
 import { hasLanguage } from './languages.js'
 import { tableCommandImpls } from './tables.js'
 import { commandRegistry } from './commands.js'
@@ -65,6 +65,8 @@ window.mdbridge = {
         showCode(text || '', {
             language: typeof opts.language === 'string' ? opts.language : 'plaintext',
             allowHighlight: opts.allowHighlight !== false,
+            // 不传时沿用 web 当前偏好(自检/旧调用兼容);原生装载代码文档时显式传入。
+            lineNumbers: typeof opts.lineNumbers === 'boolean' ? opts.lineNumbers : undefined,
         })
         // 代码视图重建后旧选区失效:查找栏开着且有查询时重算命中
         if (document.body.classList.contains('finding') && findUI.query) {
@@ -80,6 +82,11 @@ window.mdbridge = {
             runFind(findUI.query, { caseSensitive: findUI.caseSensitive })
         }
         return ok
+    },
+
+    /** 切换行号显示:只改布局类,不重绘 token、不写文件;非代码模式 no-op */
+    setCodeLineNumbers(visible) {
+        return applyCodeLineNumbers(!!visible)
     },
 
     isCodeMode() {

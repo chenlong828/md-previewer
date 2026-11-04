@@ -56,6 +56,14 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
     private var codeHighlightAllowed = true
     /// 单文件高亮上限(UTF-8 字节):超过则纯文本渲染,保证打开大文件不卡死
     static let codeHighlightByteLimit = 512 * 1024
+    /// 代码视图行号显示偏好(全局阅读设置,跨窗口;缺省开启)。
+    /// 偏好归 CMP-code-view,菜单入口归 CMP-app-shell;不写文件、不产生 changed。
+    static let codeLineNumbersDefaultsKey = "codeLineNumbersVisible"
+    static var codeLineNumbersVisible: Bool {
+        let defaults = UserDefaults.standard
+        guard defaults.object(forKey: codeLineNumbersDefaultsKey) != nil else { return true }
+        return defaults.bool(forKey: codeLineNumbersDefaultsKey)
+    }
 
     var isCodeDocument: Bool {
         if case .code = documentKind { return true }
@@ -375,6 +383,7 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
         let opts: [String: Any] = [
             "language": language,
             "allowHighlight": allowHighlight,
+            "lineNumbers": Self.codeLineNumbersVisible,
         ]
         let optsJSON = (try? JSONSerialization.data(withJSONObject: opts))
             .flatMap { String(data: $0, encoding: .utf8) } ?? "{}"
@@ -1168,6 +1177,9 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
             return isReady && !isCodeDocument
         case #selector(setHighlightLanguageAction(_:)):
             return isCodeDocument
+        case #selector(toggleCodeLineNumbersAction(_:)):
+            menuItem.state = Self.codeLineNumbersVisible ? .on : .off
+            return isCodeDocument
         default:
             return isReady
         }
@@ -1201,6 +1213,22 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
     @objc func setHighlightLanguageAction(_ sender: NSMenuItem) {
         guard isCodeDocument, let id = sender.representedObject as? String else { return }
         applyHighlightLanguage(id)
+    }
+
+    /// 视图 → 显示行号:写全局偏好并广播所有代码窗口;Markdown 窗口不参与。
+    @objc func toggleCodeLineNumbersAction(_ sender: Any?) {
+        guard isCodeDocument else { return }
+        let visible = !Self.codeLineNumbersVisible
+        UserDefaults.standard.set(visible, forKey: Self.codeLineNumbersDefaultsKey)
+        AppDelegate.shared?.applyCodeLineNumbersToAllDocuments()
+        AppDelegate.shared?.refreshViewMenuState()
+    }
+
+    /// 按当前全局偏好刷新本窗口代码视图的行号布局(非代码文档/未就绪 no-op)。
+    func applyCodeLineNumbersPreference() {
+        guard isCodeDocument, isReady else { return }
+        let flag = Self.codeLineNumbersVisible ? "true" : "false"
+        callJS("window.mdbridge.setCodeLineNumbers(\(flag))")
     }
 
     /// 应用高亮语言选择:auto 清空覆盖、其余(含 plaintext)记为覆盖;只重绘不写文件。

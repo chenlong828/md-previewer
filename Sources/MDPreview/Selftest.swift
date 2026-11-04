@@ -338,6 +338,11 @@ func greet() -> String {
         //    自动语言 → 切换语言 → 纯文本 → 未知语法回落 → 查找 → 大文件降级 → 退出。
         //    断言按「DOM 形态 + token 数 + 文本原样」三重口径,不依赖具体语法树。
         let codeSample = "func greet(name: String) -> String {\n    let value = 1\n    return \"hi \\(name) \\(value)\"\n}\n"
+        // 行号样本:含空行、长行(软换行)、末尾换行(最后空行);行数按 split 口径。
+        let longCodeLine = "    let message = \"" + String(repeating: "x", count: 240) + "\""
+        // 多行块注释用来守门「跨行 token 按行克隆」；空行/末尾空行用来守门复制保真。
+        let lineNumberSample = "import Foundation\n/*\n line one\n line two\n*/\n\nfunc greet(name: String) -> String {\n" + longCodeLine + "\n    return message\n}\n"
+        let lineNumberCount = lineNumberSample.split(separator: "\n", omittingEmptySubsequences: false).count
 
         /// 代码视图 DOM 快照(文本原样性、token 数、显隐关系、桥状态一次取回)
         func codeSnapshot(_ done: @escaping ([String: Any]) -> Void) {
@@ -345,12 +350,23 @@ func greet() -> String {
             JSON.stringify((function(){
                 var cv = document.getElementById('code-view');
                 var code = cv.querySelector('code');
+                var contents = code.querySelectorAll('.code-line-content');
+                var numbers = code.querySelectorAll('.code-line-number');
+                var sel = window.getSelection();
                 return {
                     mode: document.body.classList.contains('code-mode'),
                     appVisible: getComputedStyle(document.getElementById('app')).display !== 'none',
                     tokens: cv.querySelectorAll('.token').length,
                     lang: code.className,
-                    text: code.textContent,
+                    // 行结构:逐行文本以 \\n 拼接 = 原文(行号/生成内容不入 textContent)
+                    text: Array.prototype.map.call(contents, function(x){return x.textContent}).join('\\n'),
+                    lineCount: code.querySelectorAll('.code-line').length,
+                    lineNumbersVisible: !cv.classList.contains('no-line-numbers'),
+                    gutterDisplay: numbers.length ? getComputedStyle(numbers[0]).display : 'none',
+                    firstNumber: numbers.length ? getComputedStyle(numbers[0], '::before').content : '',
+                    whiteSpace: contents.length ? getComputedStyle(contents[0]).whiteSpace : '',
+                    scrollOverflow: cv.scrollWidth - cv.clientWidth,
+                    selected: sel ? sel.toString() : '',
                     info: window.mdbridge.codeInfo()
                 };
             })())
@@ -471,13 +487,151 @@ func greet() -> String {
         }
         if codeParity { pass("代码视图 双端语言清单一致(\(FileSupport.codeLanguages.count) 种)") } else { fail("代码视图 双端语言清单一致") }
 
+        // ── 行号/软换行/当前行/开关(REQ-0010)
+        var codeLineNumbers = false
+        waitForCollect("代码视图 行号与软换行", timeout: 10) { done in
+            self.evaluate("window.mdbridge.setCode(\(JSArgs.string(lineNumberSample)), {\"language\":\"swift\",\"allowHighlight\":true,\"lineNumbers\":true})") { _ in
+                codeSnapshot { d in
+                    let info = d["info"] as? [String: Any]
+                    codeLineNumbers = (d["lineCount"] as? Int) == lineNumberCount
+                        && (d["text"] as? String) == lineNumberSample
+                        && (d["firstNumber"] as? String ?? "").contains("1")
+                        && (d["gutterDisplay"] as? String) == "block"
+                        && (d["whiteSpace"] as? String) == "pre-wrap"
+                        && (d["scrollOverflow"] as? Int ?? 999) <= 1
+                        && (d["lineNumbersVisible"] as? Bool) == true
+                        && (info?["lineNumbers"] as? Bool) == true
+                    done()
+                }
+            }
+        }
+        if codeLineNumbers { pass("代码视图 行号与软换行") } else { fail("代码视图 行号与软换行") }
+
+        var codeCurrentLine = false
+        waitForCollect("代码视图 当前行点击与查找定位", timeout: 10) { done in
+            self.evaluate("window.mdbridge.setCode(\(JSArgs.string(codeSample)), {\"language\":\"swift\",\"allowHighlight\":true,\"lineNumbers\":true})") { _ in
+                self.evaluate("""
+                (function(){
+                    var line = document.querySelectorAll('#code-view .code-line')[0];
+                    line.dispatchEvent(new MouseEvent('click', {bubbles: true}));
+                    var clicked = line.classList.contains('is-current');
+                    line.dispatchEvent(new KeyboardEvent('keydown', {key: 'ArrowDown', bubbles: true}));
+                    var arrow = window.mdbridge.codeInfo().currentLine === 1;
+                    window.mdbridge.openFindBar();
+                    var input = document.getElementById('find-input');
+                    input.value = 'return';
+                    input.dispatchEvent(new Event('input'));
+                    var cur = document.querySelector('#code-view .code-line.is-current');
+                    return JSON.stringify({
+                        clicked: clicked,
+                        arrow: arrow,
+                        current: window.mdbridge.codeInfo().currentLine,
+                        text: cur ? cur.querySelector('.code-line-content').textContent : '',
+                        selected: window.getSelection().toString()
+                    });
+                })()
+                """) { r in
+                    var clicked = false
+                    if let s = r as? String, let data = s.data(using: .utf8),
+                       let d = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] {
+                        clicked = (d["clicked"] as? Bool) == true
+                            && (d["arrow"] as? Bool) == true
+                            && (d["current"] as? Int) == 2
+                            && ((d["text"] as? String) ?? "").contains("return")
+                            && ((d["selected"] as? String) ?? "").contains("return")
+                    }
+                    self.evaluate("window.mdbridge.closeFindBar(); window.mdbridge.codeInfo().currentLine") { r2 in
+                        codeCurrentLine = clicked && (r2 as? NSNumber)?.intValue == 2
+                        done()
+                    }
+                }
+            }
+        }
+        if codeCurrentLine { pass("代码视图 当前行点击与查找定位") } else { fail("代码视图 当前行点击与查找定位") }
+
+        var codeToggleCopy = false
+        waitForCollect("代码视图 行号开关与复制文本", timeout: 10) { done in
+            self.evaluate("window.mdbridge.setCode(\(JSArgs.string(lineNumberSample)), {\"language\":\"swift\",\"allowHighlight\":true,\"lineNumbers\":true})") { _ in
+                self.evaluate("window.mdbridge.setCodeLineNumbers(false)") { rOff in
+                    codeSnapshot { dOff in
+                        let info = dOff["info"] as? [String: Any]
+                        let off = (rOff as? Bool) == true
+                            && (dOff["lineNumbersVisible"] as? Bool) == false
+                            && (dOff["gutterDisplay"] as? String) == "none"
+                            && (info?["lineNumbers"] as? Bool) == false
+                        self.evaluate("""
+                        (function(){
+                            var code = document.querySelector('#code-view code');
+                            var blank = document.querySelectorAll('#code-view .code-line')[1];
+                            var range = document.createRange();
+                            range.selectNodeContents(code);
+                            var sel = window.getSelection();
+                            sel.removeAllRanges();
+                            sel.addRange(range);
+                            return JSON.stringify({
+                                sel: sel.toString(),
+                                blankHeight: blank ? blank.getBoundingClientRect().height : 0
+                            });
+                        })()
+                        """) { sel in
+                            var selected = false
+                            if let s = sel as? String, let data = s.data(using: .utf8),
+                               let d = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] {
+                                selected = (d["sel"] as? String) == lineNumberSample
+                                    && (d["blankHeight"] as? Double ?? 0) > 0
+                            }
+                            self.evaluate("window.mdbridge.setCodeLineNumbers(true)") { rOn in
+                                codeSnapshot { dOn in
+                                    let on = (rOn as? Bool) == true
+                                        && (dOn["lineNumbersVisible"] as? Bool) == true
+                                        && (dOn["gutterDisplay"] as? String) == "block"
+                                    codeToggleCopy = off && selected && on
+                                    done()
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        if codeToggleCopy { pass("代码视图 行号开关与复制文本") } else { fail("代码视图 行号开关与复制文本") }
+
+        var codeEmpty = false
+        waitForCollect("代码视图 空文件行号边界", timeout: 10) { done in
+            self.evaluate("window.mdbridge.setCode('', {\"language\":\"plaintext\",\"allowHighlight\":false,\"lineNumbers\":true})") { _ in
+                codeSnapshot { d in
+                    let info = d["info"] as? [String: Any]
+                    let empty = (d["lineCount"] as? Int) == 0
+                        && (d["text"] as? String) == ""
+                        && (d["mode"] as? Bool) == true
+                        && (info?["lineCount"] as? Int) == 0
+                    self.evaluate("""
+                    (function(){
+                        var off = window.mdbridge.setCodeLineNumbers(false);
+                        var hidden = window.mdbridge.codeInfo().lineNumbers === false;
+                        var on = window.mdbridge.setCodeLineNumbers(true);
+                        return off && hidden && on;
+                    })()
+                    """) { r in
+                        codeEmpty = empty && (r as? Bool) == true
+                        done()
+                    }
+                }
+            }
+        }
+        if codeEmpty { pass("代码视图 空文件行号边界") } else { fail("代码视图 空文件行号边界") }
+
         var codeExited = false
         waitForCollect("代码视图 退出代码模式", timeout: 10) { done in
             self.evaluate("window.mdbridge.setMarkdown(\(JSArgs.string(SelftestRunner.sampleMarkdown)))") { _ in
                 self.settleBridge(quiet: 0.8, timeout: 5)
-                codeSnapshot { d in
-                    codeExited = (d["mode"] as? Bool) == false && (d["appVisible"] as? Bool) == true
-                    done()
+                self.evaluate("window.mdbridge.setCodeLineNumbers(false)") { off in
+                    codeSnapshot { d in
+                        codeExited = (d["mode"] as? Bool) == false
+                            && (d["appVisible"] as? Bool) == true
+                            && (off as? Bool) == false
+                        done()
+                    }
                 }
             }
         }

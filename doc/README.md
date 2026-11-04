@@ -18,7 +18,8 @@ doc/
 │   ├── REQ-0006-windows.md
 │   ├── REQ-0007-diagnostics.md
 │   ├── REQ-0008-appearance.md
-│   └── REQ-0009-code-view.md
+│   ├── REQ-0009-code-view.md
+│   └── REQ-0010-code-view-line-numbers.md
 ├── plan/                               ← 调度：接下来做什么
 │   ├── roadmap.md
 │   ├── risks.md
@@ -50,18 +51,18 @@ doc/
 │   └── 2026-11-04-scenario-inventory/  ← 已实现场景/组件清点（执行中）
 └── history/                            ← 记忆：怎么走到这里的
     ├── decisions/
-    ├── works/                          ← 已归档工序（含 app-icon、code-file-view）
+    ├── works/                          ← 已归档工序（含 app-icon、code-file-view、code-view-line-numbers）
     └── pitfalls.md
 ```
 
 - **反占位**：`requirements/`、`design/components/`、`design/scenarios/` 均有真实卡片；`design/scenarios/_index.md` 为生成物，生成器接入前不手建；不预建空目录。
 - **全局设计文档**：`architecture.md` 用 `status: current`；本地 `doc-layout-spec` 已补「全局设计文档 | draft / current」状态行（2026-11-04 项目内扩展，主本未动）。
 - **组件与场景**：组件规格带 `component: CMP-xxx`，状态 `planned/active/retired`；场景带 `flow` 与 `scenario: SCN-xxxx`，状态 `draft/designed/verified/deprecated`。
-- **需求状态纪律**：新需求卡先 `accepted`；只有影响场景全部 `verified`，才转 `delivered`。当前 8 张 `accepted`、REQ-0009 已 `delivered`，验证债见各场景卡 §6。
+- **需求状态纪律**：新需求卡先 `accepted`；只有影响场景全部 `verified`，才转 `delivered`。当前 8 张 `accepted`、REQ-0009/REQ-0010 已 `delivered`，验证债见各场景卡 §6。
 
 ## 阅读顺序
 
-1. **要了解“为什么做”** → `requirements/`：9 张需求卡，从 [REQ-0001 文件抽屉](requirements/REQ-0001-file-drawer.md) 到 [REQ-0009 代码文件查看](requirements/REQ-0009-code-view.md)；每张写场景、价值、非目标与影响场景。
+1. **要了解“为什么做”** → `requirements/`：10 张需求卡，从 [REQ-0001 文件抽屉](requirements/REQ-0001-file-drawer.md) 到 [REQ-0010 代码视图行号](requirements/REQ-0010-code-view-line-numbers.md)；每张写场景、价值、非目标与影响场景。
 2. **要了解“接下来修什么”** → [plan/roadmap.md](plan/roadmap.md)：工序总览与状态。
 3. **要了解“哪些风险在悬着”** → [plan/risks.md](plan/risks.md)；跨工序未决问题查 [plan/open-questions.md](plan/open-questions.md)。
 4. **要了解系统现状** → [design/architecture.md](design/architecture.md)（安全/行为取舍、桥协议）；组件契约从 `design/components/` 进入，诊断面见 [CMP-diagnostics](design/components/CMP-diagnostics/spec.md)。
