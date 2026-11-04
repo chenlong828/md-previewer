@@ -5,13 +5,12 @@ import { isInTable } from '@milkdown/prose/tables'
 import { undo, redo } from '@milkdown/prose/history'
 import { insert } from '@milkdown/utils'
 
-import { state, isCodeMode } from '../../shared/state.js'
-import { currentMarkdown } from '../read.js'
+import { state, isCodeMode, currentMarkdown } from '../../shared/state.js'
 import { notify } from '../../shared/bus.js'
-import { computeStats } from '../stats.js'
-import { commandRegistry } from '../commands.js'
-import { tableCommandImpls } from '../tables.js'
-import { focusEditorView } from '../render.js'
+import { computeStats } from './stats.js'
+import { commandRegistry } from './commands.js'
+import { tableCommandImpls } from './tables.js'
+import { focusEditorView } from './editor.js'
 
 export function createEditorOps(table) {
     return {

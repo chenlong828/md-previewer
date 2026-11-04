@@ -42,7 +42,7 @@ tests:
 
 - `CMP-app-shell#open-document`：`DocumentWindowController.openDocument`。
 - `CMP-document-io#save`：`DocumentWindowController.saveDocument`。
-- `CMP-kernel-core#get-markdown`：op `getMarkdown`（写盘口径 `getSaveMarkdown`）。
+- `CMP-kernel-document#session`：op `getMarkdown`（写盘口径 `getSaveMarkdown`）。
 
 ## 3. 运行序
 

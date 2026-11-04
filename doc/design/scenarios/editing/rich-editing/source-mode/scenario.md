@@ -10,7 +10,7 @@ valueStream: 富文本编辑
 title: 在渲染视图与源码模式之间切换
 entries:
   - CMP-kernel-contract/web/src/kernel/contract/ops.js#HOST_OPS
-  - CMP-kernel-core/web/src/kernel/core/editor.js#toggleSource
+  - CMP-kernel-editor/web/src/kernel/components/editor/editor.js#toggleSource
   - CMP-app-shell/Sources/MDPreview/DocumentWindowController.swift#toggleSourceMode
 docs:
   - path: doc/design/architecture.md

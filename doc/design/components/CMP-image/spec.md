@@ -14,8 +14,8 @@ updated: 2026-11-04
 - 单元：组件
 - 层 / 类型：L1 领域；业务能力（图片资源生命周期）
 - 业务价值：让本地图片「导入得进来、布局稳定、关闭时清得干净、点开能改」；没有它，粘贴截图与相对路径图片退化为一串手工文件操作。
-- 负责：粘贴/拖放/菜单导入的**落盘执行**（`ImageStore.import`，mime 定扩展名、序号命名、冲突后缀、不覆盖）、`resource/<md文件名>/` 布局、关闭时 GC 的**执行**（按壳取到的引用集合删盘、非图片不动、空目录连带移除）、图片 NodeView 的渲染与整块源码编辑（`web/src/kernel/core/image-view.js`）。
-- 不负责：图片路径的加载/保存改写与引用解析（**已移交 `CMP-kernel-semantics`**）、粘贴载荷识别与导入编排（`CMP-kernel-core#image-import`）、文档正文读写（`CMP-document-io`）、通用编辑命令（`CMP-editor`）、代码文档（无图片面：导入/插入/清理全部 no-op）。
+- 负责：粘贴/拖放/菜单导入的**落盘执行**（`ImageStore.import`，mime 定扩展名、序号命名、冲突后缀、不覆盖）、`resource/<md文件名>/` 布局、关闭时 GC 的**执行**（按壳取到的引用集合删盘、非图片不动、空目录连带移除）、图片 NodeView 的渲染与整块源码编辑（`web/src/kernel/components/editor/image-view.js`）。
+- 不负责：图片路径的加载/保存改写与引用解析（**已移交 `CMP-kernel-semantics`**）、粘贴载荷识别与导入编排（`CMP-kernel-media#import`）、文档正文读写（`CMP-document-io`）、通用编辑命令（`CMP-editor`）、代码文档（无图片面：导入/插入/清理全部 no-op）。
 - 内部逻辑：Swift `ImageStore` 做导入/命名/目录布局/删盘；`DocumentWindowController.performImport` 把核的 `importImage` 请求翻成 `ImageStore.import` 并以响应回填 `{ok, src}`；web `core/image-paste.js` 识别载荷并发请求，`core/image-view.js` 提供 NodeView。**规则在 `semantics`，本组件只执行与呈现。**
 - 拥有的数据：`resource/<md文件名>/` 下的图片文件与目录布局；唯一写入口是导入与 GC；不拥有 Markdown 正文，也不拥有引用解析结果。
 - 变化轴：图片格式与 mime→扩展名映射、resource 布局、GC 策略、NodeView 交互。
@@ -30,9 +30,9 @@ updated: 2026-11-04
   - `CMP-image/Sources/MDPreview/ImageStore.swift#cleanUnreferenced`（GC 执行，入参是壳取到的 `referenced: Set<String>`）
   - `CMP-image/Sources/MDPreview/DocumentWindowController.swift#performImport`（内核 `importImage` 请求的应答方）
   - `CMP-image/web/src/kernel/semantics/markdown.js#applyForLoad`（**引用解析与改写**，归 `CMP-kernel-semantics`；列出以示归属转移）
-  - `CMP-image/web/src/kernel/core/image-paste.js#setupImagePaste`（载荷识别与请求编排）
-  - `CMP-image/web/src/kernel/core/image-view.js#getImageView`（NodeView）
-- 依赖：`CMP-kernel-semantics`（路径与引用规则）、`CMP-kernel-core`（NodeView 宿主与导入编排）、`CMP-document-io`（保存链路取 `getSaveMarkdown`）、`CMP-app-shell`（保存前提示、`resolveResources` 作答）。
+  - `CMP-image/web/src/kernel/components/media/image-paste.js#setupImagePaste`（载荷识别与请求编排）
+  - `CMP-image/web/src/kernel/components/editor/image-view.js#getImageView`（NodeView）
+- 依赖：`CMP-kernel-semantics`（路径与引用规则）、`CMP-kernel-editor`（NodeView 宿主）、`CMP-kernel-media`（导入编排）、`CMP-document-io`（保存链路取 `getSaveMarkdown`）、`CMP-app-shell`（保存前提示、`resolveResources` 作答）。
 - 冷热属性：冷路径；导入、GC、NodeView 打开都是低频动作。
 - 尺寸预算：目标 ≤120k token；当前约 480 行（`ImageStore.swift` 169 + 控制器导入/GC 分支约 60 + web `image-paste`/`image-view` 250）；语义部分已移出（311 行归 `CMP-kernel-semantics`）。
 - 单独运行：`./.build/debug/MDPreview --selftest`；真实粘贴用 `MDP_IMPORT_IMAGE` 钩子与截图。

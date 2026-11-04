@@ -11,8 +11,8 @@ title: 打开并查看代码文件（行号与按行阅读）
 entries:
   - CMP-document-io/Sources/MDPreview/DocumentWindowController.swift#openDocument
   - CMP-code-view/Sources/MDPreview/FileSupport.swift#kind(for:)
-  - CMP-kernel-core/web/src/kernel/core/code-view.js#showCode
-  - CMP-kernel-core/web/src/kernel/core/code-view.js#setCodeLineNumbers
+  - CMP-kernel-code/web/src/kernel/components/code/code-view.js#showCode
+  - CMP-kernel-code/web/src/kernel/components/code/code-view.js#setCodeLineNumbers
   - CMP-code-view/Sources/MDPreview/DocumentWindowController.swift#toggleCodeLineNumbersAction
   - CMP-app-shell/Sources/MDPreview/AppDelegate.swift#buildMenus
 docs:

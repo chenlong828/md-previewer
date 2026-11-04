@@ -16,6 +16,8 @@ export const state = {
     baselineMarkdown: '',
     // 插件档位：'full' | 'no-diagram'（由 init opts 传入，_init 先解析再建编辑器）
     pluginSet: 'full',
+    // 引擎序列化钩子：由 editor 组件在装配时注入（shared 因此不必依赖 @milkdown）
+    serialize: null,
     // 文档所在目录（图片源码编辑框做相对路径⇄绝对 file:// 换算的基准；
     // 由 setMarkdown opts / setBaseDir 单点写入，不落副本）
     baseDir: '',
@@ -41,4 +43,13 @@ export function setMode(mode) {
 
 export function isCodeMode() {
     return state.mode === 'code'
+}
+
+// 当前文档内容的单一真相源：渲染模式读编辑器 doc，源码模式读 textarea。
+// 保存取回（getSaveMarkdown）与脏基线（markClean）必须走同一口径，否则源码模式下
+// ⌘S 会把编辑前的旧内容写盘。
+export function currentMarkdown() {
+    if (state.sourceMode) return document.getElementById('source-editor').value
+    if (!state.ready || !state.editor) return ''
+    return state.serialize ? state.serialize(state.editor) : ''
 }

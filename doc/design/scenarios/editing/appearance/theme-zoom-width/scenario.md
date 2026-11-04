@@ -42,7 +42,7 @@ tests:
 
 - `CMP-app-shell#appearance`：`AppDelegate.setAppearanceMode`。
 - `CMP-app-shell#zoom`：`DocumentWindowController.zoomIn/zoomOut/zoomReset`。
-- `CMP-kernel-core#theme-zoom`：op `setTheme` / `setZoom`。
+- `CMP-kernel-document#state`：op `setTheme` / `setZoom`。
 - 宽度：`typora.css` 的 `#app` min-width 与视口策略。
 
 ## 3. 运行序

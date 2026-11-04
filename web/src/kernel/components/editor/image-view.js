@@ -7,7 +7,7 @@
 // 与 Swift 加载改写同口径)。
 import { $view } from '@milkdown/utils'
 import { imageSchema } from '@milkdown/preset-commonmark'
-import { state } from '../shared/state.js'
+import { state } from '../../shared/state.js'
 
 let imageView = null
 

@@ -10,7 +10,7 @@ valueStream: 文档生命周期
 title: 保存时规范化 Markdown
 entries:
   - CMP-document-io/Sources/MDPreview/Util.swift#TextFile
-  - CMP-kernel-core/web/src/kernel/core/list-indent.js#fourSpaceListItem
+  - CMP-kernel-editor/web/src/kernel/components/editor/list-indent.js#fourSpaceListItem
   - CMP-image/Sources/MDPreview/Util.swift#ImagePathRewriter
 docs:
   - path: doc/design/architecture.md

@@ -2,13 +2,11 @@
 // 持文档级状态（baseDir/theme/zoom/baseline）的唯一写入口。
 import { replaceAll } from '@milkdown/utils'
 
-import { state, isCodeMode } from '../../shared/state.js'
-import { currentMarkdown } from '../read.js'
+import { state, isCodeMode, currentMarkdown } from '../../shared/state.js'
 import { notify, hostCall } from '../../shared/bus.js'
-import { createEditor, toggleSource as applySourceToggle, applyThemeDom, applyMermaidTheme } from '../editor.js'
-import { codeInfo as readCodeInfo } from '../../components/code/code-view.js'
+import { use } from '../../shared/ports.js'
 import { applyForLoad, collectImageRefs, restoreForSave } from '../../semantics/markdown.js'
-import { renderMarkdown } from '../render.js'
+import { renderMarkdown } from './render.js'
 
 export function createSessionOps(table) {
     return {
@@ -17,8 +15,8 @@ export function createSessionOps(table) {
                 state.pluginSet = opts.plugins || 'full'
                 state.theme = opts.theme === 'dark' ? 'dark' : 'light'
                 if (typeof opts.baseDir === 'string') state.baseDir = opts.baseDir
-                applyThemeDom()
-                if (!state.editor) await createEditor()
+                use('editorSurface').applyThemeDom()
+                if (!state.editor) await use('editorSurface').createEditor()
                 if (opts.zoom) table.setZoom({ scale: opts.zoom })
                 table.setTitle({ title: opts.title || '' })
                 if (payload.markdown) await table.setMarkdown({ md: payload.markdown, baseDir: opts.baseDir })
@@ -79,8 +77,8 @@ export function createSessionOps(table) {
                 const target = payload.theme === 'dark' ? 'dark' : 'light'
                 if (target === state.theme) return { ok: true }
                 state.theme = target
-                applyThemeDom()
-                applyMermaidTheme()
+                use('editorSurface').applyThemeDom()
+                use('editorSurface').applyMermaidTheme()
                 if (state.ready) {
                     // 已渲染的 mermaid 图需要重绘（读当前内容，不用可能过期的镜像）
                     state.editor.action(replaceAll(currentMarkdown()))
@@ -104,14 +102,14 @@ export function createSessionOps(table) {
                     zoom: state.zoom,
                     baseDir: state.baseDir,
                     title: document.title,
-                    code: readCodeInfo(),
+                    code: use('codeSurface').codeInfo(),
                 }
             },
 
             toggleSource(payload = {}) {
                 // 代码文档没有源码/渲染切换（需求明确「代码恒为纯源码、不支持切换」）
                 if (isCodeMode()) return { sourceMode: false }
-                return { sourceMode: applySourceToggle(payload.force) }
+                return { sourceMode: use('editorSurface').setSourceMode(payload.force) }
             },
     }
 }

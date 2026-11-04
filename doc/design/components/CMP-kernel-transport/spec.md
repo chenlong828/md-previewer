@@ -15,7 +15,7 @@ updated: 2026-11-04
 - 层 / 类型：L0 技术边界；内核防腐层（宿主通道）
 - 业务价值：让内核其余三层完全不知道宿主是什么；Windows 壳因此只需「注入两个全局函数 + 装载页面」，而不是复刻一套宿主适配。没有它，`window.webkit`／`chrome.webview` 会沿调用链回流到编辑逻辑里。
 - 负责：唯一宿主感知点——取用壳注入的 `window.__mdHostChannel.post`、暴露 `window.__mdKernel.receive`、安装/卸载 jserror 三源钩子（`window error`、`unhandledrejection`、`console.error` 转发），并把内核发出的帧序列化为 JSON 字符串。
-- 不负责：信封构造/校验、op 分发、握手与错误码（`CMP-kernel-contract`）；任何编辑能力（`CMP-kernel-core`）；路径与 markdown 语义（`CMP-kernel-semantics`）；壳侧帧编解码、id 表与超时（`CMP-app-shell` 的 `KernelClient`）。
+- 不负责：信封构造/校验、op 分发、握手与错误码（`CMP-kernel-contract`）；任何编辑能力（`CMP-kernel-*` 六组件）；路径与 markdown 语义（`CMP-kernel-semantics`）；壳侧帧编解码、id 表与超时（`CMP-app-shell` 的 `KernelClient`）。
 - 内部逻辑：`createTransport({win})` 构造即校验 channel（`post` 非函数则抛错，不静默降级）；`send()` 只接受普通对象，`JSON.stringify` 后一次交给 channel；`expose(handler)` 把 `__mdKernel` 冻结为单方法对象，后注册者覆盖前值；`installErrorHooks(report)` 注册三个监听并返回卸载函数，`console.error` 补丁在 `finally` 里转调原函数。
 - 拥有的数据：`receive` 单引用与错误钩子的 cleanup 列表；不持有文档、会话或 UI 状态，不持久化任何东西。
 - 变化轴：宿主通道名与形态（WKWebView / WebView2 / GTK）、错误钩子来源集合。

@@ -12,16 +12,14 @@ import { clipboard } from '@milkdown/plugin-clipboard'
 import { trailing } from '@milkdown/plugin-trailing'
 import { getMarkdown, replaceAll } from '@milkdown/utils'
 import mermaid from 'mermaid'
-import { state, isCodeMode } from '../shared/state.js'
-import { currentMarkdown } from './read.js'
-import { notify } from '../shared/bus.js'
-import { ensureLanguages } from '../components/code/languages.js'
+import { state, isCodeMode, currentMarkdown } from '../../shared/state.js'
+import { notify } from '../../shared/bus.js'
+import { use } from '../../shared/ports.js'
 import { scheduleStats } from './stats.js'
-import { use } from '../shared/ports.js'
 import { selInfoProse } from './selinfo.js'
 import { getMermaidView } from './mermaid-view.js'
 import { getImageView } from './image-view.js'
-import { setupImagePaste } from '../components/media/image-paste.js'
+
 import { fourSpaceListItem } from './list-indent.js'
 
 export function applyThemeDom() {
@@ -57,7 +55,7 @@ export async function createEditor() {
                 prismConfig.key,
                 () => ({
                     configureRefractor: () => {
-                        ensureLanguages()
+                        use('codeLanguages').ensureLanguages()
                     },
                 }),
             )
@@ -149,11 +147,13 @@ export async function createEditor() {
     })
 
     state.editor = editor
+    // 序列化钩子：shared 的 currentMarkdown 由这里拿到引擎口径（shared 保持零依赖）
+    state.serialize = (ed) => ed.action(getMarkdown())
     state.ready = true
 
     // 图片粘贴拦截(需挂在已创建的编辑器 DOM 上,捕获阶段先于 ProseMirror)
     editor.action((ctx) => {
-        setupImagePaste(ctx.get(editorViewCtx))
+        use('mediaPaste').setupImagePaste(ctx.get(editorViewCtx))
     })
 
     return editor
@@ -227,4 +227,21 @@ export function createImageInsertion() {
             })
         },
     }
+}
+
+/** editorSurface：document 组件所需的编辑面能力（组件间唯一相识面） */
+export function createEditorSurface() {
+    return {
+        createEditor,
+        setSourceMode: toggleSource,
+        applyThemeDom,
+        applyMermaidTheme,
+    }
+}
+
+/** 把焦点交给 ProseMirror（编辑面内部与焦点 op 共用） */
+export function focusEditorView() {
+    if (!state.ready) return false
+    state.editor.action((ctx) => { ctx.get(editorViewCtx).focus() })
+    return true
 }

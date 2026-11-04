@@ -1,12 +1,18 @@
 ---
-layer: design
+layer: history
 module: kernel
 component: CMP-kernel-core
-status: active
+status: retired
 updated: 2026-11-04
 ---
 
-# CMP-kernel-core 组件规格
+# CMP-kernel-core 组件规格（已退役）
+
+> **退役说明（2026-11-04）**：本卡片对应的 `W-KERNEL-CORE` 单元在「内核按功能组件拆分」工序中解体，
+> 拆成六个组件：`CMP-kernel-document` / `CMP-kernel-editor` / `CMP-kernel-code` /
+> `CMP-kernel-find` / `CMP-kernel-output` / `CMP-kernel-media`，共享状态与端口归 `kernel/shared/`。
+> 保留此卡片仅为追溯当时的接口与理由；现行规格见 `doc/design/components/` 下六张卡片。
+> 工序：`doc/history/works/2026-11-04-kernel-core-split/`。
 
 ## 组件卡
 
@@ -30,15 +36,15 @@ updated: 2026-11-04
   - `CMP-kernel-core#image-import`：`insertImage` 落节点；粘贴经 `setupImagePaste` → `hostCall('importImage')` → 回插到**请求时刻的选区快照**；文档未保存时由壳拒绝，核只清挂起态。
   - `CMP-kernel-core#notifications`：`ready`/`changed{dirty}`/`stats{words,chars}`/`sourceMode{value}`/`selinfo{inTable}`；`changed` 有 200ms 防抖与过期过滤。
 - 入口：
-  - `CMP-kernel-core/web/src/kernel/core/ops.js#createOps`（另有 `renderMarkdown` 同步辅助）
-  - `CMP-kernel-core/web/src/kernel/core/bus.js#bindBus`（另有 `notify`/`hostCall`/`isBound`）
-  - `CMP-kernel-core/web/src/kernel/core/state.js#setMode`（`state` 单例、`isCodeMode`、`currentMarkdown`）
-  - `CMP-kernel-core/web/src/kernel/core/editor.js#createEditor`（`toggleSource`）
-  - `CMP-kernel-core/web/src/kernel/core/code-view.js#showCode`（`hideCode`/`setCodeLanguage`/`setCodeLineNumbers`/`codeInfo`）
-  - `CMP-kernel-core/web/src/kernel/core/find-bar.js#openFindBar`（`runFind`/`stepFind`/`setupFindBar`）
-  - `CMP-kernel-core/web/src/kernel/core/export.js#exportStandaloneHTML`
-  - `CMP-kernel-core/web/src/kernel/core/image-paste.js#setupImagePaste`（`extractImagePayload`/`handleImported`）
-  - `CMP-kernel-core/web/src/kernel/core/commands.js#commandRegistry`、`tables.js#tableCommandImpls`、`languages.js#highlightInto`、`image-view.js#getImageView`、`mermaid-view.js#getMermaidView`、`stats.js#scheduleStats`、`selinfo.js#selInfoProse`、`list-indent.js#fourSpaceListItem`
+  - `CMP-kernel-document/web/src/kernel/ops.js#createOps`（另有 `renderMarkdown` 同步辅助）
+  - `CMP-kernel-document/web/src/kernel/shared/bus.js#bindBus`（另有 `notify`/`hostCall`/`isBound`）
+  - `CMP-kernel-document/web/src/kernel/shared/state.js#setMode`（`state` 单例、`isCodeMode`、`currentMarkdown`）
+  - `CMP-kernel-editor/web/src/kernel/components/editor/editor.js#createEditor`（`toggleSource`）
+  - `CMP-kernel-code/web/src/kernel/components/code/code-view.js#showCode`（`hideCode`/`setCodeLanguage`/`setCodeLineNumbers`/`codeInfo`）
+  - `CMP-kernel-find/web/src/kernel/components/find/find-bar.js#openFindBar`（`runFind`/`stepFind`/`setupFindBar`）
+  - `CMP-kernel-output/web/src/kernel/components/output/export.js#exportStandaloneHTML`
+  - `CMP-kernel-media/web/src/kernel/components/media/image-paste.js#setupImagePaste`（`extractImagePayload`/`handleImported`）
+  - `CMP-kernel-editor/web/src/kernel/components/editor/commands.js#commandRegistry`、`tables.js#tableCommandImpls`、`languages.js#highlightInto`、`image-view.js#getImageView`、`mermaid-view.js#getMermaidView`、`stats.js#scheduleStats`、`selinfo.js#selInfoProse`、`list-indent.js#fourSpaceListItem`
 - 依赖：Milkdown/ProseMirror/KaTeX/Mermaid/refractor（内核内唯一允许第三方依赖的层）；`contract/`（`PROTOCOL_VERSION` 等常量）；`semantics/`（装载/保存/命名）。不得 import `transport/`。
 - 冷热属性：编辑输入是热路径，`changed` 只走防抖通知；`hostCall` 只在装载、粘贴导入、GC 引用收集三类低频动作上出现。
 - 尺寸预算：目标 ≤120k token；当前 2182 行（17 个模块），组合根 `web/src/page.js` 47 行 + `kernel/main.js` 26 行。

@@ -10,7 +10,7 @@ valueStream: 图片
 title: 显示图片并编辑图片源码
 entries:
   - CMP-image/Sources/MDPreview/Util.swift#ImagePathRewriter
-  - CMP-kernel-core/web/src/kernel/core/image-view.js#getImageView
+  - CMP-kernel-editor/web/src/kernel/components/editor/image-view.js#getImageView
   - CMP-kernel-contract/web/src/kernel/contract/ops.js#HOST_OPS
 docs:
   - path: doc/design/architecture.md

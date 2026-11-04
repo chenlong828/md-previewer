@@ -3,7 +3,7 @@ import { editorViewCtx } from '@milkdown/core'
 
 import { state, isCodeMode } from '../../shared/state.js'
 import { use } from '../../shared/ports.js'
-import { findKey, findUI, openFindBar, closeFindBar, stepFind } from '../../components/find/index.js'
+import { findKey, findUI, openFindBar, closeFindBar, stepFind } from './index.js'
 
 export function createFindOps(_table) {
     return {

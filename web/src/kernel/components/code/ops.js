@@ -1,18 +1,17 @@
 // 代码面：只读源码视图、语言与行号、代码内查找重放。
 import { state } from '../../shared/state.js'
 import { use } from '../../shared/ports.js'
-import { toggleSource as applySourceToggle } from '../editor.js'
 import {
     showCode, setCodeLanguage as applyCodeLanguage, setCodeLineNumbers as applyCodeLineNumbers,
     codeInfo as readCodeInfo,
-} from '../../components/code/code-view.js'
-import { hasLanguage } from '../../components/code/languages.js'
+} from './code-view.js'
+import { hasLanguage } from './languages.js'
 
 export function createCodeOps(_table) {
     return {
             setCode(payload = {}) {
                 if (!state.ready) return { ok: false }
-                if (state.sourceMode) applySourceToggle(false)
+                if (state.sourceMode) use('editorSurface').setSourceMode(false)
                 showCode(payload.text || '', {
                     language: typeof payload.language === 'string' ? payload.language : 'plaintext',
                     allowHighlight: payload.allowHighlight !== false,

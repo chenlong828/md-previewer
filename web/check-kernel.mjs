@@ -36,13 +36,13 @@ const ALLOWED_LAYERS = {
   contract: ['contract'],
   semantics: ['semantics'],
   shared: ['shared'],
-  // 迁移期（S2–S3）：core 与 components 互相可达；S4 收口后收紧为单向
-  core: ['core', 'contract', 'semantics', 'shared', 'component:*'],
+
   // 组合根：可达所有层与组件（唯一的装配点）
-  root: ['transport', 'contract', 'semantics', 'shared', 'core', 'component:*'],
-  // 组件：可自带目录、可依赖 shared/semantics；迁移期（S2–S3）暂允许依赖 core 里未迁完的模块，
-  // S4 收口时删除 'core' 与跨组件放行，只留自身目录 + shared + semantics。
-  component: (self) => [`component:${self}`, 'core', 'shared', 'semantics'],
+  // 组合根与装配文件：可达所有层与组件（唯一的装配点）
+  root: ['root', 'transport', 'contract', 'semantics', 'shared', 'component:*'],
+  // 组件：只许自身目录 + shared + semantics。跨组件一律经 shared/ports.js 端口，
+  // 由 kernel/assemble.js 装配（S4 收口后的硬约束）。
+  component: (self) => [`component:${self}`, 'shared', 'semantics'],
 };
 
 for (const file of walk(KERNEL_DIR)) {

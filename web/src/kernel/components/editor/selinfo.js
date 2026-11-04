@@ -2,7 +2,7 @@
 import { Plugin } from '@milkdown/prose/state'
 import { $prose } from '@milkdown/utils'
 import { isInTable } from '@milkdown/prose/tables'
-import { notify } from '../shared/bus.js'
+import { notify } from '../../shared/bus.js'
 
 export const selInfoProse = $prose(() => {
     let last

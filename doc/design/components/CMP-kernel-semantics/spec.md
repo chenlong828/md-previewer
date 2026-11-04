@@ -15,7 +15,7 @@ updated: 2026-11-04
 - 层 / 类型：L1a 技术边界；纯函数语义层
 - 业务价值：让「图片路径怎么改写、怎么还原、怎么收集引用、新图片叫什么名字」只有一份实现。有它，macOS 与未来 Windows 壳共享同一套字节级结果；没有它，就是 R9 记录的双头分叉——Swift `ImagePathRewriter` 与 `image-view.js` 在括号拆分、`%XX` 解码粒度、存在性判定上各自演进。
 - 负责：markdown 图片目的地的装载改写、保存还原、引用收集、落盘命名，以及路径编解码与 `posix`/`win32` 两种路径风格。
-- 不负责：文件系统（存在性由壳作答后注入）、编辑器与 NodeView（`CMP-kernel-core`）、op 分发（`CMP-kernel-contract`）、GC 的删盘执行（`CMP-app-shell` 的 `ImageStore`）。
+- 不负责：文件系统（存在性由壳作答后注入）、编辑器与 NodeView（`CMP-kernel-editor`）、op 分发（`CMP-kernel-contract`）、GC 的删盘执行（`CMP-app-shell` 的 `ImageStore`）。
 - 内部逻辑：`markdown.js` 用单行两段式解析——宽松捕获 `![alt](inner)`，再在 inner 内拆 `<>` 包裹目的地 / 尾部引号标题 / 裸路径；`mapLinesOutsideFences` 跳过围栏块；`paths.js` 做 `file://` 编解码与路径规范化。全部为纯函数。
 - 拥有的数据：无。不持状态、不读写磁盘、不缓存壳的作答。
 - 变化轴：路径风格（posix/win32）、`%XX` 编码口径、支持的路径写法边界（引用式图片/深层嵌套括号明确不支持）。
@@ -64,7 +64,7 @@ updated: 2026-11-04
 | 数据 | 写入口 | 读方 | 一致性 |
 |---|---|---|---|
 | 图片路径写法（磁盘原文） | 壳（`CMP-document-io`） | 本组件只读 | 本组件不改磁盘 |
-| 装载改写结果 | 本组件（纯函数返回） | `CMP-kernel-core` 渲染 | 每次装载重算，无缓存 |
+| 装载改写结果 | 本组件（纯函数返回） | `CMP-kernel-document` 渲染 | 每次装载重算，无缓存 |
 | 壳的作答（存在性/URL/候选） | 壳 `resolveResources` | 本组件入参 | 单次调用内有效，不落状态 |
 | 黄金夹具 | `web/test/fixtures/semantics-golden.json`（测试资产） | 本组件套件 | 只读；生成器 `tools/semantics-dump/` 收口时删除 |
 

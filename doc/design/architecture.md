@@ -107,7 +107,7 @@ WKWebView 承载 Milkdown 7.7（ProseMirror）前端。本文记录跨模块的�
 
 ### 2.1a 图片显示/编辑/导入
 
-- **决策**:图片节点以自定义 NodeView 渲染(web/src/kernel/core/image-view.js):正常态
+- **决策**:图片节点以自定义 NodeView 渲染(web/src/kernel/components/editor/image-view.js):正常态
   `<img>`;点击切换为**源码编辑块**(2026-10-20 二次定稿,替代三字段小表单)——
   与 mermaid 图「点选进编辑、失焦提交」同一交互模式:整块框起、宽度为编辑器
   100%、长路径自动换行,内容是该图的 markdown 源码 `![alt](path "title")`。
@@ -227,7 +227,7 @@ WKWebView 承载 Milkdown 7.7（ProseMirror）前端。本文记录跨模块的�
   不低于内容列、CommonMark 解析层级不变。
 - **理由**：用户报告 2 空格输出「不是标准 markdown 缩进、只是多了一个 Tab
   字符」；4 空格是跨渲染器最不易误读的形态，也与「Tab = 一级缩进」的直觉一致。
-- **实现单点**：`web/src/kernel/core/list-indent.js` 的 `fourSpaceListItem`，经
+- **实现单点**：`web/src/kernel/components/editor/list-indent.js` 的 `fourSpaceListItem`，经
   `remarkStringifyOptionsCtx.handlers` 注入；解析、渲染、桥协议均不受影响。
 - **失效条件与陷阱**：mdast 的 `listItemIndent: 'tab'` 并不是「4 空格缩进」——
   它同时把首行补到 4 列（`-   a`）。且覆盖 `handlers.listItem` 会顶掉 GFM
@@ -264,7 +264,7 @@ WKWebView 承载 Milkdown 7.7（ProseMirror）前端。本文记录跨模块的�
 - **种类判定单一来源**：`Sources/MDPreview/FileSupport.swift` 的 `DocumentKind`
   与 `codeLanguages`（44 种语言/扩展名映射 + `plaintext` 伪语言）。打开面板、
   抽屉过滤、文档内链接拦截、打开分派、高亮语言菜单、Info.plist 断言全部派生自
-  这里；web 侧 `web/src/kernel/core/languages.js` 注册 refractor 语法，selftest「双端语言
+  这里；web 侧 `web/src/kernel/components/code/languages.js` 注册 refractor 语法，selftest「双端语言
   清单一致」守门。
 - **理由**：把代码塞进 Markdown 围栏块虽省事，但会让只读文件进入可编辑数据模型——
   一次 ⌘S 就把代码写成 md；且 ProseMirror 解析大文件成本高、围栏转义会改字符。
@@ -339,16 +339,50 @@ WKWebView 承载 Milkdown 7.7（ProseMirror）前端。本文记录跨模块的�
   Windows 壳可参照 `web/test/support/fake-shell.js` 与 `web/test/support/dom.js` 的假壳，
   协议测试 `web/test/contract.test.js` 不依赖任何 WebView。
 
-## 4. 内核分层与禁边（2026-11-04）
+## 4. 内核分层与组件（2026-11-04，2026-11-04 收口为六组件）
 
-- **四层，依赖单向**：`transport` → `contract` → `semantics` / `core`。
-  - `web/src/kernel/transport/channel.js`：唯一宿主感知点（`__mdHostChannel` / `__mdKernel`、
-    jserror 三源）。缺 channel 时 boot 显式失败，不静默降级。
+- **分层与依赖单向**：`transport` → `contract` → `semantics` / `shared` → `components/*` → 组合根。
+  - `web/src/kernel/transport/channel.js`：唯一宿主感知点（`__mdHostChannel` / `__mdKernel`、jserror 三源）。
+    缺 channel 时 boot 显式失败，不静默降级。
   - `web/src/kernel/contract/`：信封、op 清单与 payload 校验、注册表（id 关联/握手/错误码）。
-  - `web/src/kernel/semantics/`：路径与 markdown 文本语义（装载改写/保存还原/引用收集/落盘命名），
-    纯函数、零第三方依赖、不碰文件系统。
-  - `web/src/kernel/core/`：编辑器与 39 个 op 的唯一实现；经 `core/bus.js`（`notify`/`hostCall`）
-    与壳交互，不含宿主符号。
-- **组合根** `web/src/page.js`：装配 transport → contract → 注册 core ops → 绑总线 →（测试环境）装门面。
-- **禁边守门**：`web/check-kernel.mjs` 进构建（`build.sh`）：宿主符号只许出现在 `transport/`；
-  层间 import 只许下行；第三方依赖只许出现在 `core/`（编辑器引擎本身）。违规即构建失败。
+  - `web/src/kernel/semantics/`：路径与 markdown 文本语义，纯函数、零第三方依赖、不碰文件系统。
+  - `web/src/kernel/shared/`：会话状态单例（`state`）、通知/请求端口（`bus`）、组件端口注册表（`ports`）。
+    零第三方依赖：`currentMarkdown()` 的引擎序列化经 `state.serialize` 钩子注入。
+  - `web/src/kernel/components/*`：六个功能组件（下表），引擎绑定允许第三方依赖。
+  - `web/src/kernel/assemble.js` + `ops.js`：组合根内核侧——注入端口、汇总 op 表（**唯一装配点**）。
+
+### 4.1 六个组件
+
+| 组件 | 业务能力 | 行数 | op 归属 |
+|---|---|---|---|
+| `components/document` | 会话与文档：建编辑器、装载/取回、基线、主题、缩放、状态、GC 引用收集 | ~140 | init/setMarkdown/getMarkdown/getSaveMarkdown/markClean/setBaseDir/setTitle/setTheme/setZoom/getState/toggleSource/getResourceRefs |
+| `components/editor` | 编辑面：Milkdown 装配、命令与表格、统计、选区、NodeView、焦点、撤销重做 | ~1050 | focus/focusAt/undo/redo/requestStats/formatCommand/tableCommand/insertTable/insertMarkdown/insertImage + 诊断 4 个 |
+| `components/code` | 代码面：只读源码视图、语言与行号、代码内查找 | ~550 | setCode/setCodeLanguage/setCodeLineNumbers/codeInfo/hasLanguages |
+| `components/find` | 查找：查找栏、命中遍历、ProseMirror 装饰 | ~300 | openFindBar/closeFindBar/findNext/findPrev/findInfo |
+| `components/output` | 输出：独立 HTML 导出、打印、内容几何 | ~100 | exportStandaloneHTML/print/getContentSize |
+| `components/media` | 图片媒体：粘贴载荷识别、导入编排（不碰 ProseMirror 事务） | ~75 | （无对外 op；供 diagnostics 的载荷识别） |
+
+### 4.2 组件端口（`shared/ports.js`）
+
+组件之间**不互相 import**，一切跨组件能力经端口：组合根 `provide(name, impl)`，消费方 `use(name)`；
+未装配即抛错（不静默降级）。当前七个端口：
+
+| 端口 | 提供方 | 消费方 | 内容 |
+|---|---|---|---|
+| `findService` | find | editor / code | 查找栏、命中遍历、ProseMirror 查找插件 |
+| `searchSurface` | code | find | 代码面的查找实现（`findInCode`/`clearCodeFind`/`codeFindCount`） |
+| `codeSurface` | code | document | `hideCode` / `codeInfo`（装载时必须退出代码视图） |
+| `codeLanguages` | code | editor | `ensureLanguages` / `hasLanguage` |
+| `editorSurface` | editor | document | `createEditor` / `setSourceMode` / 主题应用 |
+| `renderSurface` | editor | output | `setSourceMode`（导出前确保渲染模式） |
+| `imageInsertion` | editor | media | 图片节点插入（选区恢复 + 单事务） |
+| `mediaPaste` | media | editor / diagnostics | 粘贴监听安装、载荷识别 |
+
+### 4.3 禁边守门（`web/check-kernel.mjs`，进构建）
+
+- 宿主符号只许出现在 `transport/`；
+- 层间只许下行；组件只许 import **自身目录 + `shared` + `semantics`**；
+- 第三方依赖只许出现在 `components/`（引擎绑定层）；`transport`/`contract`/`semantics`/`shared` 零依赖；
+- 组合根（`assemble.js`/`ops.js`/`main.js`）是唯一可达全部层的文件。
+
+违规即构建失败——这条纪律挡的是「下一次图省事直接从别的组件拿函数」。

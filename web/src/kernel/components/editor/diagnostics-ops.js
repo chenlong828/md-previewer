@@ -3,12 +3,11 @@ import { editorViewCtx } from '@milkdown/core'
 import { TextSelection } from '@milkdown/prose/state'
 import { isInTable } from '@milkdown/prose/tables'
 
-import { state } from '../../shared/state.js'
-import { currentMarkdown } from '../read.js'
+import { state, currentMarkdown } from '../../shared/state.js'
 import { hostCall } from '../../shared/bus.js'
-import { commandRegistry } from '../commands.js'
-import { tableCommandImpls } from '../tables.js'
-import { extractImagePayload } from '../../components/media/image-paste.js'
+import { commandRegistry } from './commands.js'
+import { tableCommandImpls } from './tables.js'
+import { use } from '../../shared/ports.js'
 import { collectImageRefs, collectResourceRefs } from '../../semantics/markdown.js'
 
 export function createDiagnosticsOps(_table) {
@@ -71,7 +70,7 @@ export function createDiagnosticsOps(_table) {
             },
 
             testImagePayload(payload = {}) {
-                const result = extractImagePayload(payload.data)
+                const result = use('mediaPaste').extractImagePayload(payload.data)
                 return { payload: result ? { kind: result.kind, path: result.path || '' } : null }
             },
     }

@@ -9,7 +9,7 @@ domain: 编辑
 valueStream: 富文本编辑
 title: 用格式命令编辑文档结构
 entries:
-  - CMP-kernel-core/web/src/kernel/core/commands.js#commandRegistry
+  - CMP-kernel-editor/web/src/kernel/components/editor/commands.js#commandRegistry
   - CMP-app-shell/Sources/MDPreview/EditorCommands.swift#EditorCommands
   - CMP-kernel-contract/web/src/kernel/contract/ops.js#HOST_OPS
 docs:

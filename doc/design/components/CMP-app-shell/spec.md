@@ -15,7 +15,7 @@ updated: 2026-11-04
 - 层 / 类型：L2 整合；技术边界 + 应用编排
 - 业务价值：为使用者提供「一个进程、一个 Dock 图标、多个文档窗口」的 macOS 应用外壳；没有它，文件无法被打开到正确的窗口，菜单/快捷键/最近文件也没有统一入口。
 - 负责：应用启动与参数路由、窗口创建/替换/关闭、菜单与快捷键、最近文件、缩放与外观的应用、退出前的脏文档确认；**壳侧 v2 协议客户端 `KernelClient`**（帧编解码、id→completion 表、超时、内核请求应答）；「视图 → 高亮语言」菜单只做入口与勾选同步，语言判定归 `CMP-code-view`；「视图 → 显示行号」菜单只做入口/勾选与全局广播，偏好判定归 `CMP-code-view`；「视图 → 显示文档缩略图」菜单只做入口/勾选、偏好存储与全局广播，绘制/交互归 `CMP-minimap`。
-- 不负责：文件内容读写（`CMP-document-io`）、编辑器内部行为（`CMP-editor`）、抽屉树（`CMP-drawer`）、导出实现（`CMP-export`）、缩略图绘制/内容投影/滚动定位（`CMP-minimap`）、帧格式与 op 校验（`CMP-kernel-contract`）、编辑与导出能力实现（`CMP-kernel-core`）、注入脚本（v2 起产品路径为零）。
+- 不负责：文件内容读写（`CMP-document-io`）、编辑器内部行为（`CMP-editor`）、抽屉树（`CMP-drawer`）、导出实现（`CMP-export`）、缩略图绘制/内容投影/滚动定位（`CMP-minimap`）、帧格式与 op 校验（`CMP-kernel-contract`）、编辑与导出能力实现（`CMP-kernel-editor` / `CMP-kernel-output` 等六组件）、注入脚本（v2 起产品路径为零）。
 - 内部逻辑：`AppDelegate` 维护文档窗口集合与打开路由；`DocumentWindowController` 承载单文档窗口并把菜单动作翻成 op（`kernel.send`）；`EditorCommands` 是菜单/右键共用的命令表；`KernelClient` 是协议客户端（`installScript` 注入 channel → `attach` → `send`/`receive`/`respond`，`info` 存握手结果）。
 - 拥有的数据：窗口 frame、最近文件列表、缩放比例、外观锁定；不拥有文档正文。
 - 变化轴：打开方式的增减（CLI/拖放/Finder/⌘O/最近）、窗口模型、菜单命令表。

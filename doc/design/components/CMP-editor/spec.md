@@ -16,7 +16,7 @@ updated: 2026-11-04
 - 业务价值：让用户在渲染结果上直接编辑 Markdown，而不是在源码与预览之间来回切换；没有它，应用退化为带预览的文本编辑器。
 - 负责：Milkdown/ProseMirror 编辑面、格式命令、源码模式、文档内查找、表格行列操作、数学/ Mermaid/代码高亮渲染、选择信息上报；向右侧缩略图提供 Markdown 顶层的**只读投影**（块几何/文字/图片）。
 - 不负责：文件读写（`CMP-document-io`）、窗口/菜单（`CMP-app-shell`）、抽屉（`CMP-drawer`）、图片文件落盘（`CMP-image`）、代码文档的只读源码面（`CMP-code-view`）、缩略图绘制/视口/滚动定位（`CMP-minimap`）。
-- 内部逻辑：web 实现已迁入内核 core（`web/src/kernel/core/`），对外只有 op 名，不再有 `window.mdbridge` 方法面；`editor.js` 装配 Milkdown 与插件；`ops.js` 把能力注册成 op；`commands.js`/`tables.js` 是命令表；`find*.js` 是查找；`mermaid-view.js`/`image-view.js` 是 NodeView；`state.js` 持文档与基线，`bus.js` 是通知端口。
+- 内部逻辑：web 实现分布在内核组件里（`web/src/kernel/components/`），对外只有 op 名，不再有 `window.mdbridge` 方法面；`components/editor/editor.js` 装配 Milkdown 与插件；`kernel/ops.js` 汇总各组件 op；`commands.js`/`tables.js` 是命令表；`components/find/` 是查找；`mermaid-view.js`/`image-view.js` 是 NodeView；`shared/state.js` 持文档与基线，`shared/bus.js` 是通知端口。
 - 拥有的数据：当前编辑器文档（内存）、源码模式状态、查找 UI 状态、选择/表格状态；不拥有磁盘文件。
 - 变化轴：编辑器框架与插件版本、命令表、渲染扩展。
 - 公开契约（含能力 ID）：
@@ -30,16 +30,16 @@ updated: 2026-11-04
   - `CMP-editor#selection-info`：`selinfo{inTable}` 通知上报光标/表格状态；`requestStats` 触发 `stats{words,chars}`。
   - `CMP-editor#minimap-source`：向 `CMP-minimap` 提供只读投影 `{root, measure(), scrollTo()}`；`measure()` 返回 Markdown 顶层块与代码块行的几何/文字/图片；不写文档、不产生 `changed`、不暴露 ProseMirror 类型。
 - 入口：
-  - `CMP-editor/web/src/kernel/core/ops.js#createOps`（39 个 op 的唯一实现，本组件的入口在此）
-  - `CMP-editor/web/src/kernel/core/editor.js#createEditor`
+  - `CMP-editor/web/src/kernel/ops.js#createOps`（39 个 op 的唯一实现，本组件的入口在此）
+  - `CMP-editor/web/src/kernel/components/editor/editor.js#createEditor`
   - `CMP-editor/web/src/editor.js#createMarkdownMinimapSource`（planned，REQ-0011）
-  - `CMP-editor/web/src/kernel/core/commands.js#commandRegistry`
-  - `CMP-editor/web/src/kernel/core/find-bar.js#openFindBar`
-  - `CMP-editor/web/src/kernel/core/tables.js#tableCommandImpls`
-  - `CMP-editor/web/src/kernel/core/mermaid-view.js#getMermaidView`
-  - `CMP-editor/web/src/kernel/core/state.js#setMode`（模式迁移唯一入口）
+  - `CMP-editor/web/src/kernel/components/editor/commands.js#commandRegistry`
+  - `CMP-editor/web/src/kernel/components/find/find-bar.js#openFindBar`
+  - `CMP-editor/web/src/kernel/components/editor/tables.js#tableCommandImpls`
+  - `CMP-editor/web/src/kernel/components/editor/mermaid-view.js#getMermaidView`
+  - `CMP-editor/web/src/kernel/shared/state.js#setMode`（模式迁移唯一入口）
   - `CMP-editor/Sources/MDPreview/EditorWebView.swift#EditorWebView`
-- 依赖：Milkdown 7.7 / ProseMirror / KaTeX / Mermaid / Prism；`CMP-kernel-contract`（op 注册与信封）、`CMP-kernel-semantics`（装载/保存口径）、`CMP-image#node-view`（图片 NodeView 与导入回插）；`CMP-app-shell` 的 op 转发（菜单 → `formatCommand`/`tableCommand`）；`CMP-code-view` 的 `web/src/kernel/core/languages.js`（refractor 语法注册表）与 §2.6 token 调色板共享；`CMP-minimap` 只通过组合根消费本组件的 `#minimap-source`，不反向 import。
+- 依赖：Milkdown 7.7 / ProseMirror / KaTeX / Mermaid / Prism；`CMP-kernel-contract`（op 注册与信封）、`CMP-kernel-semantics`（装载/保存口径）、`CMP-image#node-view`（图片 NodeView 与导入回插）；`CMP-app-shell` 的 op 转发（菜单 → `formatCommand`/`tableCommand`）；`CMP-code-view` 的 `web/src/kernel/components/code/languages.js`（refractor 语法注册表）与 §2.6 token 调色板共享；`CMP-minimap` 只通过组合根消费本组件的 `#minimap-source`，不反向 import。
 - 冷热属性：编辑输入是热路径；内部不得同步调用文件 IO/导出。`#minimap-source` 的 `measure()` 是低频只读投影，由缩略图防抖调用，不进入输入热路径。
 - 尺寸预算：目标 ≤120k token；当前约 1.6k 行 web（`ops.js` 442 + `editor.js` 186 + `tables.js` 156 + `find-bar.js` 149 + `find.js` 92 + `mermaid-view.js` 117 + `image-view.js` 178 + 其余约 280）+ 165 行 Swift，实测待脚本。
 - 单独运行：`./.build/debug/MDPreview --selftest`；视觉用 `--screenshot`。

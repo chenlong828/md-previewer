@@ -19,7 +19,7 @@ updated: 2026-11-04
   1. `find-bar.js → code-view.js`（`findInCode`/`clearCodeFind`）；
   2. `export.js → editor.js`（`toggleSource`）；
   3. `editor.js → find-bar.js/find.js`（查找插件与命中计数）。
-- **`CMP-kernel-core` 规格卡片自认是「组合模块、无独立对外契约」** —— 这是文档层面的自我否定，
+- **`CMP-kernel-*` 六组件 规格卡片自认是「组合模块、无独立对外契约」** —— 这是文档层面的自我否定，
   需按真实结构重切。
 
 ## 2. 决策（2026-11-04，用户确认）
@@ -36,18 +36,19 @@ web/src/kernel/
   semantics/                    L1a 路径与 markdown 语义（纯函数）
   shared/{state,bus,ports}.js   L1a 共享内核：会话状态、端口、通知/请求
   components/
-    document/   L1b 会话与文档（init/setMarkdown/getSaveMarkdown/setBaseDir/主题/缩放/诊断 op）
-    editor/     L1b 编辑面（Milkdown 装配、命令、表格、统计、选区、源码切换、NodeView 注册）
+    document/   L1b 会话与文档（init/setMarkdown/getSaveMarkdown/setBaseDir/主题/缩放/引用收集）
+    editor/     L1b 编辑面（Milkdown 装配、命令、表格、统计、选区、源码切换、NodeView 注册、诊断 op）
     code/       L1b 代码面（只读源码视图、高亮语言、行号、代码内查找）
     find/       L1b 查找（状态机、查找栏、遍历）
     output/     L1b 输出（独立 HTML 导出、打印、内容几何）
     media/      L1b 图片媒体（粘贴载荷识别、导入编排）
 ```
 
-- **组合根**：`web/src/page.js` 仍唯一；各组件导出 `createXxxOps(deps)`，由组合根汇总注册。
-- **跨组件一律走 `shared/ports.js`**：`searchSurface`（code 注册、find 消费）、
-  `renderSurface`（editor 注册、output 消费）、`imageInsertion`（editor 注册、media 消费）。
-  组件之间禁止互相 import，禁边脚本负责守门。
+- **组合根**：`web/src/kernel/assemble.js`（端口接线 + op 汇总，唯一装配点）+ `web/src/page.js`（页面启动）。
+  各组件导出 `createXxxOps()` 与端口实现，由组合根注入。
+- **跨组件一律走 `shared/ports.js`**（八个端口，见 §5.1）。组件之间禁止互相 import，禁边脚本负责守门。
+- **落地偏差**：诊断 op 归 `editor` 而非 `document`（它们读的是 ProseMirror 内部状态，放 document 会造成反向依赖）；
+  `document` 的 `getResourceRefs` 保留在会话切片里。
 
 ## 4. 批次
 
@@ -56,7 +57,7 @@ web/src/kernel/
 | S1 | 抽 `shared/`（state/bus/ports 雏形）；`core/ops.js` 拆成 `components/*/ops.js` 分片与装配 | ✅ 完成（2026-11-04，`41cf144`）：shared 层 + 六片装配；Node 78 + selftest 115 全绿；ops.js 已删除 |
 | S2 | `code` 与 `find` 成组件迁移；`find → code` 改 `searchSurface` 端口 | ✅ 完成（2026-11-04）：components/{code,find} 落地；`shared/ports.js` + `kernel/assemble.js` 单一装配；Node 78 + selftest 115 全绿 |
 | S3 | `output` 与 `media` 迁出；`export → editor` 改 `renderSurface`；粘贴插入改 `imageInsertion` | ✅ 完成（2026-11-04）：components/{output,media} 落地；端口由 assemble 注入；粘贴 e2e 复验通过 |
-| S4 | `document` 与 `editor` 收口；`check-kernel.mjs` 升级为组件级禁边；组件规格与架构文档同步 | 同上；文档与结构一致 |
+| S4 | `document` 与 `editor` 收口；`check-kernel.mjs` 升级为组件级禁边；组件规格与架构文档同步 | ✅ 完成（2026-11-04）：`kernel/core/` 目录消失；禁边收紧为「组件只许自身 + shared + semantics」；六张组件卡 + architecture §4 同步 |
 
 ## 5. 验证
 
@@ -70,10 +71,14 @@ web/src/kernel/
 
 | 端口 | 提供方 | 消费方 | 内容 |
 |---|---|---|---|
-| `searchSurface` | code | find | `findInCode(text) / clearCodeFind() / codeFindCount()`：代码面的查找实现 |
-| `proseFind` | find | editor | ProseMirror 查找插件 + keymap + 命中计数回调（editor 装配时需要） |
-| `renderSurface` | editor | output | `ensureRendered()`：导出前确保处于渲染模式（源码模式要切回） |
-| `imageInsertion` | editor | media | `insertImageNode({src,alt,title})`：媒体组件只管落盘与载荷，插入动作归编辑面 |
+| `findService` | find | editor / code | 查找栏、命中遍历、ProseMirror 查找插件（落地时合并了原计划的 `proseFind`） |
+| `searchSurface` | code | find | `findInCode / clearCodeFind / codeFindCount`：代码面的查找实现 |
+| `codeSurface` | code | document | `hideCode / codeInfo`：装载时退出代码视图 |
+| `codeLanguages` | code | editor | `ensureLanguages / hasLanguage`：语法按需加载 |
+| `editorSurface` | editor | document | `createEditor / setSourceMode / 主题应用` |
+| `renderSurface` | editor | output | `setSourceMode(false)`：导出前确保渲染模式 |
+| `imageInsertion` | editor | media | 图片节点插入（选区恢复 + 单事务） |
+| `mediaPaste` | media | editor / diagnostics | 粘贴监听安装、载荷识别 |
 
 规则：`shared/` 只存注册表与类型约定，不含实现；组件之间零 import，禁边脚本在 S4 增补规则
 （`components/<a>/` 不得 import `components/<b>/`）。

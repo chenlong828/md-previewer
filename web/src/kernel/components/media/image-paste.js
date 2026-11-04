@@ -68,3 +68,8 @@ function blobToBase64(blob) {
         reader.readAsArrayBuffer(blob)
     })
 }
+
+/** 供 editor/diagnostics 消费（mediaPaste）：粘贴监听安装与载荷识别 */
+export function createMediaPaste() {
+    return { setupImagePaste, extractImagePayload, handleImported }
+}

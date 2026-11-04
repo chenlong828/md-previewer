@@ -15,7 +15,7 @@ updated: 2026-11-04
 - 层 / 类型：L1 技术边界；协议与注册表
 - 业务价值：把「Swift 壳 / 未来 Windows 壳 / kernel core」钉在同一份可校验的契约上。有它，Windows 壳可以照 `HOST_OPS` 与错误码实现客户端，不用读内核源码；没有它，v1 的「未知 op 静默丢弃、ready 前调用无声吞掉」会原样复发。
 - 负责：信封构造与校验（`v` 恒 2）、op 清单与 payload 形状校验、op 注册与分发、id 关联（并发请求各得各的响应）、版本握手、五种错误码、内核→壳请求的 id 表。
-- 不负责：宿主通道（`CMP-kernel-transport`）；op 的业务实现（`CMP-kernel-core`）；语义规则（`CMP-kernel-semantics`）；壳侧超时与重试（`CMP-app-shell` 的 `KernelClient`，协议层不设超时）。
+- 不负责：宿主通道（`CMP-kernel-transport`）；op 的业务实现（`CMP-kernel-*` 六组件）；语义规则（`CMP-kernel-semantics`）；壳侧超时与重试（`CMP-app-shell` 的 `KernelClient`，协议层不设超时）。
 - 内部逻辑：`envelope.js` 构造四类帧并 `decode`/`classify`；`ops.js` 是 op 名与「必填字段 + 类型」的单一清单；`registry.js` 持 `handlers`/`pending` 两张表与 `ready`/`disabled` 两个开关；`errors.js` 定义码值与 `KernelError`。
 - 拥有的数据：注册表（op → handler、`readyGated`）、挂起请求表（id → resolve/reject）、序号计数器、握手状态；不持文档内容。
 - 变化轴：协议版本（v3 起重开握手语义）、op 清单增删、错误码集合、payload 校验宽度。

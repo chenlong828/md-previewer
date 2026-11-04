@@ -1,6 +1,6 @@
 // 迁移期 v1 方法面（T5 收尾删除）：window.mdbridge 供尚未迁到 op 调用的 Swift 站点使用。
 // 只做「方法名 → op 处理器」的同步转发，没有消息通道、没有编辑语义。
-import { createOps, renderMarkdown } from './kernel/core/ops/index.js'
+import { createOps, renderMarkdown } from './kernel/ops.js'
 
 export function installV1Shim() {
     const ops = createOps()

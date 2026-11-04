@@ -9,7 +9,7 @@ import { bootKernel } from './kernel/main.js'
 import { createKernelOps } from './kernel/assemble.js'
 import { bindBus, notify } from './kernel/shared/bus.js'
 
-import { scheduleStats } from './kernel/core/stats.js'
+import { scheduleStats } from './kernel/components/editor/stats.js'
 import { installV1Shim } from './v1-shim.js'
 
 export const KERNEL_VERSION = '0.1.0'

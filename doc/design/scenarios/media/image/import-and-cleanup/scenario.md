@@ -11,7 +11,7 @@ title: 导入图片并清理资源
 entries:
   - CMP-image/Sources/MDPreview/ImageStore.swift#import
   - CMP-image/Sources/MDPreview/ImageStore.swift#cleanUnreferenced
-  - CMP-kernel-core/web/src/kernel/core/image-paste.js#setupImagePaste
+  - CMP-kernel-media/web/src/kernel/components/media/image-paste.js#setupImagePaste
   - CMP-app-shell/Sources/MDPreview/DocumentWindowController.swift#importImage
 docs:
   - path: doc/design/architecture.md

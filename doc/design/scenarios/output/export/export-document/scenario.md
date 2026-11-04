@@ -12,7 +12,7 @@ entries:
   - CMP-export/Sources/MDPreview/DocumentWindowController.swift#exportPDF
   - CMP-export/Sources/MDPreview/DocumentWindowController.swift#exportHTML
   - CMP-export/Sources/MDPreview/DocumentWindowController.swift#printDocument
-  - CMP-kernel-core/web/src/kernel/core/export.js#exportStandaloneHTML
+  - CMP-kernel-output/web/src/kernel/components/output/export.js#exportStandaloneHTML
 docs:
   - path: README.md
     heading: 功能特性
