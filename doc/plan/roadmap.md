@@ -29,7 +29,7 @@ updated: 2026-11-04
 | [2026-10-20-image-support](../history/works/2026-10-20-image-support/brief.md) | 图片支持（相对路径显示/源码编辑块/粘贴拖放导入落盘） | 功能 | M | 无 | ✅ 已完成（已归档） |
 | [2026-10-20-image-cleanup](../history/works/2026-10-20-image-cleanup/brief.md) | 图片资源生命周期（撤销不残留、关闭统一 GC 清理） | 功能 | S | 图片支持 | ✅ 已完成（已归档） |
 | [2026-10-20-file-drawer](../works/2026-10-20-file-drawer/brief.md) | 文件抽屉与目录模式（lazy 按层装载、锚定下拉框、同窗覆盖打开） | 功能 | L | 无 | 🔄 收口中（自动化全绿，待人工实证） |
-| [2026-10-21-portable-kernel](../history/works/2026-10-21-portable-kernel/brief.md) | 可移植内核与壳契约（桥协议 v2、路径语义入内核；评审有条件通过，决策 D1–D5） | 功能 | M–L | 无 | ⏸ 暂缓（评审+规格已归档，零实施；恢复时从存档重启） |
+| [2026-10-21-portable-kernel](../history/works/2026-10-21-portable-kernel/brief.md) | 可移植内核与壳契约（桥协议 v2、路径语义入内核；评审有条件通过，决策 D1–D5） | 功能 | M–L | 无 | ⏸ 暂缓（评审+规格已归档，零实施；已由 2026-11-04-kernel-v2 接力） |
 | [2026-10-22-doc-split](../works/2026-10-22-doc-split/brief.md) | design 文档按读者下沉（architecture.md 拆出 image/drawer/诊断面） | 文档 | S | 无 | 🔄 执行中（五态迁移后范围待重定；§2.1/§2.4 与收口待做） |
 | [2026-10-24-list-indent-four-space](../history/works/2026-10-24-list-indent-four-space/brief.md) | 列表 Tab 嵌套的 markdown 缩进（2 空格 → 标准 4 空格，首行标记不补齐） | 缺陷 | S | 无 | ✅ 已完成（已归档） |
 | [2026-10-24-code-token-palette](../history/works/2026-10-24-code-token-palette/brief.md) | 代码高亮 token 调色板自有化（浅/深双值单规则，移除 Prism 浅色整主题与 prismjs 依赖） | 缺陷/重构 | S | 无 | ✅ 已完成（已归档） |
@@ -37,6 +37,8 @@ updated: 2026-11-04
 | [2026-11-04-scenario-inventory](../works/2026-11-04-scenario-inventory/brief.md) | 已实现场景/组件清点（7 组件、10 REQ、16 场景；REQ 验证后转） | 文档 | M | 五态迁移 | 🔄 收口中（卡片已落，3+1 复核待做） |
 | [2026-11-04-code-file-view](../history/works/2026-11-04-code-file-view/brief.md) | 代码文件只读查看 + 高亮语言切换（新组件 CMP-code-view；44 语言；6 入口面） | 功能 | M–L | 无 | ✅ 已完成（已归档；117 项 + 人工核对通过） |
 | [2026-11-04-code-view-line-numbers](../history/works/2026-11-04-code-view-line-numbers/brief.md) | 代码视图行号与按行阅读（逻辑行结构、行号、软换行、当前行、全局开关） | 功能/P2 | S–M | 代码文件查看 | ✅ 已完成（已归档；121 项 + 人工核对通过） |
+| [2026-11-04-document-minimap](../works/2026-11-04-document-minimap/brief.md) | 右侧文档缩略图与定位（新组件 CMP-minimap；Markdown + 代码；真缩略图；菜单开关） | 功能/P1 | M–L | 代码文件查看；P1 设计确认 | ⏸ 暂停排队（kernel-v2 重构 web/src 装配与桥层，v2 落地后按新结构接入） |
+| [2026-11-04-kernel-v2](../works/2026-11-04-kernel-v2/brief.md) | 可移植内核与桥协议 v2 落地（transport/contract/semantics/core 四层 + macOS 壳 v1→v2 一次切换；Windows 参照物） | 功能/架构 P1 | L | 存档规格 + 本次增量 | 🔄 执行中（第二次门已过；T2/T3 完成，T4/T5 待做） |
 
 ## 批次与依赖链
 
