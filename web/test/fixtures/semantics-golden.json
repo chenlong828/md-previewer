@@ -1,0 +1,193 @@
+{
+  "cases" : [
+    {
+      "files" : [
+        "img\/a.png"
+      ],
+      "forLoad" : "![a](file:\/\/$BASE\/img\/a.png)",
+      "forSave" : "![a](img\/a.png)",
+      "md" : "![a](img\/a.png)",
+      "name" : "相对路径命中",
+      "refs" : [
+        "$BASE\/img\/a.png"
+      ]
+    },
+    {
+      "files" : [
+        "img\/my pic.png"
+      ],
+      "forLoad" : "![a](file:\/\/$BASE\/img\/my%20pic.png)",
+      "forSave" : "![a](img\/my pic.png)",
+      "md" : "![a](img\/my pic.png)",
+      "name" : "空格路径命中（重整为 file:\/\/ 且源码加尖括号）",
+      "refs" : [
+        "$BASE\/img\/my pic.png"
+      ]
+    },
+    {
+      "files" : [
+
+      ],
+      "forLoad" : "![a](img\/missing.png)",
+      "forSave" : "![a](img\/missing.png)",
+      "md" : "![a](img\/missing.png)",
+      "name" : "缺失文件保持原文",
+      "refs" : [
+
+      ]
+    },
+    {
+      "files" : [
+
+      ],
+      "forLoad" : "![r](https:\/\/example.com\/a.png) ![d](data:image\/png;base64,AAA) ![h](#anchor) ![e]()",
+      "forSave" : "![r](https:\/\/example.com\/a.png) ![d](data:image\/png;base64,AAA) ![h](#anchor) ![e]()",
+      "md" : "![r](https:\/\/example.com\/a.png) ![d](data:image\/png;base64,AAA) ![h](#anchor) ![e]()",
+      "name" : "远程与数据与锚点不改写",
+      "refs" : [
+
+      ]
+    },
+    {
+      "files" : [
+        "img\/a.png",
+        "img\/my pic.png"
+      ],
+      "forLoad" : "![a](file:\/\/$BASE\/img\/a.png) ![b](file:\/\/$BASE\/img\/my%20pic.png)",
+      "forSave" : "![a](img\/a.png) ![b](<img\/my pic.png>)",
+      "md" : "![a](file:\/\/$BASE\/img\/a.png) ![b](file:\/\/$BASE\/img\/my%20pic.png)",
+      "name" : "已 file:\/\/ 不改写但保存时还原",
+      "refs" : [
+        "$BASE\/img\/a.png",
+        "$BASE\/img\/my pic.png"
+      ]
+    },
+    {
+      "files" : [
+        "img\/a(1).png",
+        "img\/b.png"
+      ],
+      "forLoad" : "![a](<file:\/\/$BASE\/img\/a(1).png>) ![b](file:\/\/$BASE\/img\/b.png)",
+      "forSave" : "![a](img\/a(1).png) ![b](img\/b.png)",
+      "md" : "![a](img\/a(1).png) ![b](img\/b.png)",
+      "name" : "括号路径",
+      "refs" : [
+        "$BASE\/img\/a(1).png",
+        "$BASE\/img\/b.png"
+      ]
+    },
+    {
+      "files" : [
+        "img\/my pic.png"
+      ],
+      "forLoad" : "![a](file:\/\/$BASE\/img\/my%20pic.png)",
+      "forSave" : "![a](<img\/my pic.png>)",
+      "md" : "![a](<img\/my pic.png>)",
+      "name" : "尖括号包裹目的地",
+      "refs" : [
+        "$BASE\/img\/my pic.png"
+      ]
+    },
+    {
+      "files" : [
+        "img\/a.png",
+        "img\/b.png"
+      ],
+      "forLoad" : "![a](file:\/\/$BASE\/img\/a.png \"标题\") ![b](file:\/\/$BASE\/img\/b.png \"single\")",
+      "forSave" : "![a](img\/a.png \"标题\") ![b](img\/b.png 'single')",
+      "md" : "![a](img\/a.png \"标题\") ![b](img\/b.png 'single')",
+      "name" : "带标题路径",
+      "refs" : [
+        "$BASE\/img\/a.png",
+        "$BASE\/img\/b.png"
+      ]
+    },
+    {
+      "files" : [
+        "img\/a.png",
+        "img\/b.png"
+      ],
+      "forLoad" : "```\n![a](img\/a.png)\n```\n![b](file:\/\/$BASE\/img\/b.png)",
+      "forSave" : "```\n![a](img\/a.png)\n```\n![b](img\/b.png)",
+      "md" : "```\n![a](img\/a.png)\n```\n![b](img\/b.png)",
+      "name" : "围栏内不改写",
+      "refs" : [
+        "$BASE\/img\/b.png"
+      ]
+    },
+    {
+      "files" : [
+        "img\/a.png"
+      ],
+      "forLoad" : "![a][ref]\n\n[ref]: img\/a.png",
+      "forSave" : "![a][ref]\n\n[ref]: img\/a.png",
+      "md" : "![a][ref]\n\n[ref]: img\/a.png",
+      "name" : "引用式图片不改写",
+      "refs" : [
+
+      ]
+    },
+    {
+      "files" : [
+        "img\/a b.png"
+      ],
+      "forLoad" : "![a](img\/a%20b.png)",
+      "forSave" : "![a](img\/a%20b.png)",
+      "md" : "![a](img\/a%20b.png)",
+      "name" : "百分号编码与字面空格同指一个文件（双口径保护）",
+      "refs" : [
+        "$BASE\/img\/a b.png"
+      ]
+    },
+    {
+      "files" : [
+        "img\/图 1.png"
+      ],
+      "forLoad" : "![图](file:\/\/$BASE\/img\/%E5%9B%BE%201.png)",
+      "forSave" : "![图](img\/图 1.png)",
+      "md" : "![图](img\/图 1.png)",
+      "name" : "中文与空格文件名",
+      "refs" : [
+        "$BASE\/img\/图 1.png"
+      ]
+    },
+    {
+      "files" : [
+        "img\/a.png"
+      ],
+      "forLoad" : "文字 ![a](file:\/\/$BASE\/img\/a.png) 与 ![m](img\/missing.png) 和 ![r](https:\/\/x\/y.png)",
+      "forSave" : "文字 ![a](img\/a.png) 与 ![m](img\/missing.png) 和 ![r](https:\/\/x\/y.png)",
+      "md" : "文字 ![a](img\/a.png) 与 ![m](img\/missing.png) 和 ![r](https:\/\/x\/y.png)",
+      "name" : "一行多图混合（改写只动可改写者）",
+      "refs" : [
+        "$BASE\/img\/a.png"
+      ]
+    },
+    {
+      "files" : [
+        "img\/a.png",
+        "img\/b.png",
+        "img\/c.png"
+      ],
+      "forLoad" : "~~~\n![a](img\/a.png)\n~~~\n![b](file:\/\/$BASE\/img\/b.png)\n```js\n![c](img\/c.png)\n```",
+      "forSave" : "~~~\n![a](img\/a.png)\n~~~\n![b](img\/b.png)\n```js\n![c](img\/c.png)\n```",
+      "md" : "~~~\n![a](img\/a.png)\n~~~\n![b](img\/b.png)\n```js\n![c](img\/c.png)\n```",
+      "name" : "围栏多行与结束标记",
+      "refs" : [
+        "$BASE\/img\/b.png"
+      ]
+    },
+    {
+      "files" : [
+
+      ],
+      "forLoad" : "# 标题\n\n纯文本\n",
+      "forSave" : "# 标题\n\n纯文本\n",
+      "md" : "# 标题\n\n纯文本\n",
+      "name" : "空文档与无图文档",
+      "refs" : [
+
+      ]
+    }
+  ]
+}

@@ -1,0 +1,79 @@
+{
+  "cases": [
+    {
+      "name": "相对路径命中",
+      "md": "![a](img/a.png)",
+      "files": ["img/a.png"]
+    },
+    {
+      "name": "空格路径命中（重整为 file:// 且源码加尖括号）",
+      "md": "![a](img/my pic.png)",
+      "files": ["img/my pic.png"]
+    },
+    {
+      "name": "缺失文件保持原文",
+      "md": "![a](img/missing.png)",
+      "files": []
+    },
+    {
+      "name": "远程与数据与锚点不改写",
+      "md": "![r](https://example.com/a.png) ![d](data:image/png;base64,AAA) ![h](#anchor) ![e]()",
+      "files": []
+    },
+    {
+      "name": "已 file:// 不改写但保存时还原",
+      "md": "![a](file://$BASE/img/a.png) ![b](file://$BASE/img/my%20pic.png)",
+      "files": ["img/a.png", "img/my pic.png"]
+    },
+    {
+      "name": "括号路径",
+      "md": "![a](img/a(1).png) ![b](img/b.png)",
+      "files": ["img/a(1).png", "img/b.png"]
+    },
+    {
+      "name": "尖括号包裹目的地",
+      "md": "![a](<img/my pic.png>)",
+      "files": ["img/my pic.png"]
+    },
+    {
+      "name": "带标题路径",
+      "md": "![a](img/a.png \"标题\") ![b](img/b.png 'single')",
+      "files": ["img/a.png", "img/b.png"]
+    },
+    {
+      "name": "围栏内不改写",
+      "md": "```\n![a](img/a.png)\n```\n![b](img/b.png)",
+      "files": ["img/a.png", "img/b.png"]
+    },
+    {
+      "name": "引用式图片不改写",
+      "md": "![a][ref]\n\n[ref]: img/a.png",
+      "files": ["img/a.png"]
+    },
+    {
+      "name": "百分号编码与字面空格同指一个文件（双口径保护）",
+      "md": "![a](img/a%20b.png)",
+      "files": ["img/a b.png"]
+    },
+    {
+      "name": "中文与空格文件名",
+      "md": "![图](img/图 1.png)",
+      "files": ["img/图 1.png"]
+    },
+    {
+      "name": "一行多图混合（改写只动可改写者）",
+      "md": "文字 ![a](img/a.png) 与 ![m](img/missing.png) 和 ![r](https://x/y.png)",
+      "files": ["img/a.png"]
+    },
+    {
+      "name": "围栏多行与结束标记",
+      "md": "~~~\n![a](img/a.png)\n~~~\n![b](img/b.png)\n```js\n![c](img/c.png)\n```",
+      "files": ["img/a.png", "img/b.png", "img/c.png"]
+    },
+    {
+      "name": "空文档与无图文档",
+      "md": "# 标题\n\n纯文本\n",
+      "files": []
+    }
+  ]
+}
