@@ -121,7 +121,7 @@ updated: 2026-11-04
 
 | op | payload → 响应 | 说明 |
 |---|---|---|
-| `resolveResources` | `{refs[]} → {resources:{ref:{url:string\|null, exists:bool, isImage:bool, paths:string[]}}}` | **新**。装载改写的文件感知点：内核解析候选引用后批量问壳，壳以文件系统为准作答。`url`/`exists` 按字面写法（装载改写用），`paths` 给全部存在的候选绝对路径（字面 + 解码，GC 宁多保护用） |
+| `resolveResources` | `{refs[], baseDir} → {resources:{ref:{url:string\|null, exists:bool, isImage:bool, paths:string[]}}}` | **新**。装载改写的文件感知点：内核解析候选引用后批量问壳，壳以文件系统为准作答。请求必须自包含（带 `baseDir`，壳不猜当前文档目录，否则未保存/另存场景会误判缺失）；`url`/`exists` 按字面写法（装载改写用），`paths` 给全部存在的候选绝对路径（字面 + 解码，GC 宁多保护用） |
 | `importImage` | `{kind:'blob'\|'file', mime?, data?, path?} → {ok, src?, error?}` | 幂等键 = 消息 id；v1 的 `requestId` 即 id，语义不变；`onImageImported` 反向注入取消 |
 
 ### 3.4 传输面与握手（采纳存档 §4.5 + 壳侧客户端）
