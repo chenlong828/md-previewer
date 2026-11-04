@@ -1,362 +1,192 @@
-// 桥接 API（v1 过渡层，T5 切换后整文件删除）：window.mdbridge 是 Swift 壳当前调用的入口。
-// 内核能力全部来自 kernel/core；本文件只做「v1 调用面 ↔ v2 op 面」的临时适配。
-// Swift↔JS 命令名的 JS 侧权威见 commands.js 与 tables.js。
-import { editorViewCtx } from '@milkdown/core'
-import { TextSelection } from '@milkdown/prose/state'
-import { isInTable } from '@milkdown/prose/tables'
-import { undo, redo } from '@milkdown/prose/history'
-import { replaceAll, insert } from '@milkdown/utils'
+// v1 过渡层（T5 切换后整文件删除）：window.mdbridge 是 Swift 壳当前调用的入口。
+// 方法体全部委托 kernel/core/ops.js 的 op 处理器，这里只做「v1 返回值形状 ↔ v2 payload」的转换，
+// 不再持有任何编辑语义——避免第二份实现。
 import { post } from './v1-channel.js'
-import { state, currentMarkdown } from './kernel/core/state.js'
 import { bindBus } from './kernel/core/bus.js'
-import { computeStats } from './kernel/core/stats.js'
-import { createEditor, toggleSource as applySourceToggle, applyThemeDom, applyMermaidTheme } from './kernel/core/editor.js'
-import { findKey, findUI } from './kernel/core/find.js'
-import { openFindBar, closeFindBar, stepFind, runFind } from './kernel/core/find-bar.js'
-import { showCode, hideCode, setCodeLanguage as applyCodeLanguage, setCodeLineNumbers as applyCodeLineNumbers, isCodeMode, codeInfo, codeFindCount } from './kernel/core/code-view.js'
-import { hasLanguage } from './kernel/core/languages.js'
-import { tableCommandImpls } from './kernel/core/tables.js'
-import { commandRegistry } from './kernel/core/commands.js'
-import { exportStandaloneHTML } from './kernel/core/export.js'
-import { extractImagePayload } from './kernel/core/image-paste.js'
+import { createOps, renderMarkdown } from './kernel/core/ops.js'
+import { state } from './kernel/core/state.js'
 
 // v1 适配：把内核总线接到 window.webkit 通道；hostCall 用 requestId 关联响应。
-// 迁移完成后（T5）本块由 transport + contract 取代。
 const importPending = new Map()
 let importSeq = 0
 bindBus({
-    notify: (op, payload) => post({ op, ...payload }),
-    callHost: (op, payload) => new Promise((resolve, reject) => {
-        if (op !== 'importImage') {
-            reject(new Error(`v1 adapter: unsupported host call ${op}`))
+    notify: (op, payload) => {
+        if (op === 'boot') {
+            post({ op: 'boot' })
             return
         }
-        importSeq += 1
-        const requestId = `img-${importSeq}`
-        importPending.set(requestId, { resolve, reject })
-        post({ op, requestId, ...payload })
+        post({ op, ...payload })
+    },
+    callHost: (op, payload) => new Promise((resolve, reject) => {
+        if (op === 'importImage') {
+            importSeq += 1
+            const requestId = `img-${importSeq}`
+            importPending.set(requestId, { resolve, reject })
+            post({ op, requestId, ...payload })
+            return
+        }
+        if (op === 'resolveResources') {
+            // v1 壳已在装载前自行改写图片路径；这里回答「无资源」，缺失引用按原文保留（与旧行为一致）
+            resolve({ resources: {} })
+            return
+        }
+        reject(new Error(`v1 adapter: unsupported host call ${op}`))
     }),
 })
+
+const ops = createOps()
 
 window.mdbridge = {
     async init(markdown, opts = {}) {
         try {
-            return await this._init(markdown, opts)
+            await ops.init({ markdown: markdown || '', opts })
+            return 'ok'
         } catch (e) {
-            post({ op: 'jserror', message: 'init failed: ' + (e && e.message ? e.message : String(e)), stack: e && e.stack ? String(e.stack) : '' })
+            post({
+                op: 'jserror',
+                message: 'init failed: ' + (e && e.message ? e.message : String(e)),
+                stack: e && e.stack ? String(e.stack) : '',
+            })
             throw e
         }
     },
 
-    async _init(markdown, opts = {}) {
-        // 先解析配置(theme/zoom/plugins/title/baseDir)再创建编辑器:
-        // 首帧 DOM 与 mermaid 都按目标主题初始化,pluginSet 条件加载真正可达。
-        state.pluginSet = opts.plugins || 'full'
-        state.theme = opts.theme === 'dark' ? 'dark' : 'light'
-        if (typeof opts.baseDir === 'string') state.baseDir = opts.baseDir
-        applyThemeDom()
-        if (!state.editor) await createEditor()
-        if (opts.zoom) this.setZoom(opts.zoom)
-        this.setTitle(opts.title || '')
-        if (markdown) {
-            this.setMarkdown(markdown)
-        }
-        post({ op: 'ready' })
-        return 'ok'
-    },
-
+    // 同步入口：v1 壳用 evaluateJavaScript 直接调用，不能变成 Promise
     setMarkdown(md, opts = {}, flush = false) {
-        if (!state.ready) return
-        // 不变式:回到 Markdown 文档必须退出只读代码视图(#code-view 隐藏、#app 恢复)
-        hideCode()
-        if (opts && typeof opts.baseDir === 'string') state.baseDir = opts.baseDir
-        state.editor.action(replaceAll(md || '', flush))
-        // 确定性基线:同步序列化 replaceAll 落定后的 doc(与保存取回同一口径),
-        // 不依赖异步回调的到达时机——并发编辑的防抖回调由 editor 的过期过滤处理
-        if (!flush) state.baselineMarkdown = currentMarkdown()
+        renderMarkdown(md, { baseDir: opts && opts.baseDir, flush })
     },
 
-    /**
-     * 进入只读代码视图。代码文档没有脏基线、不发 changed;语言由 Swift 侧
-     * (FileSupport)解析后传入,allowHighlight=false 时纯文本渲染。
-     */
     setCode(text, opts = {}) {
-        if (!state.ready) return false
-        if (state.sourceMode) applySourceToggle(false)
-        showCode(text || '', {
-            language: typeof opts.language === 'string' ? opts.language : 'plaintext',
-            allowHighlight: opts.allowHighlight !== false,
-            // 不传时沿用 web 当前偏好(自检/旧调用兼容);原生装载代码文档时显式传入。
-            lineNumbers: typeof opts.lineNumbers === 'boolean' ? opts.lineNumbers : undefined,
-        })
-        // 代码视图重建后旧选区失效:查找栏开着且有查询时重算命中
-        if (document.body.classList.contains('finding') && findUI.query) {
-            runFind(findUI.query, { caseSensitive: findUI.caseSensitive })
-        }
-        return true
+        return ops.setCode({
+            text: text || '',
+            language: opts.language,
+            allowHighlight: opts.allowHighlight,
+            lineNumbers: opts.lineNumbers,
+        }).ok
     },
 
-    /** 切换高亮语言(只重绘,不写文件);plaintext / 未知 id 回落纯文本 */
     setCodeLanguage(id) {
-        const ok = applyCodeLanguage(typeof id === 'string' ? id : 'plaintext')
-        if (ok && document.body.classList.contains('finding') && findUI.query) {
-            runFind(findUI.query, { caseSensitive: findUI.caseSensitive })
-        }
-        return ok
+        return ops.setCodeLanguage({ id }).ok
     },
 
-    /** 切换行号显示:只改布局类,不重绘 token、不写文件;非代码模式 no-op */
     setCodeLineNumbers(visible) {
-        return applyCodeLineNumbers(!!visible)
+        return ops.setCodeLineNumbers({ visible: !!visible }).ok
     },
 
     isCodeMode() {
-        return isCodeMode()
+        return ops.getState().codeMode
     },
 
     codeInfo() {
-        return codeInfo()
+        return ops.codeInfo()
     },
 
-    /** 自检辅助:返回 ids 中确实可高亮的语言(用于 Swift 侧语言表 ↔ web 语法表一致性) */
     hasLanguages(ids) {
-        if (!Array.isArray(ids)) return []
-        return ids.filter((id) => hasLanguage(id))
+        return ops.hasLanguages({ ids: Array.isArray(ids) ? ids : [] }).supported
     },
 
-    /** 保存成功后由原生调用:以当前所见内容为新基线(源码模式下即 textarea 内容) */
     markClean() {
-        if (state.ready) state.baselineMarkdown = currentMarkdown()
-        state.pendingBaseline = false
-        return true
+        return ops.markClean().ok
     },
 
     getMarkdown() {
-        return currentMarkdown()
+        return ops.getMarkdown().md
     },
 
-    /** 原生在文件名变化时同步 web 层 document.title(HTML 导出标题的来源) */
     setTitle(title) {
-        document.title = title || 'MDPreview'
-        return true
+        return ops.setTitle({ title: title || '' }).ok
     },
 
-    /** 另存为等场景同步文档目录(图片路径换算基准);加载路径经 setMarkdown opts 携带 */
     setBaseDir(path) {
-        state.baseDir = path || ''
-        return true
+        return ops.setBaseDir({ path: path || '' }).ok
     },
 
     setTheme(mode) {
-        const target = mode === 'dark' ? 'dark' : 'light'
-        if (target === state.theme) return
-        state.theme = target
-        applyThemeDom()
-        applyMermaidTheme()
-        if (state.ready) {
-            // 已渲染的 mermaid 图需要重绘
-            state.editor.action(replaceAll(currentMarkdown()))
-        }
+        ops.setTheme({ theme: mode === 'dark' ? 'dark' : 'light' })
     },
 
     setZoom(scale) {
-        const s = Math.min(3, Math.max(0.5, scale))
-        state.zoom = s
-        document.documentElement.style.setProperty('--app-zoom', String(s))
-        return s
+        return ops.setZoom({ scale }).zoom
     },
 
-    getZoom() { return state.zoom },
+    getZoom() {
+        return ops.getState().zoom
+    },
 
     toggleSource(force) {
-        // 代码文档没有源码/渲染切换(需求明确「代码恒为纯源码、不支持切换」)
-        if (state.codeMode) return false
-        return applySourceToggle(force)
+        return ops.toggleSource({ force }).sourceMode
     },
 
-    /** 表格行列命令 */
     tableCommand(name) {
-        const impl = tableCommandImpls[name]
-        if (!state.ready || !impl) return false
-        return state.editor.action((ctx) => {
-            const view = ctx.get(editorViewCtx)
-            try {
-                return impl(view)
-            } catch (e) {
-                console.warn('tableCommand failed', name, e)
-                return false
-            }
-        })
+        return ops.tableCommand({ name }).applied
     },
 
-    /** 右键定位:把光标移到点击处(原生文本行为),并同步返回该处是否在表格内 */
     focusAt(x, y) {
-        if (!state.ready) return { ok: false, inTable: false }
-        return state.editor.action((ctx) => {
-            const view = ctx.get(editorViewCtx)
-            try {
-                const info = view.posAtCoords({ left: x, top: y })
-                if (!info || info.pos == null) return { ok: false, inTable: false }
-                const $pos = view.state.doc.resolve(info.pos)
-                view.dispatch(view.state.tr.setSelection(TextSelection.near($pos)))
-                // inTable 判定与右键菜单/表格命令同源(prosemirror-tables isInTable)
-                let inTable = false
-                try { inTable = isInTable(view.state) } catch (e) { inTable = false }
-                return { ok: true, inTable }
-            } catch (e) {
-                return { ok: false, inTable: false }
-            }
-        })
+        return ops.focusAt({ x, y })
     },
 
-    /** 测试辅助:把光标放进文档第一张表格的首个单元格 */
     debugFocusTable() {
-        if (!state.ready) return false
-        return state.editor.action((ctx) => {
-            const view = ctx.get(editorViewCtx)
-            try {
-                let target = null
-                view.state.doc.descendants((node, pos) => {
-                    if (target == null && node.type.name === 'table') target = pos
-                })
-                if (target == null) return false
-                view.dispatch(view.state.tr.setSelection(TextSelection.near(view.state.doc.resolve(target + 1), 1)))
-                return true
-            } catch (e) { return false }
-        })
+        return ops.debugFocusTable().ok
     },
 
-    /** 测试诊断:光标处表格信息。inTable 判定同源 isInTable;行列数仅辅助自检 */
     tableInfo() {
-        if (!state.ready) return { inTable: false }
-        return state.editor.action((ctx) => {
-            const view = ctx.get(editorViewCtx)
-            let inTable = false
-            try { inTable = isInTable(view.state) } catch (e) { inTable = false }
-            if (!inTable) return { inTable: false }
-            const $from = view.state.selection.$from
-            for (let d = $from.depth; d > 0; d--) {
-                if ($from.node(d).type.name === 'table') {
-                    const header = $from.node(d).firstChild
-                    return { inTable: true, rows: $from.node(d).childCount, cols: header ? header.childCount : 0 }
-                }
-            }
-            return { inTable: true }
-        })
+        return ops.tableInfo()
     },
 
-    /** 文档内查找 */
     openFindBar() {
-        openFindBar()
-        return true
+        return ops.openFindBar().ok
     },
+
     closeFindBar() {
-        closeFindBar()
-        return true
+        return ops.closeFindBar().ok
     },
+
     findNext() {
-        stepFind(1)
-        return true
+        return ops.findNext().ok
     },
+
     findPrev() {
-        stepFind(-1)
-        return true
+        return ops.findPrev().ok
     },
+
     findInfo() {
-        const active = document.body.classList.contains('finding')
-        if (state.codeMode) {
-            return { active, query: findUI.query, count: codeFindCount() }
-        }
-        return {
-            active,
-            query: findUI.query,
-            // count 恒为数字;-1 表示编辑器未就绪
-            count: state.sourceMode ? findUI.srcMatches.length : (state.ready ? (() => {
-                try {
-                    return state.editor.action((ctx) => {
-                        const st = findKey.getState(ctx.get(editorViewCtx).state)
-                        return st ? st.matches.length : 0
-                    })
-                } catch (e) { return -1 }
-            })() : -1),
-        }
+        return ops.findInfo()
     },
-    isSourceMode() { return state.sourceMode },
+
+    isSourceMode() {
+        return state.sourceMode
+    },
 
     undo() {
-        if (!state.ready) return
-        state.editor.action((ctx) => {
-            const view = ctx.get(editorViewCtx)
-            undo(view.state, view.dispatch, view)
-        })
+        ops.undo()
     },
 
     redo() {
-        if (!state.ready) return
-        state.editor.action((ctx) => {
-            const view = ctx.get(editorViewCtx)
-            redo(view.state, view.dispatch, view)
-        })
+        ops.redo()
     },
 
-    /** 诊断:校验命令名是否已注册且可运行(供 selftest 做双端一致性校验);
-     *  格式命令在 commandRegistry,表格命令在 tableCommandImpls */
+    /** 诊断：校验命令名是否已注册且可运行（selftest 双端一致性校验） */
     hasCommands(names) {
-        return names.map((n) => ({
-            name: n,
-            ok: typeof commandRegistry[n]?.run === 'function' || typeof tableCommandImpls[n] === 'function',
-        }))
+        return ops.hasCommands({ names: Array.isArray(names) ? names : [] }).results
     },
 
-    /** 通过命令名调用预设命令(供原生菜单使用) */
     formatCommand(name, payload) {
-        if (!state.ready) return false
-        const cmd = commandRegistry[name]
-        if (!cmd || typeof cmd.run !== 'function') {
-            console.warn('formatCommand: unknown or unregistered command:', name)
-            return false
-        }
-        try {
-            return cmd.run(payload) !== false
-        } catch (e) {
-            console.warn('formatCommand failed', name, e)
-            return false
-        }
+        return ops.formatCommand({ name, payload }).applied
     },
 
     insertTable(row, col) {
-        if (!state.ready) return false
-        const ok = this.formatCommand('insertTableCommand', { row: row || 3, col: col || 3 })
-        if (!ok) return false
-        // 把光标放进新表格的首个单元格(插入后光标可能留在外部,或为整表 CellSelection)
-        state.editor.action((ctx) => {
-            const view = ctx.get(editorViewCtx)
-            try {
-                const $from = view.state.selection.$from
-                // 新表格位于插入点(光标处或其后);不优先包含表,避免落回旧表
-                let target = null
-                view.state.doc.descendants((node, pos) => {
-                    if (target == null && node.type.name === 'table' && pos >= $from.pos - 2) target = pos
-                })
-                if (target == null) return
-                view.dispatch(view.state.tr.setSelection(TextSelection.near(view.state.doc.resolve(target + 1), 1)))
-            } catch (e) { /* 定位失败不影响插入 */ }
-        })
-        return true
+        return ops.insertTable({ row, col }).ok
     },
 
-    /** 在光标处插入一段 markdown 文本 */
     insertMarkdown(md) {
-        if (!state.ready) return
-        state.editor.action(insert(md))
+        return ops.insertMarkdown({ md }).ok
     },
 
-    /** 在当前选区插入图片节点(拖放导入/插入菜单等原生入口共用) */
     insertImage(src, alt, title) {
-        return this.formatCommand('insertImageCommand', { src: src || '', alt: alt || '', title: title || '' })
+        return ops.insertImage({ src, alt, title }).applied
     },
 
-    /** 粘贴图片导入回灌：兑现 hostCall('importImage') 的响应（选区快照在 image-paste 内闭环） */
+    /** 粘贴图片导入回灌：兑现 hostCall('importImage') 的响应（选区快照在 core 内闭环） */
     onImageImported(requestId, payload) {
         const entry = importPending.get(requestId)
         if (!entry) return false
@@ -365,30 +195,20 @@ window.mdbridge = {
         return true
     },
 
-    /** 测试辅助:剪贴板图片载荷识别(blob=截图位图 / file=本地图片路径) */
+    /** 测试辅助：剪贴板图片载荷识别（blob=截图位图 / file=本地图片路径） */
     testImagePayload(data) {
-        const payload = extractImagePayload(data)
-        return payload ? { kind: payload.kind, path: payload.path || '' } : null
+        return ops.testImagePayload({ data }).payload
     },
 
     focus() {
-        if (state.codeMode) {
-            const view = document.getElementById('code-view')
-            if (view) view.focus()
-            return
-        }
-        if (!state.ready) return
-        if (state.sourceMode) {
-            document.getElementById('source-editor').focus()
-            return
-        }
-        state.editor.action((ctx) => { ctx.get(editorViewCtx).focus() })
+        ops.focus()
     },
 
     requestStats() {
-        post({ op: 'stats', ...computeStats(currentMarkdown()) })
+        ops.requestStats()
     },
 
-    exportStandaloneHTML,
+    async exportStandaloneHTML() {
+        return (await ops.exportStandaloneHTML()).html
+    },
 }
-

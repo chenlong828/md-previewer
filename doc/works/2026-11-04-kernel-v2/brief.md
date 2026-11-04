@@ -62,7 +62,7 @@ updated: 2026-11-04
 | T1 | design | — | 规格增量与升格（复核 D1–D5/不变量、契约 diff、16 风险处置、验证计划） | 本目录 [spec-delta.md](spec-delta.md) 冻结 + 第二次门确认记录 | ✅ 已完成（2026-11-04 确认 G1/G2） |
 | T2 | change | CMP-kernel-contract（含 transport） | 信封/分发/握手/错误码 + FakeShell + Node 套件骨架 + DOM 环境选型（Q3） | `node --test` 契约组全绿（零 DOM、零 WebView） | ✅ 已完成（2026-11-04；18 项契约测试 + 禁边脚本；Q3 移到 T4 冒烟） |
 | T3 | change | CMP-kernel-semantics | 路径与 markdown 文本语义移植 + 黄金夹具 + 与 Swift 旧实现对拍 | 对拍逐字节一致；纯函数守门（无 fs/DOM/宿主符号） | ✅ 已完成（2026-11-04；15 用例×3 函数 45 项逐字节对拍 + 5 项规则断言） |
-| T4 | change | core（组合模块） | `web/src` 迁入 core、39 个 op 处理器抽出、`bridge.js` 拆解、模式状态机、`lastMarkdown` 收口 | Node 套件 core 组绿；无宿主符号（lint 守门） | 🔄 进行中（T4a 完成：模块迁入 + `setMode` 单写入口 + I2 收口，selftest 121/121；剩 T4b op 处理器） |
+| T4 | change | core（组合模块） | `web/src` 迁入 core、39 个 op 处理器抽出、`bridge.js` 拆解、模式状态机、`lastMarkdown` 收口 | Node 套件 core 组绿；无宿主符号（lint 守门） | ✅ 已完成（2026-11-04；39 op 单点实现、jsdom core 组 10 项绿、selftest 121/121） |
 | T5 | change | CMP-app-shell（含 document-io） | Swift：`send(op,payload,id)` + 响应表；30 处 callJS 收敛；PDF 几何/print op；导出改响应携带 | 编译通过 + 自检中产品路径无 `evaluateJavaScript` 取数 | 待（可与 T4 并行） |
 | T6 | verify | — | Node 全绿 + selftest 全绿 + 人工点验（R8 交互清单） | result.md 记录命令与输出；blocker 清零 | 待 |
 | T7 | doc | — | architecture/组件规格/roadmap/risks/README 收口；R9 关闭；规格升格 | 文档与实现一致；引用无归档件依据 | 待 |

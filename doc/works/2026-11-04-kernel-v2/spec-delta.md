@@ -281,3 +281,6 @@ core `state` 增加显式 `mode: 'markdown' | 'code'`，`sourceMode` 仅在 `mod
 
 
 
+
+
+**Q3 结论（2026-11-04）**：选 `jsdom`（30.1.3）。实测 Milkdown/ProseMirror 在 jsdom 内可完整建编辑器，装载/序列化/插图/通知全跑通（core 组 10 项），无需 happy-dom 对照。
