@@ -1,7 +1,7 @@
 // 独立 HTML 导出:样式收集与资源内联,产出离线可用的单文件
 import { getHTML } from '@milkdown/utils'
-import { state } from '../shared/state.js'
-import { toggleSource } from './editor.js'
+import { state } from '../../shared/state.js'
+import { use } from '../../shared/ports.js'
 
 async function cssToDataUrl(cssUrl) {
     try {
@@ -53,7 +53,7 @@ export async function exportStandaloneHTML() {
     // 代码文档不提供 HTML 导出(REQ-0009 非目标);Swift 侧菜单同时禁用,这里兜底
     if (state.codeMode) return ''
     const inSource = state.sourceMode
-    if (inSource) toggleSource(false)
+    if (inSource) use('renderSurface').setSourceMode(false)
     const bodyHtml = state.editor.action(getHTML())
     const css = await collectCss()
     const title = document.title || 'Document'
@@ -73,6 +73,6 @@ ${bodyHtml}
 </div>
 </body>
 </html>`
-    if (inSource) toggleSource(true)
+    if (inSource) use('renderSurface').setSourceMode(true)
     return html
 }

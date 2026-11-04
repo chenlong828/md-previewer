@@ -4,6 +4,7 @@ import { provide, resetPorts } from './shared/ports.js'
 import { createFindService } from './components/find/index.js'
 import { createCodeSearch } from './components/code/index.js'
 import { createOps } from './core/ops/index.js'
+import { createRenderSurface, createImageInsertion } from './core/editor.js'
 
 /**
  * 装配内核能力表。
@@ -14,5 +15,7 @@ export function createKernelOps({ fresh = false } = {}) {
     const findService = createFindService()
     provide('findService', findService)
     provide('searchSurface', createCodeSearch())
+    provide('renderSurface', createRenderSurface())
+    provide('imageInsertion', createImageInsertion())
     return { ops: createOps(), findService }
 }

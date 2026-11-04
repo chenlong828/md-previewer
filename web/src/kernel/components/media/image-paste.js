@@ -3,10 +3,9 @@
 // 拿到响应后恢复粘贴时的选区插入 image 节点。
 // 内核只做识别与编排，落盘与提示（先保存/失败弹窗）由壳负责；
 // 非图片粘贴不拦截，milkdown clipboard 的文本链路不受影响。
-import { Selection } from '@milkdown/prose/state'
-import { editorViewCtx } from '@milkdown/core'
-import { state } from '../shared/state.js'
-import { hostCall } from '../shared/bus.js'
+import { state } from '../../shared/state.js'
+import { hostCall } from '../../shared/bus.js'
+import { use } from '../../shared/ports.js'
 
 // 本地图片路径文本识别：file:// URL、绝对路径、~/ 相对 + 图片扩展名。
 // 仅作预筛（提示壳去验证），壳侧以 UTType 为权威。
@@ -46,35 +45,10 @@ export function extractImagePayload(data) {
     return null
 }
 
-/** 壳落盘响应：恢复选区并插入 image 节点（单个事务，一次撤销步） */
+/** 壳落盘响应：把插入动作交给编辑面（本组件不碰 ProseMirror 事务） */
 export function handleImported(selection, payload) {
     if (!payload || payload.ok === false) return false // 壳已弹窗提示
-    const view = currentView()
-    if (!view) return false
-    try {
-        const node = view.state.schema.nodes.image.create({
-            src: payload.src || '',
-            alt: payload.alt || '',
-            title: payload.title || '',
-        })
-        const tr = view.state.tr
-        if (selection) {
-            try { tr.setSelection(Selection.fromJSON(view.state.doc, selection)) } catch (e) {
-                // 选区位置已失效（用户在等待期编辑过）：退回当前选区
-            }
-        }
-        view.dispatch(tr.replaceSelectionWith(node).scrollIntoView())
-        view.focus()
-    } catch (e) {
-        console.warn('insert imported image failed', e)
-        return false
-    }
-    return true
-}
-
-function currentView() {
-    if (!state.ready || !state.editor) return null
-    try { return state.editor.action((ctx) => ctx.get(editorViewCtx)) } catch (e) { return null }
+    return use('imageInsertion').insert(selection, payload)
 }
 
 function blobToBase64(blob) {

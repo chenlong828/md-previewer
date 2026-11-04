@@ -1,5 +1,5 @@
 // 输出：独立 HTML 导出、打印、内容几何（供壳校准 PDF 页面尺寸）。
-import { exportStandaloneHTML } from '../export.js'
+import { exportStandaloneHTML } from '../../components/output/export.js'
 
 export function createOutputOps(_table) {
     return {

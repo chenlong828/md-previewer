@@ -8,7 +8,7 @@ import { currentMarkdown } from '../read.js'
 import { hostCall } from '../../shared/bus.js'
 import { commandRegistry } from '../commands.js'
 import { tableCommandImpls } from '../tables.js'
-import { extractImagePayload } from '../image-paste.js'
+import { extractImagePayload } from '../../components/media/image-paste.js'
 import { collectImageRefs, collectResourceRefs } from '../../semantics/markdown.js'
 
 export function createDiagnosticsOps(_table) {

@@ -1,5 +1,6 @@
 // 主题应用与编辑器装配(含源码模式切换)
 import { Editor, rootCtx, editorViewCtx, editorViewOptionsCtx, remarkStringifyOptionsCtx } from '@milkdown/core'
+import { Selection } from '@milkdown/prose/state'
 import { commonmark } from '@milkdown/preset-commonmark'
 import { gfm } from '@milkdown/preset-gfm'
 import { history } from '@milkdown/plugin-history'
@@ -11,7 +12,7 @@ import { clipboard } from '@milkdown/plugin-clipboard'
 import { trailing } from '@milkdown/plugin-trailing'
 import { getMarkdown, replaceAll } from '@milkdown/utils'
 import mermaid from 'mermaid'
-import { state } from '../shared/state.js'
+import { state, isCodeMode } from '../shared/state.js'
 import { currentMarkdown } from './read.js'
 import { notify } from '../shared/bus.js'
 import { ensureLanguages } from '../components/code/languages.js'
@@ -20,7 +21,7 @@ import { use } from '../shared/ports.js'
 import { selInfoProse } from './selinfo.js'
 import { getMermaidView } from './mermaid-view.js'
 import { getImageView } from './image-view.js'
-import { setupImagePaste } from './image-paste.js'
+import { setupImagePaste } from '../components/media/image-paste.js'
 import { fourSpaceListItem } from './list-indent.js'
 
 export function applyThemeDom() {
@@ -183,4 +184,47 @@ export function toggleSource(force) {
         use('findService').runFind(use('findService').findUI.query, { caseSensitive: use('findService').findUI.caseSensitive })
     }
     return target
+}
+
+// ---------- 端口实现（由组合根注入，供 output / media 消费） ----------
+
+/** renderSurface：导出前需要确保处于渲染模式（源码模式要切回） */
+export function createRenderSurface() {
+    return {
+        setSourceMode(on) {
+            if (isCodeMode()) return false
+            return toggleSource(on)
+        },
+    }
+}
+
+/** imageInsertion：把图片节点插到指定选区（粘贴落盘后的唯一插入实现） */
+export function createImageInsertion() {
+    return {
+        insert(selection, payload) {
+            if (!state.ready) return false
+            return state.editor.action((ctx) => {
+                const view = ctx.get(editorViewCtx)
+                try {
+                    const node = view.state.schema.nodes.image.create({
+                        src: payload.src || '',
+                        alt: payload.alt || '',
+                        title: payload.title || '',
+                    })
+                    const tr = view.state.tr
+                    if (selection) {
+                        try { tr.setSelection(Selection.fromJSON(view.state.doc, selection)) } catch (e) {
+                            // 选区位置已失效（等待期用户编辑过）：退回当前选区
+                        }
+                    }
+                    view.dispatch(tr.replaceSelectionWith(node).scrollIntoView())
+                    view.focus()
+                    return true
+                } catch (e) {
+                    console.warn('insert imported image failed', e)
+                    return false
+                }
+            })
+        },
+    }
 }
