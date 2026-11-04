@@ -69,7 +69,7 @@ export async function bootCore({ baseDir = '/virtual/base', files = [], answers 
         return { resources }
     }
 
-    const { bindBus } = await import('../../src/kernel/core/bus.js')
+    const { bindBus } = await import('../../src/kernel/shared/bus.js')
     bindBus({
         notify: (op, payload) => notifications.push({ op, payload }),
         callHost: async (op, payload) => {
@@ -82,7 +82,7 @@ export async function bootCore({ baseDir = '/virtual/base', files = [], answers 
         },
     })
 
-    const { createOps } = await import('../../src/kernel/core/ops.js')
+    const { createOps } = await import('../../src/kernel/core/ops/index.js')
     const ops = createOps()
 
     return {

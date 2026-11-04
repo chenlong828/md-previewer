@@ -5,8 +5,8 @@
 // 非图片粘贴不拦截，milkdown clipboard 的文本链路不受影响。
 import { Selection } from '@milkdown/prose/state'
 import { editorViewCtx } from '@milkdown/core'
-import { state } from './state.js'
-import { hostCall } from './bus.js'
+import { state } from '../shared/state.js'
+import { hostCall } from '../shared/bus.js'
 
 // 本地图片路径文本识别：file:// URL、绝对路径、~/ 相对 + 图片扩展名。
 // 仅作预筛（提示壳去验证），壳侧以 UTType 为权威。

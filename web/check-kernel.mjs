@@ -1,7 +1,7 @@
 // 内核分层禁边守门（spec-delta §4.2）。命中即红，进 build.sh 与 npm test。
 // 用法：node check-kernel.mjs
 import { readFileSync, readdirSync, statSync } from 'node:fs';
-import { join, relative } from 'node:path';
+import { dirname, join, normalize, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const KERNEL_DIR = fileURLToPath(new URL('./src/kernel', import.meta.url));
@@ -23,17 +23,19 @@ function layerOf(relPath) {
   if (relPath.startsWith('transport/')) return 'transport';
   if (relPath.startsWith('contract/')) return 'contract';
   if (relPath.startsWith('semantics/')) return 'semantics';
+  if (relPath.startsWith('shared/')) return 'shared';
   if (relPath.startsWith('core/')) return 'core';
   return 'root'; // main.js
 }
 
-// 每层允许 import 的相对前缀（其他层禁止横调，禁止反向依赖）
-const ALLOWED_IMPORTS = {
-  transport: ['../contract/'],
-  contract: ['./', '../contract/'],
-  semantics: ['./', '../semantics/'],
-  core: ['./', '../core/', '../contract/', '../semantics/'],
-  root: ['./transport/', './contract/', './semantics/', './core/', './main.js'],
+// 每层允许 import 的目标层（按解析后的内核内路径判定，故 core/ops/* 这类子目录也成立）
+const ALLOWED_LAYERS = {
+  transport: ['contract'],
+  contract: ['contract'],
+  semantics: ['semantics'],
+  shared: ['shared'],
+  core: ['core', 'contract', 'semantics', 'shared'],
+  root: ['transport', 'contract', 'semantics', 'shared', 'core'],
 };
 
 for (const file of walk(KERNEL_DIR)) {
@@ -48,18 +50,24 @@ for (const file of walk(KERNEL_DIR)) {
     }
   }
 
-  // 2. import 白名单
-  const allowed = ALLOWED_IMPORTS[layer] ?? [];
+  // 2. import 白名单：相对 import 解析成内核内路径后按目标层判定
+  const allowedLayers = ALLOWED_LAYERS[layer] ?? [];
   for (const match of text.matchAll(/from\s+['"]([^'"]+)['"]/g)) {
     const spec = match[1];
     if (!spec.startsWith('.')) {
-      // 第三方依赖只允许出现在 core（编辑器引擎本身）；transport/contract/semantics 必须零依赖
+      // 第三方依赖只允许出现在 core（编辑器引擎本身）；其余层必须零依赖
       if (layer !== 'core') violations.push(`${rel}: ${layer} 层不得 import 第三方包 "${spec}"`);
       continue;
     }
-    const ok = allowed.length === 0 ? false : allowed.some((prefix) => spec.startsWith(prefix) || spec === '.') ;
-    // 同层直接 import 兄弟文件：'./x.js' 归入 './' 前缀，已覆盖
-    if (!ok) violations.push(`${rel}: 非法 import "${spec}"（${layer} 层只允许 ${allowed.join(' | ')}）`);
+    const target = normalize(join(dirname(rel), spec)).replaceAll('\\', '/');
+    if (target.startsWith('..')) {
+      violations.push(`${rel}: import 越出内核目录 "${spec}"`);
+      continue;
+    }
+    const targetLayer = layerOf(target);
+    if (!allowedLayers.includes(targetLayer)) {
+      violations.push(`${rel}: 非法 import "${spec}" → ${target}（${layer} 层只允许 ${allowedLayers.join(' | ')}）`);
+    }
   }
 }
 

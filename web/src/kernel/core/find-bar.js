@@ -1,6 +1,6 @@
 // 查找栏 UI:计数显示、命中跳转与查找栏开关 wiring
 import { editorViewCtx } from '@milkdown/core'
-import { state } from './state.js'
+import { state } from '../shared/state.js'
 import { findKey, findUI, searchDoc, selectMatch } from './find.js'
 import { findInCode, clearCodeFind } from './code-view.js'
 

@@ -1,6 +1,6 @@
 // 词数统计：纯计算 + 节流上报
-import { currentMarkdown } from './state.js'
-import { notify } from './bus.js'
+import { currentMarkdown } from './read.js'
+import { notify } from '../shared/bus.js'
 
 const CJK_RE = /[\u2E80-\u2FFF\u3040-\u30FF\u31C0-\u31FF\u3400-\u4DBF\u4E00-\u9FFF\uF900-\uFAFF]/
 

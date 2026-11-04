@@ -1,6 +1,6 @@
 // 独立 HTML 导出:样式收集与资源内联,产出离线可用的单文件
 import { getHTML } from '@milkdown/utils'
-import { state } from './state.js'
+import { state } from '../shared/state.js'
 import { toggleSource } from './editor.js'
 
 async function cssToDataUrl(cssUrl) {

@@ -1,8 +1,6 @@
 // 全局状态单例：每类全局事实只有一个权威来源。
 // editor/ready/theme/zoom/mode/sourceMode/baseline 等字段在此显式声明（形状静态可见），
 // 其余模块经 import 读写，不各自持有副本。本文件不含任何宿主符号（宿主经 bus.js 交互）。
-import { getMarkdown } from '@milkdown/utils'
-
 export const state = {
     editor: null,
     ready: false,
@@ -43,13 +41,4 @@ export function setMode(mode) {
 
 export function isCodeMode() {
     return state.mode === 'code'
-}
-
-// 当前文档内容的单一真相源：渲染模式读编辑器 doc，源码模式读 textarea。
-// 保存取回（getSaveMarkdown）与脏基线（markClean）必须走同一口径，否则源码模式下
-// ⌘S 会把编辑前的旧内容写盘。
-export function currentMarkdown() {
-    if (state.sourceMode) return document.getElementById('source-editor').value
-    if (!state.ready || !state.editor) return ''
-    return state.editor.action(getMarkdown())
 }
