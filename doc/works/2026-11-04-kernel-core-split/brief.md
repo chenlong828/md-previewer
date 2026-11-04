@@ -53,7 +53,7 @@ web/src/kernel/
 
 | 批次 | 内容 | 收尾判据 |
 |---|---|---|
-| S1 | 抽 `shared/`（state/bus/ports 雏形）；`core/ops.js` 拆成 `components/*/ops.js` 分片与装配 | Node 78 + selftest 115 全绿；`core/ops.js` 消失 |
+| S1 | 抽 `shared/`（state/bus/ports 雏形）；`core/ops.js` 拆成 `components/*/ops.js` 分片与装配 | ✅ 完成（2026-11-04，`41cf144`）：shared 层 + 六片装配；Node 78 + selftest 115 全绿；ops.js 已删除 |
 | S2 | `code` 与 `find` 成组件迁移；`find → code` 改 `searchSurface` 端口 | 同上；两组件互不 import |
 | S3 | `output` 与 `media` 迁出；`export → editor` 改 `renderSurface`；粘贴插入改 `imageInsertion` | 同上；端口注入由组合根完成 |
 | S4 | `document` 与 `editor` 收口；`check-kernel.mjs` 升级为组件级禁边；组件规格与架构文档同步 | 同上；文档与结构一致 |
@@ -63,6 +63,20 @@ web/src/kernel/
 - 每批：`cd web && npm run verify`（lint + 禁边 + 78 项）+ `./build.sh debug` + `--selftest`（115 PASS）。
 - 断言数只许增不许减；组件拆分不得改变任何 op 的语义（契约测试与 core 组测试即守门）。
 - 禁边脚本在 S4 增加：组件间禁止互相 import；`shared/` 不得 import 任何组件。
+
+## 5.1 端口设计（S2/S3 实现要点）
+
+`shared/ports.js` 是依赖倒置的落点：组件在组合根装配时 `provide(name, impl)`，消费方 `use(name)`。四个端口：
+
+| 端口 | 提供方 | 消费方 | 内容 |
+|---|---|---|---|
+| `searchSurface` | code | find | `findInCode(text) / clearCodeFind() / codeFindCount()`：代码面的查找实现 |
+| `proseFind` | find | editor | ProseMirror 查找插件 + keymap + 命中计数回调（editor 装配时需要） |
+| `renderSurface` | editor | output | `ensureRendered()`：导出前确保处于渲染模式（源码模式要切回） |
+| `imageInsertion` | editor | media | `insertImageNode({src,alt,title})`：媒体组件只管落盘与载荷，插入动作归编辑面 |
+
+规则：`shared/` 只存注册表与类型约定，不含实现；组件之间零 import，禁边脚本在 S4 增补规则
+（`components/<a>/` 不得 import `components/<b>/`）。
 
 ## 6. 风险
 
