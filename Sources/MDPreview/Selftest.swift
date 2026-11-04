@@ -334,6 +334,155 @@ func greet() -> String {
         evaluate("window.mdbridge.setTheme('light')") { _ in }
         checkTokenPalette("浅色", colors: SelftestRunner.lightTokenColors)
 
+        // ── 代码文档视图(REQ-0009 / SCN-0016):只读高亮面,与 #app 互斥
+        //    自动语言 → 切换语言 → 纯文本 → 未知语法回落 → 查找 → 大文件降级 → 退出。
+        //    断言按「DOM 形态 + token 数 + 文本原样」三重口径,不依赖具体语法树。
+        let codeSample = "func greet(name: String) -> String {\n    let value = 1\n    return \"hi \\(name) \\(value)\"\n}\n"
+
+        /// 代码视图 DOM 快照(文本原样性、token 数、显隐关系、桥状态一次取回)
+        func codeSnapshot(_ done: @escaping ([String: Any]) -> Void) {
+            self.evaluate("""
+            JSON.stringify((function(){
+                var cv = document.getElementById('code-view');
+                var code = cv.querySelector('code');
+                return {
+                    mode: document.body.classList.contains('code-mode'),
+                    appVisible: getComputedStyle(document.getElementById('app')).display !== 'none',
+                    tokens: cv.querySelectorAll('.token').length,
+                    lang: code.className,
+                    text: code.textContent,
+                    info: window.mdbridge.codeInfo()
+                };
+            })())
+            """) { r in
+                guard let json = r as? String, let data = json.data(using: .utf8),
+                      let d = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else {
+                    done([:])
+                    return
+                }
+                done(d)
+            }
+        }
+
+        var codeOpened = false
+        waitForCollect("代码视图 自动语言与高亮", timeout: 10) { done in
+            self.evaluate("window.mdbridge.setCode(\(JSArgs.string(codeSample)), {\"language\":\"swift\",\"allowHighlight\":true})") { _ in
+                codeSnapshot { d in
+                    codeOpened = (d["mode"] as? Bool) == true
+                        && (d["appVisible"] as? Bool) == false
+                        && (d["tokens"] as? Int ?? 0) >= 3
+                        && (d["lang"] as? String ?? "").contains("language-swift")
+                        && (d["text"] as? String) == codeSample
+                    done()
+                }
+            }
+        }
+        if codeOpened { pass("代码视图 自动语言与高亮") } else { fail("代码视图 自动语言与高亮") }
+
+        var codeSwitched = false
+        waitForCollect("代码视图 切换语言与纯文本", timeout: 10) { done in
+            self.evaluate("window.mdbridge.setCodeLanguage('python')") { _ in
+                codeSnapshot { d1 in
+                    let python = (d1["tokens"] as? Int ?? 0) >= 3
+                        && (d1["lang"] as? String ?? "").contains("language-python")
+                        && (d1["text"] as? String) == codeSample
+                    self.evaluate("window.mdbridge.setCodeLanguage('plaintext')") { _ in
+                        codeSnapshot { d2 in
+                            let plain = (d2["tokens"] as? Int ?? 0) == 0
+                                && (d2["text"] as? String) == codeSample
+                                && (d2["mode"] as? Bool) == true
+                            codeSwitched = python && plain
+                            done()
+                        }
+                    }
+                }
+            }
+        }
+        if codeSwitched { pass("代码视图 切换语言与纯文本") } else { fail("代码视图 切换语言与纯文本") }
+
+        var codeUnknownGrammar = false
+        waitForCollect("代码视图 未知语法回落纯文本", timeout: 10) { done in
+            self.evaluate("window.mdbridge.setCodeLanguage('no-such-grammar')") { _ in
+                codeSnapshot { d in
+                    codeUnknownGrammar = (d["tokens"] as? Int ?? -1) == 0
+                        && (d["text"] as? String) == codeSample
+                        && (d["mode"] as? Bool) == true
+                    done()
+                }
+            }
+        }
+        if codeUnknownGrammar { pass("代码视图 未知语法回落纯文本") } else { fail("代码视图 未知语法回落纯文本") }
+
+        var codeFind = false
+        waitForCollect("代码视图 查找命中与只读退出", timeout: 10) { done in
+            self.evaluate("window.mdbridge.setCodeLanguage('swift')") { _ in
+                self.evaluate("window.mdbridge.openFindBar()") { _ in
+                    self.evaluate("(function(){var i=document.getElementById('find-input');i.value='value';i.dispatchEvent(new Event('input'));return document.getElementById('find-count').textContent;})()") { r1 in
+                        let first = (r1 as? String) == "1/2"
+                        self.evaluate("window.mdbridge.findNext()") { _ in
+                            let second = (self.findCountText() == "2/2")
+                            self.evaluate("(function(){var s=window.getSelection();return s.rangeCount>0&&document.getElementById('code-view').contains(s.anchorNode);})()") { sel in
+                                let inCode = (sel as? Bool) == true
+                                self.evaluate("window.mdbridge.findNext()") { _ in
+                                    let wrapped = (self.findCountText() == "1/2")
+                                    self.evaluate("window.mdbridge.closeFindBar()") { _ in
+                                        codeFind = first && second && inCode && wrapped
+                                        done()
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        if codeFind { pass("代码视图 查找命中与只读退出") } else { fail("代码视图 查找命中与只读退出") }
+
+        var codeLarge = false
+        waitForCollect("代码视图 大文件降级纯文本", timeout: 10) { done in
+            self.evaluate("window.mdbridge.setCode(\(JSArgs.string(codeSample)), {\"language\":\"python\",\"allowHighlight\":false})") { _ in
+                codeSnapshot { d1 in
+                    let plain = (d1["tokens"] as? Int ?? -1) == 0 && (d1["text"] as? String) == codeSample
+                    self.evaluate("window.mdbridge.setCodeLanguage('swift')") { _ in
+                        codeSnapshot { d2 in
+                            let stillPlain = (d2["tokens"] as? Int ?? -1) == 0
+                                && ((d2["info"] as? [String: Any])?["allowHighlight"] as? Bool) == false
+                            codeLarge = plain && stillPlain
+                            done()
+                        }
+                    }
+                }
+            }
+        }
+        if codeLarge { pass("代码视图 大文件降级纯文本") } else { fail("代码视图 大文件降级纯文本") }
+
+        var codeParity = false
+        waitForCollect("代码视图 双端语言清单一致", timeout: 10) { done in
+            let ids = FileSupport.codeLanguages.map(\.id)
+            let idsJSON = (try? JSONSerialization.data(withJSONObject: ids))
+                .flatMap { String(data: $0, encoding: .utf8) } ?? "[]"
+            self.evaluate("JSON.stringify(window.mdbridge.hasLanguages(\(idsJSON)))") { r in
+                if let s = r as? String, let data = s.data(using: .utf8),
+                   let list = (try? JSONSerialization.jsonObject(with: data)) as? [String] {
+                    codeParity = list.sorted() == ids.sorted()
+                }
+                done()
+            }
+        }
+        if codeParity { pass("代码视图 双端语言清单一致(\(FileSupport.codeLanguages.count) 种)") } else { fail("代码视图 双端语言清单一致") }
+
+        var codeExited = false
+        waitForCollect("代码视图 退出代码模式", timeout: 10) { done in
+            self.evaluate("window.mdbridge.setMarkdown(\(JSArgs.string(SelftestRunner.sampleMarkdown)))") { _ in
+                self.settleBridge(quiet: 0.8, timeout: 5)
+                codeSnapshot { d in
+                    codeExited = (d["mode"] as? Bool) == false && (d["appVisible"] as? Bool) == true
+                    done()
+                }
+            }
+        }
+        if codeExited { pass("代码视图 退出代码模式") } else { fail("代码视图 退出代码模式") }
+
         // ── 命令桥
         evaluate("window.mdbridge.insertTable(2,2)") { r in
             if (r as? Bool) == true { self.pass("命令桥 insertTableCommand") } else { self.fail("命令桥 insertTableCommand → \(String(describing: r))") }
@@ -428,8 +577,9 @@ func greet() -> String {
             }
         }
 
-        // ── Info.plist 扩展名清单与 Swift 唯一来源一致(AppDelegate.markdownExtensions)
+        // ── Info.plist 扩展名清单与 Swift 唯一来源一致(FileSupport.markdownExtensions)
         assertInfoPlistExtensions()
+        assertFileSupport()
 
         // ── 缩放
         evaluate("window.mdbridge.setZoom(1.25)") { _ in }
@@ -663,7 +813,7 @@ func greet() -> String {
         lightWindow.close()
     }
 
-    /// Info.plist 的 CFBundleTypeExtensions 必须与 AppDelegate.markdownExtensions 一致
+    /// Info.plist 的 CFBundleTypeExtensions 必须与 FileSupport.markdownExtensions 一致
     private func assertInfoPlistExtensions() {
         guard let plistURL = WebLocator.repoInfoPlistURL(),
               let data = try? Data(contentsOf: plistURL),
@@ -673,10 +823,59 @@ func greet() -> String {
             fail("Info.plist 扩展名一致(解析失败:仅开发模式可断言)")
             return
         }
-        if exts.sorted() == AppDelegate.markdownExtensions.sorted() {
+        if exts.sorted() == FileSupport.markdownExtensions.sorted() {
             pass("Info.plist 扩展名一致(\(exts.count) 项)")
         } else {
-            fail("Info.plist 扩展名一致 → plist=\(exts.sorted()) code=\(AppDelegate.markdownExtensions.sorted())")
+            fail("Info.plist 扩展名一致 → plist=\(exts.sorted()) code=\(FileSupport.markdownExtensions.sorted())")
+        }
+    }
+
+    /// FileSupport:语言表与扩展名判定的纯 Swift 断言(未知扩展名是 SCN-0016 的反例)
+    private func assertFileSupport() {
+        let cases: [(String, DocumentKind)] = [
+            ("a.md", .markdown),
+            ("a.MARKDOWN", .markdown),
+            ("a.swift", .code(language: "swift")),
+            ("a.PY", .code(language: "python")),
+            ("a.tsx", .code(language: "tsx")),
+            ("a.xml", .code(language: "xml")),
+            ("a.plist", .code(language: "xml")),
+            ("a.rs", .code(language: "rust")),
+            ("app.dockerfile", .code(language: "docker")),
+            ("a.mk", .code(language: "makefile")),
+        ]
+        var mismatches: [String] = []
+        for (name, expected) in cases {
+            let actual = FileSupport.kind(for: URL(fileURLWithPath: "/tmp/\(name)"))
+            if actual != expected {
+                mismatches.append("\(name)=\(String(describing: actual))")
+            }
+        }
+        if mismatches.isEmpty {
+            pass("代码视图 语言表覆盖扩展名(\(cases.count) 项)")
+        } else {
+            fail("代码视图 语言表覆盖扩展名 → \(mismatches)")
+        }
+        if FileSupport.kind(for: URL(fileURLWithPath: "/tmp/a.unknownext")) == nil {
+            pass("代码视图 未知扩展名不装载")
+        } else {
+            fail("代码视图 未知扩展名不装载")
+        }
+        let allMarkdown = FileSupport.markdownExtensions.allSatisfy {
+            FileSupport.kind(for: URL(fileURLWithPath: "/tmp/x.\($0)")) == .markdown
+        }
+        if allMarkdown, !FileSupport.markdownExtensions.isEmpty {
+            pass("代码视图 Markdown 扩展名恒走 Markdown")
+        } else {
+            fail("代码视图 Markdown 扩展名恒走 Markdown")
+        }
+        let ids = FileSupport.codeLanguages.map(\.id)
+        let idsUnique = Set(ids).count == ids.count
+        let allHaveExtensions = FileSupport.codeLanguages.allSatisfy { !$0.extensions.isEmpty }
+        if idsUnique, allHaveExtensions, !FileSupport.openableUTTypes.isEmpty {
+            pass("代码视图 语言 id 唯一且类型可构造(\(FileSupport.openableUTTypes.count) 个 UTType)")
+        } else {
+            fail("代码视图 语言 id 唯一且类型可构造")
         }
     }
 
@@ -811,7 +1010,8 @@ func greet() -> String {
             try mkdir("web/node_modules/pkg") // 依赖目录 → 整棵跳过
             try mkdir("MyApp.app/Contents") // 包目录 → 整棵跳过(Finder 同款不透明语义)
             put("a.md")
-            put("b.txt") // 非 md → 排除
+            put("main.py") // 代码文件 → 进树(REQ-0009:抽屉也列出可读代码)
+            put("b.txt") // 非 md/非代码 → 排除
             put(".hidden.md") // 隐藏 → 排除
             put("sub/c.md")
             put("sub/e.txt")
@@ -832,10 +1032,10 @@ func greet() -> String {
                 fail("目录扫描-lazy 装载态不符")
             }
             let rootNames = rootLevel.children.map(\.name)
-            if rootNames == ["empty", "sub", "web", "a.md"] {
+            if rootNames == ["empty", "sub", "web", "a.md", "main.py"] {
                 pass("目录扫描-单层过滤与排序(无md目录保留/包跳过/得 \(rootNames))")
             } else {
-                fail("目录扫描-单层过滤与排序 → \(rootNames),期望 [empty, sub, web, a.md]")
+                fail("目录扫描-单层过滤与排序 → \(rootNames),期望 [empty, sub, web, a.md, main.py]")
             }
             let webLevel = try DirectoryTree.scanLevel(of: root.appendingPathComponent("web"))
             if webLevel.children.map(\.name) == ["keep.md"] {
@@ -1433,6 +1633,19 @@ func greet() -> String {
             pumpRunLoop(for: 0.05)
         }
         if !finished { fail(name) }
+    }
+
+    /// 同步读取查找栏计数(label 文本),用于「输入即命中/循环切换」这类同步断言
+    private func findCountText() -> String {
+        var text = ""
+        var finished = false
+        webview.evaluateJavaScript("document.getElementById('find-count').textContent") { result, _ in
+            text = (result as? String) ?? ""
+            finished = true
+        }
+        let deadline = Date().addingTimeInterval(5)
+        while !finished && Date() < deadline { pumpRunLoop(for: 0.02) }
+        return text
     }
 
     /// 等待桥消息静止:changed 上报经 web 端 200ms debounce 异步到达,

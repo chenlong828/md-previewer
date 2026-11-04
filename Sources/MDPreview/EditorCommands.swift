@@ -31,6 +31,9 @@ struct EditorCommandSpec {
     /// true:走 responder 链(剪切/拷贝/粘贴等系统编辑动作,输入框焦点时也能正确生效);
     /// false:由 DocumentWindowController 显式处理
     var responderChain: Bool = false
+    /// 只读代码文档下是否可用(代码视图无编辑面:仅拷贝/全选/查找可保留)。
+    /// 默认 false——新增命令不写 true 就不会误在代码文档里出现。
+    var availableInCode: Bool = false
     /// web 端命令名:格式组为 formatCommand 参数,表格组为 tableCommand 参数。
     /// nil 表示走控制器专用处理(撤销/重做/查找/源码模式/数学块/插入表格)。
     /// 双端一致性(JS 注册表存在同名命令)由 selftest 遍历校验。
@@ -44,12 +47,12 @@ enum EditorCommands {
         EditorCommandSpec(action: .undo, title: "撤销", selector: #selector(DocumentWindowController.undoAction(_:)), key: "z", modifiers: .command, inContextMenu: true),
         EditorCommandSpec(action: .redo, title: "重做", selector: #selector(DocumentWindowController.redoAction(_:)), key: "z", modifiers: [.command, .shift], inContextMenu: true),
         EditorCommandSpec(action: .cut, title: "剪切", selector: #selector(NSText.cut(_:)), key: "x", modifiers: .command, inContextMenu: true, responderChain: true),
-        EditorCommandSpec(action: .copy, title: "拷贝", selector: #selector(NSText.copy(_:)), key: "c", modifiers: .command, inContextMenu: true, responderChain: true),
+        EditorCommandSpec(action: .copy, title: "拷贝", selector: #selector(NSText.copy(_:)), key: "c", modifiers: .command, inContextMenu: true, responderChain: true, availableInCode: true),
         EditorCommandSpec(action: .paste, title: "粘贴", selector: #selector(NSText.paste(_:)), key: "v", modifiers: .command, inContextMenu: true, responderChain: true),
-        EditorCommandSpec(action: .selectAll, title: "全选", selector: #selector(NSText.selectAll(_:)), key: "a", modifiers: .command, inContextMenu: true, responderChain: true),
-        EditorCommandSpec(action: .find, title: "查找…", selector: #selector(DocumentWindowController.findAction(_:)), key: "f", modifiers: .command, inContextMenu: true),
-        EditorCommandSpec(action: .findNext, title: "查找下一个", selector: #selector(DocumentWindowController.findNextAction(_:)), key: "g", modifiers: .command),
-        EditorCommandSpec(action: .findPrev, title: "查找上一个", selector: #selector(DocumentWindowController.findPrevAction(_:)), key: "g", modifiers: [.command, .shift]),
+        EditorCommandSpec(action: .selectAll, title: "全选", selector: #selector(NSText.selectAll(_:)), key: "a", modifiers: .command, inContextMenu: true, responderChain: true, availableInCode: true),
+        EditorCommandSpec(action: .find, title: "查找…", selector: #selector(DocumentWindowController.findAction(_:)), key: "f", modifiers: .command, inContextMenu: true, availableInCode: true),
+        EditorCommandSpec(action: .findNext, title: "查找下一个", selector: #selector(DocumentWindowController.findNextAction(_:)), key: "g", modifiers: .command, availableInCode: true),
+        EditorCommandSpec(action: .findPrev, title: "查找上一个", selector: #selector(DocumentWindowController.findPrevAction(_:)), key: "g", modifiers: [.command, .shift], availableInCode: true),
         EditorCommandSpec(action: .toggleSource, title: "源码模式", selector: #selector(DocumentWindowController.toggleSourceModeAction(_:)), key: "/", modifiers: .command, inContextMenu: true),
         EditorCommandSpec(action: .bold, title: "加粗", selector: #selector(DocumentWindowController.toggleBoldAction(_:)), key: "b", modifiers: .command, inContextMenu: true, jsCommand: "toggleStrongCommand"),
         EditorCommandSpec(action: .italic, title: "斜体", selector: #selector(DocumentWindowController.toggleItalicAction(_:)), key: "i", modifiers: .command, inContextMenu: true, jsCommand: "toggleEmphasisCommand"),

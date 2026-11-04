@@ -50,6 +50,8 @@ async function collectCss() {
 }
 
 export async function exportStandaloneHTML() {
+    // 代码文档不提供 HTML 导出(REQ-0009 非目标);Swift 侧菜单同时禁用,这里兜底
+    if (state.codeMode) return ''
     const inSource = state.sourceMode
     if (inSource) toggleSource(false)
     const bodyHtml = state.editor.action(getHTML())

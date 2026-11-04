@@ -15,7 +15,7 @@ updated: 2026-11-04
 - 层 / 类型：L1 领域；业务能力（编辑面）
 - 业务价值：让用户在渲染结果上直接编辑 Markdown，而不是在源码与预览之间来回切换；没有它，应用退化为带预览的文本编辑器。
 - 负责：Milkdown/ProseMirror 编辑面、格式命令、源码模式、文档内查找、表格行列操作、数学/ Mermaid/代码高亮渲染、选择信息上报。
-- 不负责：文件读写（`CMP-document-io`）、窗口/菜单（`CMP-app-shell`）、抽屉（`CMP-drawer`）、图片文件落盘（`CMP-image`）。
+- 不负责：文件读写（`CMP-document-io`）、窗口/菜单（`CMP-app-shell`）、抽屉（`CMP-drawer`）、图片文件落盘（`CMP-image`）、代码文档的只读源码面（`CMP-code-view`）。
 - 内部逻辑：`bridge.js` 暴露 `window.mdbridge`；`editor.js` 装配 Milkdown 与插件；`commands.js`/`tables.js` 是命令表；`find*.js` 是查找；`mermaid-view.js`/`image-view.js` 是 NodeView。
 - 拥有的数据：当前编辑器文档（内存）、源码模式状态、查找 UI 状态、选择/表格状态；不拥有磁盘文件。
 - 变化轴：编辑器框架与插件版本、命令表、渲染扩展。
@@ -23,7 +23,7 @@ updated: 2026-11-04
   - `CMP-editor#init` / `#set-markdown` / `#get-markdown`：初始化、整篇替换、取回 Markdown。
   - `CMP-editor#format-command`：按 `EditorCommands` 的动作名执行格式命令。
   - `CMP-editor#source-mode`：渲染视图 ↔ 源码视图；保存取一致内容。
-  - `CMP-editor#find`：打开查找、下一处/上一处、命中计数与高亮。
+  - `CMP-editor#find`：打开查找、下一处/上一处、命中计数与高亮（Markdown 与源码模式；代码文档的查找归 `CMP-code-view#code-find`，复用同一查找栏 UI）。
   - `CMP-editor#table`：插入/删除行列与整表。
   - `CMP-editor#render`：KaTeX 数学、Mermaid 图表、Prism 代码高亮。
   - `CMP-editor#theme-zoom`：应用主题/缩放，正文宽度策略。
@@ -36,7 +36,7 @@ updated: 2026-11-04
   - `CMP-editor/web/src/tables.js#tableCommandImpls`
   - `CMP-editor/web/src/mermaid-view.js#getMermaidView`
   - `CMP-editor/Sources/MDPreview/EditorWebView.swift#EditorWebView`
-- 依赖：Milkdown 7.7 / ProseMirror / KaTeX / Mermaid / Prism；`CMP-image` 的图片 NodeView 与导入回灌；`CMP-app-shell` 的命令转发。
+- 依赖：Milkdown 7.7 / ProseMirror / KaTeX / Mermaid / Prism；`CMP-image` 的图片 NodeView 与导入回灌；`CMP-app-shell` 的命令转发；`CMP-code-view` 的 `web/src/languages.js`（refractor 语法注册表）与 §2.6 token 调色板共享。
 - 冷热属性：编辑输入是热路径；内部不得同步调用文件 IO/导出。
 - 尺寸预算：目标 ≤120k token；当前约 1.7k 行 web + 165 行 Swift，实测待脚本。
 - 单独运行：`./.build/debug/MDPreview --selftest`；视觉用 `--screenshot`。

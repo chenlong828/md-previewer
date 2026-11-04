@@ -18,6 +18,13 @@ export const state = {
     // 文档所在目录(图片源码编辑框做 相对路径⇄绝对 file:// 换算的基准;
     // 由 setMarkdown opts / setBaseDir 单点写入,不落副本)
     baseDir: '',
+    // 只读代码视图:代码文档恒为 true;#app/#source-editor 隐藏,只显示 #code-view。
+    // 与 sourceMode 互斥(代码文档没有源码/渲染切换)。
+    codeMode: false,
+    codeText: '',
+    codeLanguage: '',
+    codeAllowHighlight: true,
+    codeTokenCount: 0,
 }
 
 // 当前文档内容的单一真相源:渲染模式读编辑器 doc,源码模式读 textarea。

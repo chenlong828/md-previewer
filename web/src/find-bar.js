@@ -2,6 +2,7 @@
 import { editorViewCtx } from '@milkdown/core'
 import { state } from './state.js'
 import { findKey, findUI, searchDoc, selectMatch } from './find.js'
+import { findInCode, clearCodeFind } from './code-view.js'
 
 export function updateFindCount(total, current) {
     const el = document.getElementById('find-count')
@@ -34,7 +35,16 @@ export function runFind(query, opts = {}) {
     findUI.caseSensitive = !!opts.caseSensitive
     if (!query) {
         clearFindDecorations()
+        if (state.codeMode) clearCodeFind()
         updateFindCount(0, -1)
+        return
+    }
+    // 只读代码视图:文本选区实现,不重建 DOM(不打断 token 结构)。
+    // 先清掉编辑器侧遗留的查找装饰(切到代码视图后 #app 隐藏,留着会回到 md 时显示旧命中)
+    if (state.codeMode) {
+        clearFindDecorations()
+        const result = findInCode(query, findUI.caseSensitive, opts.jump)
+        updateFindCount(result.total, result.current)
         return
     }
     if (state.sourceMode) {
@@ -55,6 +65,11 @@ export function runFind(query, opts = {}) {
 export function stepFind(dir) {
     const q = findUI.query
     if (!q) return
+    if (state.codeMode) {
+        const result = findInCode(q, findUI.caseSensitive, dir < 0 ? 'prev' : 'next')
+        updateFindCount(result.total, result.current)
+        return
+    }
     if (state.sourceMode) {
         if (!findUI.srcMatches.length) { findInSource(dir < 0 ? 'prev' : undefined); return }
         const n = findUI.srcMatches.length
@@ -101,9 +116,11 @@ export function openFindBar() {
 export function closeFindBar() {
     document.body.classList.remove('finding')
     clearFindDecorations()
+    if (state.codeMode) clearCodeFind()
     findUI.query = ''
     findUI.srcMatches = []
     findUI.srcCurrent = -1
+    if (state.codeMode) document.getElementById('code-view').focus()
     if (state.sourceMode) document.getElementById('source-editor').focus()
 }
 

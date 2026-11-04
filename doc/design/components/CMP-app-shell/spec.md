@@ -14,7 +14,7 @@ updated: 2026-11-04
 - 单元：组件
 - 层 / 类型：L2 整合；技术边界 + 应用编排
 - 业务价值：为使用者提供「一个进程、一个 Dock 图标、多个文档窗口」的 macOS 应用外壳；没有它，文件无法被打开到正确的窗口，菜单/快捷键/最近文件也没有统一入口。
-- 负责：应用启动与参数路由、窗口创建/替换/关闭、菜单与快捷键、最近文件、缩放与外观的应用、退出前的脏文档确认。
+- 负责：应用启动与参数路由、窗口创建/替换/关闭、菜单与快捷键、最近文件、缩放与外观的应用、退出前的脏文档确认；「视图 → 高亮语言」菜单只做入口与勾选同步，语言判定归 `CMP-code-view`。
 - 不负责：文件内容读写（`CMP-document-io`）、编辑器内部行为（`CMP-editor`）、抽屉树（`CMP-drawer`）、导出实现（`CMP-export`）。
 - 内部逻辑：`AppDelegate` 维护文档窗口集合与打开路由；`DocumentWindowController` 承载单文档窗口；`EditorCommands` 是菜单/右键共用的命令表。
 - 拥有的数据：窗口 frame、最近文件列表、缩放比例、外观锁定；不拥有文档正文。
@@ -24,7 +24,8 @@ updated: 2026-11-04
   - `CMP-app-shell#new-window`：⌘N 创建空白文档窗口。
   - `CMP-app-shell#multi-window`：单进程、单 Dock、每文档独立窗口。
   - `CMP-app-shell#recent-files`：最近文件列表与清除。
-  - `CMP-app-shell#menu-commands`：`EditorCommands` 为菜单与右键的唯一命令真源。
+  - `CMP-app-shell#menu-commands`：`EditorCommands` 为菜单与右键的唯一命令真源；`availableInCode` 标记只读代码文档下仍可用的命令（拷贝/全选/查找）。
+  - `CMP-app-shell#highlight-language-menu`：视图 → 高亮语言子菜单；仅代码文档可用，勾选「自动/纯文本/语言 id」由窗口的当前选择同步。
   - `CMP-app-shell#zoom`：⌘+ / ⌘− / ⌘0，比例持久化。
   - `CMP-app-shell#appearance`：跟随系统或锁定浅/深色。
   - `CMP-app-shell#quit`：有脏文档时先确认，取消则不退出。
@@ -34,6 +35,7 @@ updated: 2026-11-04
   - `CMP-app-shell/Sources/MDPreview/AppDelegate.swift#openInNewWindow`
   - `CMP-app-shell/Sources/MDPreview/DocumentWindowController.swift#openDocument`
   - `CMP-app-shell/Sources/MDPreview/EditorCommands.swift#EditorCommands`
+  - `CMP-app-shell/Sources/MDPreview/AppDelegate.swift#buildMenus`
 - 依赖：`CMP-document-io`（打开/保存）、`CMP-editor`（内容面）、`CMP-drawer`（目录导航）、`CMP-export`（导出）、`CMP-diagnostics`（测试入口）。
 - 冷热属性：冷路径；不进入编辑输入热路径。
 - 尺寸预算：目标 ≤120k token；当前约 1.1k 行（main 362 + AppDelegate 476 + EditorCommands 104 + 窗口编排部分），实测待脚本。
@@ -46,7 +48,9 @@ updated: 2026-11-04
 - `open-document` 的 `reanchor` 语义：外部打开（CLI/拖放/Finder/最近）重锚到文件所在目录；抽屉内双击不重锚。
 - `multi-window` 的不变量：同一文档不在两个窗口同时打开；目录模式只占一个窗口；⌘O 与最近文件替换当前窗口。
 - `quit` 的错误模式：用户取消则 `applicationShouldTerminate` 返回 `.terminateCancel`，不丢未保存内容。
-- `menu-commands` 的不变量：`EditorCommands.all` 的动作集合与菜单/右键实际动作一致；新增命令只改一处。
+- `menu-commands` 的不变量：`EditorCommands.all` 的动作集合与菜单/右键实际动作一致；新增命令只改一处；`availableInCode` 默认 false，代码文档只放行拷贝/全选/查找。
+- `highlight-language-menu` 的不变量：菜单项 representedObject = auto/plaintext/语言 id；勾选与窗口 `highlightMenuSelection` 同步；非代码文档整组置灰；点击只重绘不写文件。
+- `open-document` 的打开面板类型 = `FileSupport.openableUTTypes`（Markdown + 代码），与抽屉过滤/链接拦截同源。
 
 ## 验证计划
 
@@ -56,6 +60,7 @@ updated: 2026-11-04
 | `#menu-commands` | `--selftest`：「命令注册表完整」「桥命令名双端一致」 |
 | `#zoom` | `--selftest`：「缩放应用」 |
 | `#appearance` | `--selftest`：「深色主题切换」 |
+| `#highlight-language-menu` | `--selftest`：「代码视图 语言表覆盖扩展名」「代码视图 双端语言清单一致」；勾选/置灰人工 |
 | `#open-document` / `#quit` | 人工：CLI/拖放/⌘O/最近 + 脏文档退出 |
 
 ## 数据所有权与预算

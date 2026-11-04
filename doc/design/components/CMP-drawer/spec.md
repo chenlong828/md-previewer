@@ -13,15 +13,15 @@ updated: 2026-11-04
 - 状态：active
 - 单元：组件
 - 层 / 类型：L2 整合；业务能力（文件导航）
-- 业务价值：让用户在单窗口里浏览并打开同目录/相邻目录的 Markdown，而不必反复 ⌘O；没有它，目录模式与跨文件浏览不成立。
+- 业务价值：让用户在单窗口里浏览并打开同目录/相邻目录的 Markdown 与代码文件，而不必反复 ⌘O；没有它，目录模式与跨文件浏览不成立。
 - 负责：左侧抽屉 UI、树形数据源、按层懒加载、锚点父级链、Home/刷新、宽度拖拽与记忆、双击同窗打开。
-- 不负责：文件内容读写（`CMP-document-io`）、窗口替换策略（`CMP-app-shell`）、Markdown 渲染（`CMP-editor`）。
+- 不负责：文件内容读写（`CMP-document-io`）、窗口替换策略（`CMP-app-shell`）、Markdown 渲染（`CMP-editor`）、代码渲染（`CMP-code-view`）。
 - 内部逻辑：`DirectoryTree` 负责扫描/锚点链；`FileDrawerView` 负责 outline 数据源与行视图；`DrawerAnchorControl` 负责父级菜单；`DrawerResizeDivider` 负责宽度拖拽。
 - 拥有的数据：当前锚点根、展开节点、抽屉宽度/开合状态；不拥有文件内容。
-- 变化轴：树过滤规则、锚点语义、宽度约束、目录模式入口。
+- 变化轴：树过滤规则（可打开文件种类）、锚点语义、宽度约束、目录模式入口。
 - 公开契约（含能力 ID）：
   - `CMP-drawer#open-close`：⌘\ 开合；开合状态跨窗口记忆。
-  - `CMP-drawer#scan-level`：只读当前层；展开时同步读下一层；跳过隐藏/符号链接/`node_modules`/包目录；只列可打开 Markdown。
+  - `CMP-drawer#scan-level`：只读当前层；展开时同步读下一层；跳过隐藏/符号链接/`node_modules`/包目录；只列可打开文件（Markdown + 代码，`FileSupport.isOpenable` 单一判定）。
   - `CMP-drawer#anchor`：显示根到当前目录的父级链；选中父级即重锚；抽屉双击保持锚点。
   - `CMP-drawer#open-file`：双击在当前窗口覆盖打开；脏文档先确认。
   - `CMP-drawer#resize`：拖拽边界 160–480pt，正文不窄于 320pt。
@@ -34,7 +34,7 @@ updated: 2026-11-04
   - `CMP-drawer/Sources/MDPreview/DrawerResizeDivider.swift`
   - `CMP-drawer/Sources/MDPreview/FinderIcon.swift#folder`
   - `CMP-drawer/Sources/MDPreview/DocumentWindowController.swift#openDirectory`
-- 依赖：`CMP-app-shell`（窗口/焦点）、`CMP-document-io`（打开目标）、`CMP-image` 无关。
+- 依赖：`CMP-app-shell`（窗口/焦点）、`CMP-document-io`（打开目标）、`CMP-code-view`（`#kind` 过滤判定）、`CMP-image` 无关。
 - 冷热属性：冷路径；扫描在后台队列，不阻塞编辑输入。
 - 尺寸预算：目标 ≤120k token；当前约 858 行（FileDrawerView 455 + Anchor 201 + DirectoryTree 112 + Divider 76 + Icon 14），实测待脚本。
 - 单独运行：`./.build/debug/MDPreview --drawer-test --dir=<tmp> --fileA=<tmp>/a.md --fileB=<tmp>/b.md`。

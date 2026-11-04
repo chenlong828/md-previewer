@@ -7,9 +7,11 @@ import { undo, redo } from '@milkdown/prose/history'
 import { replaceAll, insert } from '@milkdown/utils'
 import { state, post, currentMarkdown } from './state.js'
 import { computeStats } from './stats.js'
-import { createEditor, toggleSource, applyThemeDom, applyMermaidTheme } from './editor.js'
+import { createEditor, toggleSource as applySourceToggle, applyThemeDom, applyMermaidTheme } from './editor.js'
 import { findKey, findUI } from './find.js'
-import { openFindBar, closeFindBar, stepFind } from './find-bar.js'
+import { openFindBar, closeFindBar, stepFind, runFind } from './find-bar.js'
+import { showCode, hideCode, setCodeLanguage as applyCodeLanguage, isCodeMode, codeInfo, codeFindCount } from './code-view.js'
+import { hasLanguage } from './languages.js'
 import { tableCommandImpls } from './tables.js'
 import { commandRegistry } from './commands.js'
 import { exportStandaloneHTML } from './export.js'
@@ -44,11 +46,54 @@ window.mdbridge = {
 
     setMarkdown(md, opts = {}, flush = false) {
         if (!state.ready) return
+        // 不变式:回到 Markdown 文档必须退出只读代码视图(#code-view 隐藏、#app 恢复)
+        hideCode()
         if (opts && typeof opts.baseDir === 'string') state.baseDir = opts.baseDir
         state.editor.action(replaceAll(md || '', flush))
         // 确定性基线:同步序列化 replaceAll 落定后的 doc(与保存取回同一口径),
         // 不依赖异步回调的到达时机——并发编辑的防抖回调由 editor 的过期过滤处理
         if (!flush) state.baselineMarkdown = currentMarkdown()
+    },
+
+    /**
+     * 进入只读代码视图。代码文档没有脏基线、不发 changed;语言由 Swift 侧
+     * (FileSupport)解析后传入,allowHighlight=false 时纯文本渲染。
+     */
+    setCode(text, opts = {}) {
+        if (!state.ready) return false
+        if (state.sourceMode) applySourceToggle(false)
+        showCode(text || '', {
+            language: typeof opts.language === 'string' ? opts.language : 'plaintext',
+            allowHighlight: opts.allowHighlight !== false,
+        })
+        // 代码视图重建后旧选区失效:查找栏开着且有查询时重算命中
+        if (document.body.classList.contains('finding') && findUI.query) {
+            runFind(findUI.query, { caseSensitive: findUI.caseSensitive })
+        }
+        return true
+    },
+
+    /** 切换高亮语言(只重绘,不写文件);plaintext / 未知 id 回落纯文本 */
+    setCodeLanguage(id) {
+        const ok = applyCodeLanguage(typeof id === 'string' ? id : 'plaintext')
+        if (ok && document.body.classList.contains('finding') && findUI.query) {
+            runFind(findUI.query, { caseSensitive: findUI.caseSensitive })
+        }
+        return ok
+    },
+
+    isCodeMode() {
+        return isCodeMode()
+    },
+
+    codeInfo() {
+        return codeInfo()
+    },
+
+    /** 自检辅助:返回 ids 中确实可高亮的语言(用于 Swift 侧语言表 ↔ web 语法表一致性) */
+    hasLanguages(ids) {
+        if (!Array.isArray(ids)) return []
+        return ids.filter((id) => hasLanguage(id))
     },
 
     /** 保存成功后由原生调用:以当前所见内容为新基线(源码模式下即 textarea 内容) */
@@ -95,7 +140,11 @@ window.mdbridge = {
 
     getZoom() { return state.zoom },
 
-    toggleSource(force) { return toggleSource(force) },
+    toggleSource(force) {
+        // 代码文档没有源码/渲染切换(需求明确「代码恒为纯源码、不支持切换」)
+        if (state.codeMode) return false
+        return applySourceToggle(force)
+    },
 
     /** 表格行列命令 */
     tableCommand(name) {
@@ -186,8 +235,12 @@ window.mdbridge = {
         return true
     },
     findInfo() {
+        const active = document.body.classList.contains('finding')
+        if (state.codeMode) {
+            return { active, query: findUI.query, count: codeFindCount() }
+        }
         return {
-            active: document.body.classList.contains('finding'),
+            active,
             query: findUI.query,
             // count 恒为数字;-1 表示编辑器未就绪
             count: state.sourceMode ? findUI.srcMatches.length : (state.ready ? (() => {
@@ -287,6 +340,11 @@ window.mdbridge = {
     },
 
     focus() {
+        if (state.codeMode) {
+            const view = document.getElementById('code-view')
+            if (view) view.focus()
+            return
+        }
         if (!state.ready) return
         if (state.sourceMode) {
             document.getElementById('source-editor').focus()

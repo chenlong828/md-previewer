@@ -2,8 +2,8 @@ import Foundation
 
 /// 文件抽屉的树模型:lazy 按层装载——每次只读一层,展开目录时才触发下一层读取。
 /// 纯函数式扫描,无持久状态——权威数据在磁盘,产出只是某一刻的投影;
-/// 过滤规则(哪些文件能展示)单源复用 AppDelegate.markdownExtensions,
-/// 与打开面板/Info.plist 同一处定义,不复制第二份扩展名清单。
+/// 过滤规则(哪些文件能展示)单源复用 FileSupport.isOpenable,
+/// 与打开面板/文档链接拦截/Info.plist「Markdown 关联」同一处定义,不复制第二份扩展名清单。
 ///
 /// lazy 的语义取舍:不读到子层就无法知道后代有没有 md,因此**不做**
 /// 「无 md 后代目录剪枝」——所有非隐藏目录都显示(含暂无 md 的目录,
@@ -105,8 +105,9 @@ enum DirectoryTree {
         return node
     }
 
-    /// 展示过滤唯一判定点:能被本应用打开的 md 文件才进树
+    /// 展示过滤唯一判定点:能被本应用打开的文件(Markdown + 代码)才进树。
+    /// 唯一来源 FileSupport(与打开面板/文档链接/Info.plist 同源)。
     private static func isDisplayableMarkdown(_ url: URL) -> Bool {
-        AppDelegate.markdownExtensions.contains(url.pathExtension.lowercased())
+        FileSupport.isOpenable(url)
     }
 }

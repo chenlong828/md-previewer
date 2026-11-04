@@ -1,6 +1,5 @@
 import AppKit
 import os.log
-import UniformTypeIdentifiers
 
 /// 菜单 identifier 常量:构建与联动(findMenu/updateMenuItem)共用同一出处,
 /// 拼写错误在编译期暴露,不再有裸字符串递归查找。
@@ -11,6 +10,7 @@ enum MenuID {
     static let recentsMenu = NSUserInterfaceItemIdentifier("recentsMenu")
     static let viewSourceMode = NSUserInterfaceItemIdentifier("view.sourceMode")
     static let viewDrawer = NSUserInterfaceItemIdentifier("view.drawer")
+    static let viewHighlightLanguage = NSUserInterfaceItemIdentifier("view.highlightLanguage")
     static let appearanceAuto = NSUserInterfaceItemIdentifier("appearance.auto")
     static let appearanceLight = NSUserInterfaceItemIdentifier("appearance.light")
     static let appearanceDark = NSUserInterfaceItemIdentifier("appearance.dark")
@@ -32,18 +32,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var cliOpenedURLs: Set<URL> = []
     /// 退出确认流程进行中(挂起 .terminateLater 到 reply 之间)
     private var isTerminateConfirming = false
-
-    /// Markdown 扩展名的 Swift 唯一来源(打开面板 UTType、文档内链接拦截、
-    /// Info.plist 一致性断言均由此派生)。决策:不含 txt——.txt 由系统外部打开。
-    static let markdownExtensions = ["md", "markdown", "mdown", "mkdn", "mdtext", "mdwn"]
-
-    static let markdownUTTypes: [UTType] = {
-        var types: [UTType] = []
-        for ext in markdownExtensions {
-            if let t = UTType(filenameExtension: ext), !types.contains(t) { types.append(t) }
-        }
-        return types.isEmpty ? [.plainText] : types
-    }()
 
     private let recentFilesKey = "recentFiles"
 
@@ -329,6 +317,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     func menuNeedsUpdate(_ menu: NSMenu) {
         if menu.identifier == MenuID.recentsMenu { rebuildRecentsMenu() }
+        if menu.identifier == MenuID.viewHighlightLanguage { updateHighlightLanguageMenu(menu) }
+    }
+
+    /// 「高亮语言」子菜单:仅代码文档可用,勾选当前选择(自动/纯文本/语言 id 三者之一)。
+    /// 菜单项状态在开菜单时统一刷新(用户可能用 ⌘/ 或换文件改变过状态)。
+    private func updateHighlightLanguageMenu(_ menu: NSMenu) {
+        guard let doc = currentDocument else {
+            for item in menu.items where !item.isSeparatorItem { item.isEnabled = false }
+            return
+        }
+        let isCode = doc.isCodeDocument
+        let selected = doc.highlightMenuSelection
+        for item in menu.items where !item.isSeparatorItem {
+            item.isEnabled = isCode
+            item.state = (item.representedObject as? String) == selected ? .on : .off
+        }
     }
 
     /// 追加一个子菜单并在其中构建菜单项(消除逐级声明的样板嵌套)
@@ -434,6 +438,33 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             menu.addItem(.separator())
             let sourceItem = menu.addItem(withTitle: "源码模式", action: #selector(DocumentWindowController.toggleSourceModeAction(_:)), keyEquivalent: "/")
             sourceItem.identifier = MenuID.viewSourceMode
+            menu.addItem(.separator())
+            // 高亮语言子菜单:代码文档专用(REQ-0009)。勾选状态由 menuNeedsUpdate 刷新,
+            // 关闭自动置灰以避免 AppKit 默认校验覆盖我们的状态。
+            Self.appendSubmenu("高亮语言", to: menu, id: MenuID.viewHighlightLanguage) { languageMenu in
+                languageMenu.autoenablesItems = false
+                languageMenu.delegate = self
+                let auto = languageMenu.addItem(
+                    withTitle: "自动（按扩展名）",
+                    action: #selector(DocumentWindowController.setHighlightLanguageAction(_:)),
+                    keyEquivalent: "")
+                auto.representedObject = FileSupport.autoLanguageID
+                let plain = languageMenu.addItem(
+                    withTitle: "纯文本",
+                    action: #selector(DocumentWindowController.setHighlightLanguageAction(_:)),
+                    keyEquivalent: "")
+                plain.representedObject = FileSupport.plainTextID
+                languageMenu.addItem(.separator())
+                for language in FileSupport.codeLanguages.sorted(by: {
+                    $0.displayName.localizedStandardCompare($1.displayName) == .orderedAscending
+                }) {
+                    let item = languageMenu.addItem(
+                        withTitle: language.displayName,
+                        action: #selector(DocumentWindowController.setHighlightLanguageAction(_:)),
+                        keyEquivalent: "")
+                    item.representedObject = language.id
+                }
+            }
             menu.addItem(.separator())
             let drawerItem = menu.addItem(withTitle: "文件抽屉", action: #selector(DocumentWindowController.toggleDrawerAction(_:)), keyEquivalent: "\\")
             drawerItem.identifier = MenuID.viewDrawer

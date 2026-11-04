@@ -35,6 +35,7 @@ updated: 2026-11-04
 | [2026-10-24-code-token-palette](../history/works/2026-10-24-code-token-palette/brief.md) | 代码高亮 token 调色板自有化（浅/深双值单规则，移除 Prism 浅色整主题与 prismjs 依赖） | 缺陷/重构 | S | 无 | ✅ 已完成（已归档） |
 | [2026-11-02-app-icon](../history/works/2026-11-02-app-icon/brief.md) | App 图标自有化（MP 字标替换 Typora 借图，16–1024 全尺寸 + 生成脚本） | 功能/视觉 | S | 无 | ✅ 已完成（已归档） |
 | [2026-11-04-scenario-inventory](../works/2026-11-04-scenario-inventory/brief.md) | 已实现场景/组件清点（7 组件、8 REQ、15 场景；REQ 验证后转） | 文档 | M | 五态迁移 | 🔄 收口中（卡片已落，3+1 复核待做） |
+| [2026-11-04-code-file-view](../works/2026-11-04-code-file-view/brief.md) | 代码文件只读查看 + 高亮语言切换（新组件 CMP-code-view；44 语言；6 入口面） | 功能 | M–L | 无 | 🔄 执行中（自动化全绿，待人工 GUI 实证） |
 
 ## 批次与依赖链
 

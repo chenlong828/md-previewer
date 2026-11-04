@@ -10,18 +10,9 @@ import { diagram } from '@milkdown/plugin-diagram'
 import { clipboard } from '@milkdown/plugin-clipboard'
 import { trailing } from '@milkdown/plugin-trailing'
 import { getMarkdown, replaceAll } from '@milkdown/utils'
-import dart from 'refractor/dart'
-import docker from 'refractor/docker'
-import graphql from 'refractor/graphql'
-import scala from 'refractor/scala'
-import toml from 'refractor/toml'
-import powershell from 'refractor/powershell'
-import haskell from 'refractor/haskell'
-import groovy from 'refractor/groovy'
-import protobuf from 'refractor/protobuf'
-import elixir from 'refractor/elixir'
 import mermaid from 'mermaid'
 import { state, post, currentMarkdown } from './state.js'
+import { ensureLanguages } from './languages.js'
 import { scheduleStats } from './stats.js'
 import { findKey, findUI, findProsePlugin } from './find.js'
 import { updateFindCount, runFind } from './find-bar.js'
@@ -47,8 +38,8 @@ export function applyMermaidTheme() {
 
 // ---------- 编辑器创建 ----------
 
-const extraLanguages = [dart, docker, graphql, scala, toml, powershell, haskell, groovy, protobuf, elixir]
-
+// 代码高亮语法注册(single source:web/src/languages.js)：
+// 代码视图与围栏代码块共用同一 refractor 注册表。
 export async function createEditor() {
     applyMermaidTheme()
 
@@ -63,10 +54,8 @@ export async function createEditor() {
             ctx.update(
                 prismConfig.key,
                 () => ({
-                    configureRefractor: (ref) => {
-                        for (const lang of extraLanguages) {
-                            try { ref.register(lang) } catch (e) { /* 已注册或不存在 */ }
-                        }
+                    configureRefractor: () => {
+                        ensureLanguages()
                     },
                 }),
             )

@@ -45,6 +45,38 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
     // 抽屉可见性全局记忆(UserDefaults);目录模式无文档,右侧空白,抽屉为唯一导航面。
     private(set) var isDrawerVisible = false
     private(set) var directoryMode = false
+
+    // MARK: - 文档种类(代码文档只读)
+    /// 当前窗口装载的文档种类;目录模式恒为 markdown。决定装载路径、菜单可用性与
+    /// 状态栏文案——代码文档没有脏标记、没有保存、没有 Markdown 编辑命令。
+    private(set) var documentKind: DocumentKind = .markdown
+    /// 代码文档的高亮语言手动选择(nil = 跟随扩展名;`auto` 不落此字段)
+    private var codeLanguageOverride: String?
+    /// 代码文档是否高亮(超过上限的大文件降级纯文本)
+    private var codeHighlightAllowed = true
+    /// 单文件高亮上限(UTF-8 字节):超过则纯文本渲染,保证打开大文件不卡死
+    static let codeHighlightByteLimit = 512 * 1024
+
+    var isCodeDocument: Bool {
+        if case .code = documentKind { return true }
+        return false
+    }
+
+    /// 扩展名推导的自动语言(仅代码文档有意义)
+    private var automaticCodeLanguage: String {
+        if case .code(let language) = documentKind { return language }
+        return FileSupport.plainTextID
+    }
+
+    /// 当前生效语言:手动选择优先于扩展名
+    private var effectiveCodeLanguage: String {
+        FileSupport.effectiveLanguage(automatic: automaticCodeLanguage, override: codeLanguageOverride)
+    }
+
+    /// 高亮语言菜单的勾选值:自动 / 纯文本 / 语言 id
+    var highlightMenuSelection: String {
+        codeLanguageOverride ?? FileSupport.autoLanguageID
+    }
     /// 目录模式的扫描根(文件模式的根 = fileURL 所在目录,不落此字段)
     private var drawerRootURL: URL?
     private var drawerView: FileDrawerView!
@@ -187,6 +219,11 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
         webView.registerForDraggedTypes([.fileURL, .URL])
         webView.contextMenuHandler = { [weak self] x, y, done in
             guard let self else { done(nil); return }
+            // 代码文档只读:锚点定位(把光标放进 ProseMirror)无意义,直接给只读菜单
+            if self.isCodeDocument {
+                done(self.buildContextMenu(inTable: false))
+                return
+            }
             // 先把光标移到点击处(同步返回该处是否在表格内),再构建菜单
             let js = "JSON.stringify(window.mdbridge.focusAt(\(x), \(y)))"
             callJS(js) { result in
@@ -244,6 +281,18 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
             pendingOpen = PendingOpen(url: target, reanchor: reanchor)
             return
         }
+        // 文档种类决定装载路径:Markdown 走 Milkdown;代码走只读高亮视图。
+        // 未知扩展名不按 Markdown 解析(否则会被渲染成一段纯文本、误以为可保存)。
+        guard let kind = FileSupport.kind(for: target) else {
+            let ext = target.pathExtension.lowercased()
+            let alert = NSAlert()
+            alert.messageText = "不支持的文件类型"
+            alert.informativeText = ext.isEmpty
+                ? target.lastPathComponent
+                : "\(target.lastPathComponent)\n暂不支持 .\(ext) 文件。"
+            alert.runModal()
+            return
+        }
         // 读取编码仅用于探测显示;输出恒定 UTF-8(承诺见 README 已知边界)
         guard let (text, _) = TextFile.read(at: target) else {
             let alert = NSAlert()
@@ -259,10 +308,19 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
         }
         fileURL = target
         isDirty = false
+        documentKind = kind
+        // 换文档即重置语言选择:自动语言重新由扩展名决定
+        codeLanguageOverride = nil
+        codeHighlightAllowed = true
         updateTitle()
         updateStateLabel()
         AppDelegate.shared?.addRecentFile(target)
-        injectMarkdown(text, docURL: target)
+        switch kind {
+        case .markdown:
+            injectMarkdown(text, docURL: target)
+        case .code(let language):
+            injectCode(text, language: language, docURL: target)
+        }
         if isDrawerVisible { refreshDrawer() }
     }
 
@@ -289,6 +347,9 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
         fileMonitor?.cancel()
         fileMonitor = nil
         directoryMode = true
+        documentKind = .markdown
+        codeLanguageOverride = nil
+        codeHighlightAllowed = false
         drawerRootURL = target
         fileURL = nil
         isDirty = false
@@ -303,6 +364,38 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
         if isReady {
             injectMarkdown("", docURL: target)
         }
+    }
+
+    /// 代码文档装载:只读高亮视图(不进 ProseMirror、不产生脏基线、不发 changed)。
+    /// 超过 `codeHighlightByteLimit` 的文件由 allowHighlight=false 降级纯文本,状态栏标注。
+    private func injectCode(_ text: String, language: String, docURL: URL) {
+        isLoadingContent = true
+        let allowHighlight = text.utf8.count <= Self.codeHighlightByteLimit
+        codeHighlightAllowed = allowHighlight
+        let opts: [String: Any] = [
+            "language": language,
+            "allowHighlight": allowHighlight,
+        ]
+        let optsJSON = (try? JSONSerialization.data(withJSONObject: opts))
+            .flatMap { String(data: $0, encoding: .utf8) } ?? "{}"
+        callJS("window.mdbridge.setCode(\(JSArgs.string(text)), \(optsJSON))") { [weak self] _ in
+            DispatchQueue.main.async {
+                guard let self else { return }
+                self.isLoadingContent = false
+                self.isDirty = false
+                self.updateTitle()
+                self.refreshCodeStats(text)
+                self.updateStateLabel()
+                self.startFileMonitor()
+                self.drainPendingOpen()
+            }
+        }
+    }
+
+    /// 状态栏词数区:代码文档显示「N 行 · M 字符」(Markdown 仍是「N 词 · M 字符」)
+    private func refreshCodeStats(_ text: String) {
+        let lines = text.isEmpty ? 0 : text.split(separator: "\n", omittingEmptySubsequences: false).count
+        wordStatsText = "\(lines) 行 · \(text.count) 字符"
     }
 
     /// 将已读取的文本注入编辑器——加载与外部变更重载的唯一入口(仅限编辑器就绪后调用)。
@@ -381,6 +474,8 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
     // MARK: - 保存
 
     func saveDocument(_ sender: Any? = nil) {
+        // 代码文档只读(菜单同时禁用;这里是防御,避免 ⌘S 走 web 序列化空内容覆盖文件)
+        guard !isCodeDocument else { return }
         if fileURL == nil {
             saveDocumentAs(sender)
             return
@@ -389,8 +484,9 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
     }
 
     @objc func saveDocumentAs(_ sender: Any? = nil) {
+        guard !isCodeDocument else { return }
         let panel = NSSavePanel()
-        panel.allowedContentTypes = AppDelegate.markdownUTTypes
+        panel.allowedContentTypes = FileSupport.markdownUTTypes
         panel.nameFieldStringValue = (fileURL?.lastPathComponent) ?? "未命名.md"
         panel.canCreateDirectories = true
         guard panel.runModal() == .OK, let url = panel.url else { return }
@@ -466,10 +562,14 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
             updateStateLabel()
             drainPendingOpen()
         case "changed":
-            if isLoadingContent { return }
+            // 代码文档恒只读:web 端不应发 changed;防御性忽略,避免出现「已修改」假状态
+            if isLoadingContent || isCodeDocument { return }
             let dirty = (payload["dirty"] as? Bool) ?? true
             setDirty(dirty)
         case "stats":
+            // 代码文档的统计由 refreshCodeStats 按文本算(行 · 字符);忽略编辑器迟到的
+            // 统计回调(例如从源码模式切来时代码模式内的 debounce 回调),避免文案被覆盖
+            if isCodeDocument { return }
             let words = payload["words"] as? Int ?? 0
             let chars = payload["chars"] as? Int ?? 0
             wordStatsText = "\(words) 词 · \(chars) 字符"
@@ -547,7 +647,7 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
 
     /// 导入一张既有图片文件(拖入编辑器 / 插入菜单入口)并在光标处插入引用
     func importImage(at url: URL) {
-        guard isReady else { return }
+        guard isReady, !isCodeDocument else { return }
         guard fileURL != nil else {
             promptSaveBeforeImagePaste()
             return
@@ -578,7 +678,7 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
 
     /// 格式 → 插入图片…:文件选择器选中后走统一导入路径
     @objc func insertImageAction(_ sender: Any?) {
-        guard isReady else { return }
+        guard isReady, !isCodeDocument else { return }
         let panel = NSOpenPanel()
         panel.allowedContentTypes = [.image]
         panel.allowsMultipleSelection = false
@@ -619,6 +719,7 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
         }
     }
     func toggleSourceMode() {
+        guard !isCodeDocument else { return }
         callJS("window.mdbridge.toggleSource()") { [weak self] result in
             DispatchQueue.main.async {
                 if let v = result as? Bool { self?.sourceModeCached = v }
@@ -648,19 +749,23 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
 
     private func buildContextMenu(inTable: Bool) -> NSMenu {
         let menu = NSMenu()
-        // 分组与菜单栏共用同一份命令注册表;表格组仅在光标位于表格内时出现
-        let groups: [[EditorAction]] = [
-            [.undo, .redo],
-            [.cut, .copy, .paste, .selectAll],
-            [.find, .toggleSource],
-            [.bold, .italic, .inlineCode, .strikethrough],
-            [.insertTable, .insertHr],
-            [.rowAbove, .rowBelow, .colLeft, .colRight],
-            [.deleteRow, .deleteColumn, .deleteTable],
-        ]
+        // 分组与菜单栏共用同一份命令注册表;表格组仅在光标位于表格内时出现。
+        // 代码文档只保留只读可用的动作(拷贝/全选/查找),格式与表格组整体不出现。
+        let groups: [[EditorAction]] = isCodeDocument
+            ? [[.copy, .selectAll], [.find]]
+            : [
+                [.undo, .redo],
+                [.cut, .copy, .paste, .selectAll],
+                [.find, .toggleSource],
+                [.bold, .italic, .inlineCode, .strikethrough],
+                [.insertTable, .insertHr],
+                [.rowAbove, .rowBelow, .colLeft, .colRight],
+                [.deleteRow, .deleteColumn, .deleteTable],
+            ]
         for group in groups {
             let items = group.compactMap { action -> NSMenuItem? in
                 guard let spec = EditorCommands.spec(for: action), spec.inContextMenu else { return nil }
+                if isCodeDocument && !spec.availableInCode { return nil }
                 if spec.requiresTable && !inTable { return nil }
                 return EditorCommands.menuItem(for: action, contextTarget: self)
             }
@@ -726,7 +831,13 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
     }
 
     private func measureAndCapturePDF(inSource: Bool) {
-        let bodySel = inSource ? "document.getElementById('source-editor')" : "document.getElementById('app')"
+        // 内容面选择:代码文档取 #code-view(只读源码面),与 isSourceMode 无关
+        let bodySel: String
+        if isCodeDocument {
+            bodySel = "document.getElementById('code-view')"
+        } else {
+            bodySel = inSource ? "document.getElementById('source-editor')" : "document.getElementById('app')"
+        }
         let script = """
         (function() {
             var el = \(bodySel);
@@ -852,7 +963,11 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
     }
 
     private func updateStateLabel() {
-        if sourceModeCached {
+        if isCodeDocument {
+            // 代码文档:恒只读;状态栏显示当前语言(自动/纯文本/手动切换均在此体现)
+            let language = FileSupport.displayName(forLanguageID: effectiveCodeLanguage)
+            stateText = codeHighlightAllowed ? "只读 · \(language)" : "只读 · \(language)(文件过大,未高亮)"
+        } else if sourceModeCached {
             stateText = "源码模式"
         } else if isReady {
             stateText = isDirty ? "已修改" : "就绪"
@@ -917,10 +1032,15 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
         }
     }
 
-    /// 外部变更后的重载:与加载共用注入入口
+    /// 外部变更后的重载:与加载共用注入入口。代码文档保留当前高亮语言选择,
+    /// 但重新判定大文件阈值(文件可能在外部被改大)。
     private func forceReload(from url: URL) {
         guard let (text, _) = TextFile.read(at: url) else { return }
-        injectMarkdown(text, docURL: url)
+        if isCodeDocument {
+            injectCode(text, language: effectiveCodeLanguage, docURL: url)
+        } else {
+            injectMarkdown(text, docURL: url)
+        }
     }
 
     // MARK: - 关闭 / 退出确认
@@ -1010,6 +1130,7 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
     /// 判定与执行细节单点在 ImageStore.cleanUnreferenced。清理是偶发慢路径,
     /// 失败只记日志,不打断关闭。
     private func cleanOrphanResources() {
+        guard !isCodeDocument else { return } // 代码文档没有图片资源,不做清理
         guard let fileURL else { return } // 新建未保存文档:无资源目录,无清理对象
         guard let (text, _) = TextFile.read(at: fileURL) else {
             os_log(.error, "资源清理:文档读取失败 %{public}@", fileURL.path)
@@ -1030,6 +1151,8 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
         // 注册表命令统一校验(菜单栏与右键菜单共用)
         if let spec = EditorCommands.all.first(where: { $0.selector == menuItem.action }) {
+            // 代码文档只读:除拷贝/全选/查找外全部不可用(保存/格式/源码模式/表格…)
+            if isCodeDocument && !spec.availableInCode { return false }
             if spec.action == .toggleSource {
                 menuItem.state = sourceModeCached ? .on : .off
             }
@@ -1039,8 +1162,12 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
         switch menuItem.action {
         case #selector(toggleDrawerAction(_:)):
             return true // 抽屉开合不依赖编辑器就绪
-        case #selector(saveDocumentAs(_:)):
-            return isReady
+        case #selector(saveDocumentAsAction(_:)), #selector(saveDocumentAs(_:)),
+             #selector(saveDocumentAction(_:)), #selector(insertImageAction(_:)),
+             #selector(exportHTMLAction(_:)):
+            return isReady && !isCodeDocument
+        case #selector(setHighlightLanguageAction(_:)):
+            return isCodeDocument
         default:
             return isReady
         }
@@ -1050,7 +1177,7 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
 
     @objc func openDocumentAction(_ sender: Any?) {
         let panel = NSOpenPanel()
-        panel.allowedContentTypes = AppDelegate.markdownUTTypes
+        panel.allowedContentTypes = FileSupport.openableUTTypes
         panel.allowsMultipleSelection = false
         panel.canChooseDirectories = false
         guard panel.runModal() == .OK, let url = panel.url else { return }
@@ -1069,6 +1196,22 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
 
     @objc func saveDocumentAction(_ sender: Any?) { saveDocument(sender) }
     @objc func saveDocumentAsAction(_ sender: Any?) { saveDocumentAs(sender) }
+
+    /// 视图 → 高亮语言:仅代码文档可用,菜单项 representedObject 携带 auto/plaintext/语言 id
+    @objc func setHighlightLanguageAction(_ sender: NSMenuItem) {
+        guard isCodeDocument, let id = sender.representedObject as? String else { return }
+        applyHighlightLanguage(id)
+    }
+
+    /// 应用高亮语言选择:auto 清空覆盖、其余(含 plaintext)记为覆盖;只重绘不写文件。
+    /// 大文件降级状态不因切换语言而改变(仍走高亮字节上限)。
+    private func applyHighlightLanguage(_ id: String) {
+        codeLanguageOverride = (id == FileSupport.autoLanguageID) ? nil : id
+        let language = effectiveCodeLanguage
+        callJS("window.mdbridge.setCodeLanguage(\(JSArgs.string(language)))") { [weak self] _ in
+            DispatchQueue.main.async { self?.updateStateLabel() }
+        }
+    }
 
     @objc func revealInFinderAction(_ sender: Any?) {
         guard let url = directoryMode ? drawerRootURL : fileURL else { return }

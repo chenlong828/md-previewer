@@ -245,6 +245,41 @@ WKWebView 承载 Milkdown 7.7（ProseMirror）前端。本文记录跨模块的�
   各一条），改色必须同步该断言表。重新整份引入第三方主题会让断言先红（已实测）。
 - **导出**：独立 HTML 内联全部样式，导出文件不带 `data-theme`，token 恒取浅色值。
 
+### 2.7 代码文档：只读源码视图（2026-11-04）
+
+- **决策**：代码文件以**只读高亮源码**打开，与 Markdown 共用窗口/主题/缩放/查找，
+  但不进 ProseMirror：页面多出第三个面 `#code-view`，`body.code-mode` 下隐藏
+  `#app` 与 `#source-editor`。代码文档恒为「纯源码」，没有 WYSIWYG ⇄ 源码切换。
+- **种类判定单一来源**：`Sources/MDPreview/FileSupport.swift` 的 `DocumentKind`
+  与 `codeLanguages`（44 种语言/扩展名映射 + `plaintext` 伪语言）。打开面板、
+  抽屉过滤、文档内链接拦截、打开分派、高亮语言菜单、Info.plist 断言全部派生自
+  这里；web 侧 `web/src/languages.js` 注册 refractor 语法，selftest「双端语言
+  清单一致」守门。
+- **理由**：把代码塞进 Markdown 围栏块虽省事，但会让只读文件进入可编辑数据模型——
+  一次 ⌘S 就把代码写成 md；且 ProseMirror 解析大文件成本高、围栏转义会改字符。
+  独立只读面让「不写盘」成为结构约束，而不是靠禁菜单。
+- **不变量**：
+  - 代码文档 `isDirty` 恒 false、不发 `changed`、关闭不弹保存确认；保存/另存为/
+    源码模式/插入图片/HTML 导出在菜单与代码路径双重禁用。
+  - `setMarkdown` 必须先退出代码视图（`hideCode`）；`toggleSource` 在代码视图下
+    no-op；`code-mode` 与 `source-mode` 互斥。
+  - 高亮上限 512 KB（UTF-8 字节，`DocumentWindowController.codeHighlightByteLimit`）：
+    超过则纯文本渲染 + 状态栏「文件过大,未高亮」；语言切换不改变降级状态。
+  - token 配色仍走 §2.6 的调色板（`.token.*` 是全局类），代码视图不新建主题；
+    `#code-view` 只覆盖 `pre/code` 的容器样式（背景/边框/内边距/缩放）。
+  - 打开入口与 Markdown 完全一致（⌘O/抽屉/拖放/CLI/最近/文档链接）；外部打开
+    仍新窗口、程序内覆盖当前窗口。
+  - 代码查找用文本 Range 选区实现（命中计数 + 循环定位），不重建 DOM，避免打断
+    token 结构。
+- **实现单点**：Swift `FileSupport` + `DocumentWindowController` 的 kind 分支；
+  web `languages.js`（语法注册与 hast→DOM）、`code-view.js`（渲染/切换/查找/降级）、
+  `bridge.js`（`setCode`/`setCodeLanguage`/`isCodeMode`/`codeInfo`/`hasLanguages`）。
+- **失效条件**：新增语言只加 Swift 表会让「双端语言清单一致」先红；只加 web 注册
+  会表现为「未知语法回落纯文本」而不是报错；`#code-view` 样式若写回 `pre` 全局
+  规则会污染 Markdown 围栏代码块的底色/内边距。
+- **边界**：无扩展名文件（`Dockerfile`/`Makefile`）不识别；不做代码编辑、行号、
+  折叠与 LSP；HTML 导出对代码文档不可用。
+
 ## 3. 桥协议
 
 - **v2 目标契约：已评审、暂缓实施（2026-10-21）**：可移植内核评审有条件通过，
@@ -261,6 +296,10 @@ WKWebView 承载 Milkdown 7.7（ProseMirror）前端。本文记录跨模块的�
 - 图片导入双向对(2026-10-20):JS→Swift `importImage`(requestId/kind=
   blob|file/mime/dataBase64/path),Swift→JS `onImageImported(requestId,
   {ok,src})`;插入唯一入口是 `insertImageCommand`(formatCommand 转发)。
+- 代码视图增量(2026-11-04,向后兼容,纯 Swift→JS):`setCode(text,
+  {language, allowHighlight})`、`setCodeLanguage(id)`、`isCodeMode()`、
+  `codeInfo()`、`hasLanguages(ids)`。JS→Swift 无新增 op:代码文档不发
+  `changed`/`stats`,行数与字符数由 Swift 侧按文本计算。
 - 命令转发：菜单/右键 → `performEditorAction` → spec.jsCommand →
   `formatCommand`/`tableCommand`；milkdown 命令为**位置参数**形态
   （如 `wrapInHeadingCommand(2)`），payload 标量需 `.fragmentsAllowed` 序列化。

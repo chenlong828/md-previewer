@@ -9,13 +9,14 @@
 - **所见即所得编辑**:基于 [Milkdown](https://milkdown.dev)(ProseMirror)渲染,直接在排版结果上编辑,无需预览分栏
 - **完整 Markdown 支持**:GFM 表格、任务列表、删除线、引用、代码块、图片、链接、分割线
 - **图片**:本地相对路径图片正常显示(容忍路径含空格/括号,wechat-offline 导出文档实测);点击图片整块切换为源码编辑(宽度撑满编辑器、长路径自动换行,与文件写法同构),失焦或 Enter 提交、Esc 还原,清空地址即删图;⌘V 粘贴截图或图片文件路径、拖入图片文件、格式→插入图片…均自动把图片复制到文档旁 `resource/<md文件名>/` 并插入引用(与 wechat-offline 导出布局一致)
-- **代码高亮**:Prism,支持 Swift / Python / JS / Rust / Go / Java / C / C++ / SQL / Bash / YAML / TOML / JSON / Dart / Kotlin 等常用语言
+- **代码高亮**:Markdown 围栏代码块与代码文件共用 refractor/Prism 语法表,支持 Swift / Python / JS / TS / TSX / JSX / Rust / Go / Java / Kotlin / C / C++ / C# / Ruby / PHP / SQL / Bash / YAML / TOML / JSON / XML / HTML / CSS / Diff / Dockerfile 等 44 种语言;配色由 `typora.css` 的 token 调色板单一维护(浅/深两组)
+- **代码文件查看**:直接打开常见代码文件(⌘O / 抽屉 / 拖放 / 命令行 / 最近文件)显示**只读高亮源码**,不进入 Markdown 编辑管线;语言默认按扩展名推断,「视图 → 高亮语言」可切换语言或关成纯文本,状态栏显示「只读 · 语言」;⌘F 查找、⌘E PDF / ⌘P 打印均可用;超过 512 KB 的文件自动降级纯文本并在状态栏提示
 - **数学公式**:KaTeX,行内 `$E=mc^2$` 与块级 `$$…$$`
 - **Mermaid 图表**:流程图 / 时序图 / 饼图等,点击图表进入源码编辑,失焦自动重绘(仿 Typora 交互)
 - **源码模式**:`⌘/` 在渲染视图与 Markdown 源码间切换
 - **文档内查找**:`⌘F` 呼出查找栏,`Enter`/`Shift+Enter` 在命中项间跳转并高亮当前项,实时显示 `当前/总数`,源码模式同样可用
 - **多窗口**:每个文档独立窗口(⌘N 新建、拖放/Finder/命令行均开新窗;⌘O 与「打开最近使用」在当前窗口替换打开),单进程单 Dock 图标(Typora 同款模型)
-- **文件抽屉**:`⌘\` 开合左侧抽屉,树形展示当前文档所在文件夹(与 Finder 一致的文件夹图标;**按层懒加载**——展开目录时同步读取下一层(点击即出,任意规模目录树开销恒定);文件只列可打开的 Markdown,隐藏条目/符号链接/`node_modules`/包目录跳过,暂无 md 的目录也会显示);展开时窗口优先向左伸出,伸出后超出屏幕宽度则整体收敛到屏幕宽度;双击文件在**当前窗口**覆盖打开(脏文档先确认保存);顶部锚点路径控件铺满「抽屉宽 − 两个按钮」,显示当前根的文件夹图标/目录名/展开箭头,点击弹出带 Finder 文件夹图标、逐级缩进的父级链菜单,选中即把该父级锚定为抽屉根(方便跨多层浏览);右侧 **Home** 按钮一键回到当前用户 Home 目录、**刷新**按钮重扫文件夹;抽屉与正文之间的边界可**鼠标拖拽调宽**(160–480pt,并受「正文不窄于 320pt」二次夹取);宽度与开合状态均跨窗口记忆;命令行/⌘O/最近使用等外部方式打开文件时,锚点默认为文件所在目录,抽屉内双击不改变锚点
+- **文件抽屉**:`⌘\` 开合左侧抽屉,树形展示当前文档所在文件夹(与 Finder 一致的文件夹图标;**按层懒加载**——展开目录时同步读取下一层(点击即出,任意规模目录树开销恒定);文件只列可打开的文件(Markdown 与代码文件),隐藏条目/符号链接/`node_modules`/包目录跳过,暂无 md 的目录也会显示);展开时窗口优先向左伸出,伸出后超出屏幕宽度则整体收敛到屏幕宽度;双击文件在**当前窗口**覆盖打开(脏文档先确认保存);顶部锚点路径控件铺满「抽屉宽 − 两个按钮」,显示当前根的文件夹图标/目录名/展开箭头,点击弹出带 Finder 文件夹图标、逐级缩进的父级链菜单,选中即把该父级锚定为抽屉根(方便跨多层浏览);右侧 **Home** 按钮一键回到当前用户 Home 目录、**刷新**按钮重扫文件夹;抽屉与正文之间的边界可**鼠标拖拽调宽**(160–480pt,并受「正文不窄于 320pt」二次夹取);宽度与开合状态均跨窗口记忆;命令行/⌘O/最近使用等外部方式打开文件时,锚点默认为文件所在目录,抽屉内双击不改变锚点
 - **表格编辑**:格式 → 表格 子菜单与右键菜单,支持在光标所在单元格上/下插入行、左/右插入列,删除所在行/列/整表(插入后光标自动落入新表首个单元格)
 - **文件能力**:UTF-8 / GB18030 自动识别、脏标记(基线对比:纯查看不弹保存询问,撤销回原文自动恢复干净)、代理图标、文件外部变更监听(自动重载或提示保留)
 - **导出**:PDF(`⌘E`)、独立 HTML(内联全部样式资源)、打印
@@ -25,7 +26,7 @@
 - **缩放**:`⌘+` / `⌘-` / `⌘0`,持久化
 - **自适应宽度**:正文 100% 跟随窗体宽度变化,收缩下限 860px(窄于下限出现横向滚动,避免表格/代码排版爆炸),缩放下视觉下限恒定
 - **深浅色**:跟随系统外观实时切换,可在「视图 → 外观」锁定
-- **最近文件**、拖拽 `.md` 文件打开、命令行 `open MDPreview.app --args 文件.md`;**目录模式**:参数传目录(或「文件 → 打开文件夹…」⌘⇧O、拖入文件夹)时右侧为空白编辑器、左侧抽屉树形导航,双击文件就地打开
+- **最近文件**、拖拽 `.md`/代码文件打开、命令行 `open MDPreview.app --args 文件.md`;**目录模式**:参数传目录(或「文件 → 打开文件夹…」⌘⇧O、拖入文件夹)时右侧为空白编辑器、左侧抽屉树形导航,双击文件就地打开
 
 ## 构建
 
@@ -67,7 +68,7 @@ open dist/MDPreview.app --args /path/to/folder      # 目录模式(抽屉导航)
 
 **桥协议**(Swift ⇄ JS):
 
-- Swift → JS:`window.mdbridge.{init, setMarkdown, getMarkdown, setTheme, setZoom, toggleSource, undo, redo, formatCommand, insertTable, exportStandaloneHTML, …}`
+- Swift → JS:`window.mdbridge.{init, setMarkdown, getMarkdown, setTheme, setZoom, toggleSource, undo, redo, formatCommand, insertTable, exportStandaloneHTML, setCode, setCodeLanguage, isCodeMode, codeInfo, …}`
 - JS → Swift:`webkit.messageHandlers.mdbridge.postMessage({op: boot|ready|changed|stats|sourceMode|jserror, …})`
 
 **设计取舍**:Markdown 解析/渲染完全复用 Milkdown/remark 生态(不手搓解析器);Mermaid SVG 渲染按官方 recipe 以自定义 NodeView 实现(plugin-diagram 7.7 仅提供 schema);Typora 仅复用其 CSS 排版参数与交互逻辑。
@@ -76,10 +77,10 @@ open dist/MDPreview.app --args /path/to/folder      # 目录模式(抽屉导航)
 
 ```
 Sources/MDPreview/     Swift 壳(main / AppDelegate / DocumentWindowController
-                       / EditorWebView / Selftest / Screenshot / Util)
-web/                   前端资源(src/main.js、src/typora.css、build.mjs、index.html)
+                       / EditorWebView / FileSupport / Selftest / Screenshot / Util)
+web/                   前端资源(src/main.js、src/code-view.js、src/languages.js、src/typora.css、build.mjs、index.html)
 resources/             Info.plist、AppIcon.icns(MP 字标,由 resources/icon/render-icon.swift 生成)
-samples/               功能演示文档
+samples/               功能演示文档与代码示例(code-sample.py)
 dist/                  构建产物 MDPreview.app
 build.sh               一键构建
 ```
@@ -87,6 +88,7 @@ build.sh               一键构建
 ## 已知边界
 
 - 单窗口单文档,无多标签(有意为之)
+- 代码文件为**只读查看**:不支持编辑/保存/撤销,不提供行号、折叠与 LSP;代码文档没有源码模式切换(恒为纯源码);不做 Finder「打开方式」关联;不导出独立 HTML(PDF/打印可用);无扩展名文件(`Dockerfile`/`Makefile`)不识别为代码,需带扩展名;超过 512 KB 的文件只降级纯文本,不保证高亮
 - 文件抽屉:宽度可拖拽调节,但不做「双击分界线复位默认宽度」;目录内容变化需手动点抽屉顶部刷新按钮(不做文件系统监听);树内不含新建/删除/重命名操作;`node_modules` 与包目录(.app/.bundle 等)整棵跳过;lazy 装载下无截断,但暂无 md 的空目录也会显示(展开为空)
 - 目录模式下右侧为可编辑空白文档(与新建空文档一致),⌘S 走另存为;再次打开文件即自然退出目录模式
 - 图片一次粘贴只取第一张;新建未保存的文档需先保存才能粘贴/插入图片(图片要落到文档旁 resource/ 目录)
