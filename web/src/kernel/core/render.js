@@ -5,7 +5,7 @@ import { replaceAll } from '@milkdown/utils'
 
 import { state } from '../shared/state.js'
 import { currentMarkdown } from './read.js'
-import { hideCode } from './code-view.js'
+import { hideCode } from '../components/code/code-view.js'
 
 /**
  * 渲染磁盘 markdown（同步）。

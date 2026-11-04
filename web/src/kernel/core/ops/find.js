@@ -2,9 +2,8 @@
 import { editorViewCtx } from '@milkdown/core'
 
 import { state, isCodeMode } from '../../shared/state.js'
-import { findKey, findUI } from '../find.js'
-import { openFindBar, closeFindBar, stepFind } from '../find-bar.js'
-import { codeFindCount } from '../code-view.js'
+import { use } from '../../shared/ports.js'
+import { findKey, findUI, openFindBar, closeFindBar, stepFind } from '../../components/find/index.js'
 
 export function createFindOps(_table) {
     return {
@@ -30,7 +29,7 @@ export function createFindOps(_table) {
 
             findInfo() {
                 const active = document.body.classList.contains('finding')
-                if (isCodeMode()) return { active, query: findUI.query, count: codeFindCount() }
+                if (isCodeMode()) return { active, query: findUI.query, count: use('searchSurface').codeFindCount() }
                 return {
                     active,
                     query: findUI.query,

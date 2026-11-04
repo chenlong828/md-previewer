@@ -1,8 +1,8 @@
 // 查找栏 UI:计数显示、命中跳转与查找栏开关 wiring
 import { editorViewCtx } from '@milkdown/core'
-import { state } from '../shared/state.js'
+import { state } from '../../shared/state.js'
 import { findKey, findUI, searchDoc, selectMatch } from './find.js'
-import { findInCode, clearCodeFind } from './code-view.js'
+import { use } from '../../shared/ports.js'
 
 export function updateFindCount(total, current) {
     const el = document.getElementById('find-count')
@@ -35,7 +35,7 @@ export function runFind(query, opts = {}) {
     findUI.caseSensitive = !!opts.caseSensitive
     if (!query) {
         clearFindDecorations()
-        if (state.codeMode) clearCodeFind()
+        if (state.codeMode) use('searchSurface').clearCodeFind()
         updateFindCount(0, -1)
         return
     }
@@ -43,7 +43,7 @@ export function runFind(query, opts = {}) {
     // 先清掉编辑器侧遗留的查找装饰(切到代码视图后 #app 隐藏,留着会回到 md 时显示旧命中)
     if (state.codeMode) {
         clearFindDecorations()
-        const result = findInCode(query, findUI.caseSensitive, opts.jump)
+        const result = use('searchSurface').findInCode(query, findUI.caseSensitive, opts.jump)
         updateFindCount(result.total, result.current)
         return
     }
@@ -66,7 +66,7 @@ export function stepFind(dir) {
     const q = findUI.query
     if (!q) return
     if (state.codeMode) {
-        const result = findInCode(q, findUI.caseSensitive, dir < 0 ? 'prev' : 'next')
+        const result = use('searchSurface').findInCode(q, findUI.caseSensitive, dir < 0 ? 'prev' : 'next')
         updateFindCount(result.total, result.current)
         return
     }
@@ -116,7 +116,7 @@ export function openFindBar() {
 export function closeFindBar() {
     document.body.classList.remove('finding')
     clearFindDecorations()
-    if (state.codeMode) clearCodeFind()
+    if (state.codeMode) use('searchSurface').clearCodeFind()
     findUI.query = ''
     findUI.srcMatches = []
     findUI.srcCurrent = -1

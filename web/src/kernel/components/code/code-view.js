@@ -4,7 +4,7 @@
 //
 // 行结构是表现层：每个逻辑行一个 .code-line，行号由 CSS ::before 生成，不进入
 // 文本节点；逐行 .code-line-content 以 \n 拼接必须等于 state.codeText。
-import { state, setMode } from '../shared/state.js'
+import { state, setMode } from '../../shared/state.js'
 import { hasLanguage, highlightInto } from './languages.js'
 
 function codeView() {

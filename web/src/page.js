@@ -6,15 +6,16 @@ import '@milkdown/prose/tables/style/tables.css'
 import 'katex/dist/katex.min.css'
 
 import { bootKernel } from './kernel/main.js'
-import { createOps } from './kernel/core/ops/index.js'
+import { createKernelOps } from './kernel/assemble.js'
 import { bindBus, notify } from './kernel/shared/bus.js'
-import { setupFindBar } from './kernel/core/find-bar.js'
+
 import { scheduleStats } from './kernel/core/stats.js'
 import { installV1Shim } from './v1-shim.js'
 
 export const KERNEL_VERSION = '0.1.0'
 
-const ops = createOps()
+// 组件端口接线（组合根职责）：组件之间不互相 import
+const { ops, findService } = createKernelOps()
 
 const kernel = bootKernel({
     win: window,
@@ -38,7 +39,7 @@ bindBus({
 
 // 自检/截图环境才装 v1 方法面（产品 bundle 不暴露 window.mdbridge）
 if (window.__MDP_TEST__ === true) installV1Shim()
-setupFindBar()
+findService.setupFindBar()
 
 // 源码模式 textarea 编辑 → 脏状态 + 统计（与渲染模式同一口径）
 document.getElementById('source-editor').addEventListener('input', () => {

@@ -82,8 +82,8 @@ export async function bootCore({ baseDir = '/virtual/base', files = [], answers 
         },
     })
 
-    const { createOps } = await import('../../src/kernel/core/ops/index.js')
-    const ops = createOps()
+    const { createKernelOps } = await import('../../src/kernel/assemble.js')
+    const ops = createKernelOps({ fresh: true }).ops
 
     return {
         ops,

@@ -6,7 +6,7 @@ import { state, isCodeMode } from '../../shared/state.js'
 import { currentMarkdown } from '../read.js'
 import { notify, hostCall } from '../../shared/bus.js'
 import { createEditor, toggleSource as applySourceToggle, applyThemeDom, applyMermaidTheme } from '../editor.js'
-import { codeInfo as readCodeInfo } from '../code-view.js'
+import { codeInfo as readCodeInfo } from '../../components/code/code-view.js'
 import { applyForLoad, collectImageRefs, restoreForSave } from '../../semantics/markdown.js'
 import { renderMarkdown } from '../render.js'
 

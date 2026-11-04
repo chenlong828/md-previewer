@@ -54,7 +54,7 @@ web/src/kernel/
 | 批次 | 内容 | 收尾判据 |
 |---|---|---|
 | S1 | 抽 `shared/`（state/bus/ports 雏形）；`core/ops.js` 拆成 `components/*/ops.js` 分片与装配 | ✅ 完成（2026-11-04，`41cf144`）：shared 层 + 六片装配；Node 78 + selftest 115 全绿；ops.js 已删除 |
-| S2 | `code` 与 `find` 成组件迁移；`find → code` 改 `searchSurface` 端口 | 同上；两组件互不 import |
+| S2 | `code` 与 `find` 成组件迁移；`find → code` 改 `searchSurface` 端口 | ✅ 完成（2026-11-04）：components/{code,find} 落地；`shared/ports.js` + `kernel/assemble.js` 单一装配；Node 78 + selftest 115 全绿 |
 | S3 | `output` 与 `media` 迁出；`export → editor` 改 `renderSurface`；粘贴插入改 `imageInsertion` | 同上；端口注入由组合根完成 |
 | S4 | `document` 与 `editor` 收口；`check-kernel.mjs` 升级为组件级禁边；组件规格与架构文档同步 | 同上；文档与结构一致 |
 

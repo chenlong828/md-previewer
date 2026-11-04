@@ -14,10 +14,9 @@ import mermaid from 'mermaid'
 import { state } from '../shared/state.js'
 import { currentMarkdown } from './read.js'
 import { notify } from '../shared/bus.js'
-import { ensureLanguages } from './languages.js'
+import { ensureLanguages } from '../components/code/languages.js'
 import { scheduleStats } from './stats.js'
-import { findKey, findUI, findProsePlugin } from './find.js'
-import { updateFindCount, runFind } from './find-bar.js'
+import { use } from '../shared/ports.js'
 import { selInfoProse } from './selinfo.js'
 import { getMermaidView } from './mermaid-view.js'
 import { getImageView } from './image-view.js'
@@ -97,7 +96,7 @@ export async function createEditor() {
         .use(getImageView())
         .use(clipboard)
         .use(trailing)
-        .use(findProsePlugin)
+        .use(use('findService').findProsePlugin)
         .use(selInfoProse)
         .create()
 
@@ -111,12 +110,12 @@ export async function createEditor() {
             }
             scheduleStats()
             // 查找进行中:文档变化后刷新计数(插件 apply 已重算匹配)
-            if (document.body.classList.contains('finding') && !state.sourceMode && findUI.query) {
+            if (document.body.classList.contains('finding') && !state.sourceMode && use('findService').findUI.query) {
                 queueMicrotask(() => {
                     state.editor.action((ctx2) => {
                         const view = ctx2.get(editorViewCtx)
-                        const st = findKey.getState(view.state)
-                        updateFindCount(st ? st.matches.length : 0, st ? st.current : -1)
+                        const st = use('findService').findKey.getState(view.state)
+                        use('findService').updateFindCount(st ? st.matches.length : 0, st ? st.current : -1)
                     })
                 })
             }
@@ -180,8 +179,8 @@ export function toggleSource(force) {
     state.sourceMode = target
     notify('sourceMode', { value: target })
     // 查找进行中:切换后在新界面重新搜索
-    if (document.body.classList.contains('finding') && findUI.query) {
-        runFind(findUI.query, { caseSensitive: findUI.caseSensitive })
+    if (document.body.classList.contains('finding') && use('findService').findUI.query) {
+        use('findService').runFind(use('findService').findUI.query, { caseSensitive: use('findService').findUI.caseSensitive })
     }
     return target
 }

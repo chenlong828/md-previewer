@@ -1,13 +1,12 @@
 // 代码面：只读源码视图、语言与行号、代码内查找重放。
 import { state } from '../../shared/state.js'
+import { use } from '../../shared/ports.js'
 import { toggleSource as applySourceToggle } from '../editor.js'
-import { findUI } from '../find.js'
-import { runFind } from '../find-bar.js'
 import {
     showCode, setCodeLanguage as applyCodeLanguage, setCodeLineNumbers as applyCodeLineNumbers,
     codeInfo as readCodeInfo,
-} from '../code-view.js'
-import { hasLanguage } from '../languages.js'
+} from '../../components/code/code-view.js'
+import { hasLanguage } from '../../components/code/languages.js'
 
 export function createCodeOps(_table) {
     return {
@@ -19,16 +18,16 @@ export function createCodeOps(_table) {
                     allowHighlight: payload.allowHighlight !== false,
                     lineNumbers: typeof payload.lineNumbers === 'boolean' ? payload.lineNumbers : undefined,
                 })
-                if (document.body.classList.contains('finding') && findUI.query) {
-                    runFind(findUI.query, { caseSensitive: findUI.caseSensitive })
+                if (document.body.classList.contains('finding') && use('findService').findUI.query) {
+                    use('findService').runFind(use('findService').findUI.query, { caseSensitive: use('findService').findUI.caseSensitive })
                 }
                 return { ok: true }
             },
 
             setCodeLanguage(payload = {}) {
                 const ok = applyCodeLanguage(typeof payload.id === 'string' ? payload.id : 'plaintext')
-                if (ok && document.body.classList.contains('finding') && findUI.query) {
-                    runFind(findUI.query, { caseSensitive: findUI.caseSensitive })
+                if (ok && document.body.classList.contains('finding') && use('findService').findUI.query) {
+                    use('findService').runFind(use('findService').findUI.query, { caseSensitive: use('findService').findUI.caseSensitive })
                 }
                 return { ok }
             },

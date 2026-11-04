@@ -25,6 +25,8 @@ function layerOf(relPath) {
   if (relPath.startsWith('semantics/')) return 'semantics';
   if (relPath.startsWith('shared/')) return 'shared';
   if (relPath.startsWith('core/')) return 'core';
+  const comp = relPath.match(/^components\/([^/]+)\//);
+  if (comp) return `component:${comp[1]}`;
   return 'root'; // main.js
 }
 
@@ -34,8 +36,13 @@ const ALLOWED_LAYERS = {
   contract: ['contract'],
   semantics: ['semantics'],
   shared: ['shared'],
-  core: ['core', 'contract', 'semantics', 'shared'],
-  root: ['transport', 'contract', 'semantics', 'shared', 'core'],
+  // 迁移期（S2–S3）：core 与 components 互相可达；S4 收口后收紧为单向
+  core: ['core', 'contract', 'semantics', 'shared', 'component:*'],
+  // 组合根：可达所有层与组件（唯一的装配点）
+  root: ['transport', 'contract', 'semantics', 'shared', 'core', 'component:*'],
+  // 组件：可自带目录、可依赖 shared/semantics；迁移期（S2–S3）暂允许依赖 core 里未迁完的模块，
+  // S4 收口时删除 'core' 与跨组件放行，只留自身目录 + shared + semantics。
+  component: (self) => [`component:${self}`, 'core', 'shared', 'semantics'],
 };
 
 for (const file of walk(KERNEL_DIR)) {
@@ -51,12 +58,15 @@ for (const file of walk(KERNEL_DIR)) {
   }
 
   // 2. import 白名单：相对 import 解析成内核内路径后按目标层判定
-  const allowedLayers = ALLOWED_LAYERS[layer] ?? [];
+  const rawAllowed = layer.startsWith('component:')
+    ? ALLOWED_LAYERS.component(layer.slice('component:'.length))
+    : (ALLOWED_LAYERS[layer] ?? []);
+  const allowedLayers = rawAllowed;
   for (const match of text.matchAll(/from\s+['"]([^'"]+)['"]/g)) {
     const spec = match[1];
     if (!spec.startsWith('.')) {
       // 第三方依赖只允许出现在 core（编辑器引擎本身）；其余层必须零依赖
-      if (layer !== 'core') violations.push(`${rel}: ${layer} 层不得 import 第三方包 "${spec}"`);
+      if (layer !== 'core' && !layer.startsWith('component:')) violations.push(`${rel}: ${layer} 层不得 import 第三方包 "${spec}"`);
       continue;
     }
     const target = normalize(join(dirname(rel), spec)).replaceAll('\\', '/');
@@ -65,7 +75,8 @@ for (const file of walk(KERNEL_DIR)) {
       continue;
     }
     const targetLayer = layerOf(target);
-    if (!allowedLayers.includes(targetLayer)) {
+    const hit = allowedLayers.some((l) => l === targetLayer || (l.endsWith(':*') && targetLayer.startsWith(l.slice(0, -1))));
+    if (!hit) {
       violations.push(`${rel}: 非法 import "${spec}" → ${target}（${layer} 层只允许 ${allowedLayers.join(' | ')}）`);
     }
   }
