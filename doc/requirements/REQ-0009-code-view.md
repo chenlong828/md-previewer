@@ -54,4 +54,4 @@ updated: 2026-11-04
 
 不另立测试。验收 = `SCN-0016` 全部 `verified` + 约束未违反。
 
-2026-11-04：SCN-0016 的 3+1 断言通过（`--selftest`），转 `delivered`；人工 GUI 核对记录见 [工序 result](../works/2026-11-04-code-file-view/result.md)。
+2026-11-04：SCN-0016 的 3+1 断言通过（`--selftest`），转 `delivered`；同日用户完成人工 GUI 核对并确认无问题，记录见 [工序 result](../history/works/2026-11-04-code-file-view/result.md)。

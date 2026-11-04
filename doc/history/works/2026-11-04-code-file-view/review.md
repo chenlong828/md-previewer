@@ -1,18 +1,18 @@
 ---
-layer: works
+layer: history
 module: global
-status: active
+status: frozen
 updated: 2026-11-04
 ---
 
 # 评审：代码文件只读查看（P1）
 
-> 工序：[2026-11-04-code-file-view](brief.md)；需求 [REQ-0009](../../requirements/REQ-0009-code-view.md)；场景 [SCN-0016](../../design/scenarios/editing/document-lifecycle/view-code-file/scenario.md)。
+> 工序：[2026-11-04-code-file-view](brief.md)；需求 [REQ-0009](../../../requirements/REQ-0009-code-view.md)；场景 [SCN-0016](../../../design/scenarios/editing/document-lifecycle/view-code-file/scenario.md)。
 
 - **定级**：P1（新增业务组件 + 文档种类契约扩展 + 6 个入口面）。
 - **评审时点**：设计冻结前（2026-11-04，随 brief 确认）；实现后补完整规格走查。
-- **结论**：**有条件通过**。条件见 §3 Hold 档（真实 GUI 人工核对与代码文档 PDF 视觉），属非阻塞验证项；用户人工确认后转「通过」。
-- **人参与记录**：2026-11-04 用户确认评估结论「按推荐来」，含四项决策（只读 / 视图菜单切换语言 / 不做 Finder 关联 / 首版范围）与模块切分；第二次人工确认（GUI 走查）待完成。
+- **结论**：**通过**（2026-11-04）。自动化断言全绿后，用户完成人工 GUI 核对并回复「没有问题」；原「有条件通过」的两项验证条件已满足。
+- **人参与记录**：2026-11-04 第一次确认评估结论「按推荐来」（只读 / 视图菜单切换语言 / 不做 Finder 关联 / 首版范围 + 模块切分）；2026-11-04 第二次确认人工核对无问题，同意收口。
 
 ## 1. 四档裁决
 
@@ -47,10 +47,10 @@ updated: 2026-11-04
 
 | 事项 | 为什么不阻塞 | 去向 |
 |---|---|---|
-| 真实 GUI 菜单勾选/置灰、拖放/最近/链接打开、深色代码视图观感 | 无头环境不覆盖真实交互时序（R8）；DOM/状态已由 selftest 断言 | 本次人工核对；失败则回退 SCN-0016 状态 |
-| 代码文档 PDF/打印视觉 | 几何口径与 Markdown 一致，仅内容面选择不同；无法在无头下确认分页观感 | 人工一次；`CMP-export` 既有验证债同口径 |
-| 无扩展名文件（Dockerfile/Makefile） | 不做不影响既有文件；需要文件名映射，超出首版范围 | `plan/open-questions.md` 候选/下一需求 |
-| 超 512 KB 的异步分块高亮 | 降级纯文本已保证可用；分块需 worker/增量渲染 | 观察实际触发频率再评估 |
+| 真实 GUI 菜单勾选/置灰、拖放/最近/链接打开、深色代码视图观感 | 无头环境不覆盖真实交互时序（R8）；DOM/状态已由 selftest 断言 | **已确认（2026-11-04 用户核对无问题）**；R8 风险仍按交互类工序固定人工核对 |
+| 代码文档 PDF/打印视觉 | 几何口径与 Markdown 一致，仅内容面选择不同；无法在无头下确认分页观感 | **已确认（2026-11-04 用户核对无问题）**；仍无自动断言，记入验证债 |
+| 无扩展名文件（Dockerfile/Makefile） | 不做不影响既有文件；需要文件名映射，超出首版范围 | 边界已写 README 与 brief「开放问题与边界」；需要时另开需求 |
+| 超 512 KB 的异步分块高亮 | 降级纯文本已保证可用；分块需 worker/增量渲染 | 观察实际触发频率再评估（阈值常量 + 一条断言即可调整） |
 
 ## 2. Breaking change 审查
 
@@ -60,7 +60,11 @@ updated: 2026-11-04
 - 桥增量 `setCode/setCodeLanguage/isCodeMode/codeInfo/hasLanguages` 若改变参数形态，属 breaking → 已定「`language` 为解析后的最终 id、`allowHighlight` 默认 true」，并写进 spec 与 selftest。
 - 语言 id 与扩展名映射发布后会成为用户预期（最近文件/菜单），增删需按新需求走 → 表已单源化，新增只加一处。
 
-结论：无「发布后再修即 breaking」的未决项；Hold 项均为验证或后续增强。
+结论：无「发布后再修即 breaking」的未决项；Hold 项中两项验证已人工确认，
+另两项是明确的范围边界/后续增强。
+
+**最终裁决（2026-11-04）**：通过。无 Blocker；Decision now 5 项均已落 CMP 契约、
+architecture §2.7 与断言；剩余 Hold 项不阻塞收口。
 
 ## 3. 开放问题
 

@@ -47,11 +47,10 @@ doc/
 │   ├── 2026-10-20-file-drawer/         ← 文件抽屉（收口中）
 │   ├── 2026-10-22-drawer-anchor-and-resize/ ← 抽屉锚点与宽度（收口中）
 │   ├── 2026-10-22-doc-split/           ← design 文档下沉（执行中）
-│   ├── 2026-11-04-scenario-inventory/  ← 已实现场景/组件清点（执行中）
-│   └── 2026-11-04-code-file-view/      ← 代码文件只读查看与高亮语言（执行中）
+│   └── 2026-11-04-scenario-inventory/  ← 已实现场景/组件清点（执行中）
 └── history/                            ← 记忆：怎么走到这里的
     ├── decisions/
-    ├── works/                          ← 已归档工序（含 2026-11-02-app-icon）
+    ├── works/                          ← 已归档工序（含 app-icon、code-file-view）
     └── pitfalls.md
 ```
 

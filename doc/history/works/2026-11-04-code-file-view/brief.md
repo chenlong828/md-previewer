@@ -1,13 +1,13 @@
 ---
-layer: works
+layer: history
 module: global
-status: active
+status: frozen
 updated: 2026-11-04
 ---
 
 # 工序 brief：代码文件只读查看与高亮语言切换
 
-> 需求卡：[REQ-0009](../../requirements/REQ-0009-code-view.md)；场景：[SCN-0016](../../design/scenarios/editing/document-lifecycle/view-code-file/scenario.md)。
+> 需求卡：[REQ-0009](../../../requirements/REQ-0009-code-view.md)；场景：[SCN-0016](../../../design/scenarios/editing/document-lifecycle/view-code-file/scenario.md)。
 
 ## 需求（2026-11-04 用户提出）
 
@@ -73,8 +73,11 @@ updated: 2026-11-04
 | T-2026-11-04-02 | change | CMP-code-view（Swift） | done | `FileSupport.swift`、`DocumentWindowController.swift` 打开/菜单/导出、`Util.swift` |
 | T-2026-11-04-03 | change | CMP-code-view（web） | done | `languages.js`、`code-view.js`、`bridge.js`、`find-bar.js`、`typora.css`、`index.html` |
 | T-2026-11-04-04 | change | CMP-app-shell / document-io / editor / drawer / export | done | `AppDelegate.swift`、`EditorCommands.swift`、`EditorWebView.swift`、`DirectoryTree.swift`、`export.js` |
-| T-2026-11-04-05 | verify | CMP-code-view | in_progress | `Selftest.swift`、`--screenshot`、`--drawer-test` |
+| T-2026-11-04-05 | verify | CMP-code-view | done | `Selftest.swift`、`--screenshot`、`--drawer-test` |
 | T-2026-11-04-06 | change | docs | done | `architecture.md`、组件规格、README、`roadmap.md` |
+
+收口（2026-11-04）：自动化 117 PASS、release 包内同绿；用户人工核对回复「没有问题」。
+验收结果见 [result.md](result.md)，四档裁决见 [review.md](review.md)。
 
 ## 装载清单
 

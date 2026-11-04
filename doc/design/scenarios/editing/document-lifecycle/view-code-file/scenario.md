@@ -76,10 +76,10 @@ tests:
 
 | ID | 角色 | 类型 | 执行 | 断言 | 证据 |
 |---|---|---|---|---|---|
-| TC-CODE-001 | R1 | 自动 | `--selftest` | `PASS 代码视图 自动语言与高亮` | present |
-| TC-CODE-002 | R2 | 自动 | `--selftest` | `PASS 代码视图 切换语言与纯文本` | present |
-| TC-CODE-003 | R3 | 自动 | `--selftest` | `PASS 代码视图 查找命中与只读退出` | present |
-| TC-CODE-004 | N1 | 自动 | `--selftest` | `PASS 代码视图 未知扩展名不装载` | present |
+| TC-CODE-001 | R1 | 自动 | `--selftest` | `PASS 代码视图 自动语言与高亮` | present（2026-11-04 全绿） |
+| TC-CODE-002 | R2 | 自动 | `--selftest` | `PASS 代码视图 切换语言与纯文本` | present（2026-11-04 全绿） |
+| TC-CODE-003 | R3 | 自动 | `--selftest` | `PASS 代码视图 查找命中与只读退出` | present（2026-11-04 全绿） |
+| TC-CODE-004 | N1 | 自动 | `--selftest` | `PASS 代码视图 未知扩展名不装载` | present（2026-11-04 全绿） |
 
 配套断言：`PASS 代码视图 双端语言清单一致`、`PASS 代码视图 大文件降级纯文本`、`PASS 代码视图 未知语法回落纯文本`。
 
@@ -91,4 +91,4 @@ tests:
 ## 7. 变更记录
 
 - 2026-11-04 新建（REQ-0009，P1 工序 `2026-11-04-code-file-view`）。
-- 2026-11-04 3+1 自动化断言全绿（`--selftest` 117 项中的 13 条），转 `verified`；真实 GUI 走查在 `result.md` 记录。
+- 2026-11-04 3+1 自动化断言全绿（`--selftest` 117 项中的 11 条），转 `verified`；真实 GUI 走查经用户 2026-11-04 人工核对通过，记录在 `result.md`。
