@@ -129,7 +129,11 @@ result.md 记录实证，并回改本文件状态——已消除条目**保留�
 - **状态（2026-10-21）：搁置（未缓解）**。用户决定暂缓该工作：规格已评审但
   第二次门未走、零代码实施；风险本体未消除，暴露面暂不增长（不新增壳）。
   恢复壳工作时必须先重启承接工序完成语义入内核迁移。
-- **状态（2026-11-04）：恢复中（缓解进行；装载/保存语义已单点在 web 并有运行时自检）**。工序
+- **关闭证据（2026-11-04，工序 [2026-11-04-kernel-v2](../works/2026-11-04-kernel-v2/brief.md)）**：
+  Swift 侧 `ImagePathRewriter` 已删除（`grep ImagePathRewriter Sources/` 无命中）；装载/保存/GC 引用
+  三个取值点全部经内核 `semantics`（装载改写 op、`getSaveMarkdown`、`getResourceRefs`）；
+  与旧实现逐字节对拍 45 项全等（`web/test/fixtures/semantics-golden.json`）+ 真实壳端到端自检 2 项。
+- **状态（2026-11-04）：已消除（关闭证据见下）**。工序
   [2026-11-04-kernel-v2](../works/2026-11-04-kernel-v2/brief.md) 已立项，桥协议 v2 与路径语义入内核
   正在落地；关闭判据 = Swift 侧 `ImagePathRewriter` 删除 + Node 黄金夹具与旧实现逐字节对拍全等
   + 壳侧 grep 守门（禁 markdown 解析）。关闭前新增壳仍按「先迁移」前置条件处理。
