@@ -62,15 +62,26 @@ WKWebView 承载 Milkdown 7.7（ProseMirror）前端。本文记录跨模块的�
 
 ### 1.3 桥接口面收敛
 
-- **决策**：Swift↔JS 仅两个入口表面——JS 侧 `window.mdbridge`（唯一被调用
-  对象）、Swift 侧单一 `mdbridge` messageHandler；命令名双端一致由 selftest
-  遍历校验（命令注册表 + 表格命令名表）。
-- **理由**：接口面越小，注入/误用面越小；双端一致性由机器校验而非人工约定。
+- **决策（2026-11-04 起为 v2）**：Swift↔JS 仅一条通道、两个固定入口——JS 侧
+  `window.__mdHostChannel.post(json)`（壳注入，唯一宿主感知点），壳侧单一
+  `mdbridge` messageHandler；所有能力经 op 名寻址（单一清单
+  `web/src/kernel/contract/ops.js`），命令名双端一致由 selftest 遍历校验。
+- **产品路径不执行注入脚本**：壳侧只剩两处 `evaluateJavaScript`——`KernelClient`
+  的帧投递与诊断档取数（自检/截图/调试）。v1 的 `window.mdbridge` 仅在测试门面
+  （`__MDP_TEST__`）下安装，产品 bundle 不暴露。
+- **理由**：接口面越小，注入/误用面越小；双端一致性由机器校验而非人工约定；
+  注入脚本是 markdown 语义在壳侧复活的主要通道，v2 把它收成一条 JSON 帧。
 - **失效条件**：绕过注册表直接拼写 JS 命令字符串的新代码（code review 关注点）。
 
 ## 2. 行为取舍
 
-### 2.1 ImagePathRewriter 宽松解析与改写边界
+### 2.1 图片路径改写：语义单点在 web 内核（规则不变，2026-11-04 迁入）
+
+> 位置变更：实现从 `Sources/MDPreview/Util.swift#ImagePathRewriter` 移到
+> `web/src/kernel/semantics/{markdown,paths}.js`；Swift 侧实现已删除。
+> 迁移时与旧实现做了逐字节对拍（15 用例 × 3 函数 = 45 项全等，黄金件
+> `web/test/fixtures/semantics-golden.json`），因此下面的规则描述**仍逐字成立**。
+> 存在性判定改由壳作答（`resolveResources`），内核不碰文件系统。
 
 - **决策**:图片路径改写采用单行两段式解析(2026-10-20 图片支持工序重写):
   宽松捕获 `![alt](inner)`(inner 惰性匹配到首个 `)`,允许**空格与一层平衡
@@ -96,7 +107,7 @@ WKWebView 承载 Milkdown 7.7（ProseMirror）前端。本文记录跨模块的�
 
 ### 2.1a 图片显示/编辑/导入
 
-- **决策**:图片节点以自定义 NodeView 渲染(web/src/image-view.js):正常态
+- **决策**:图片节点以自定义 NodeView 渲染(web/src/kernel/core/image-view.js):正常态
   `<img>`;点击切换为**源码编辑块**(2026-10-20 二次定稿,替代三字段小表单)——
   与 mermaid 图「点选进编辑、失焦提交」同一交互模式:整块框起、宽度为编辑器
   100%、长路径自动换行,内容是该图的 markdown 源码 `![alt](path "title")`。
@@ -216,7 +227,7 @@ WKWebView 承载 Milkdown 7.7（ProseMirror）前端。本文记录跨模块的�
   不低于内容列、CommonMark 解析层级不变。
 - **理由**：用户报告 2 空格输出「不是标准 markdown 缩进、只是多了一个 Tab
   字符」；4 空格是跨渲染器最不易误读的形态，也与「Tab = 一级缩进」的直觉一致。
-- **实现单点**：`web/src/list-indent.js` 的 `fourSpaceListItem`，经
+- **实现单点**：`web/src/kernel/core/list-indent.js` 的 `fourSpaceListItem`，经
   `remarkStringifyOptionsCtx.handlers` 注入；解析、渲染、桥协议均不受影响。
 - **失效条件与陷阱**：mdast 的 `listItemIndent: 'tab'` 并不是「4 空格缩进」——
   它同时把首行补到 4 列（`-   a`）。且覆盖 `handlers.listItem` 会顶掉 GFM
@@ -253,7 +264,7 @@ WKWebView 承载 Milkdown 7.7（ProseMirror）前端。本文记录跨模块的�
 - **种类判定单一来源**：`Sources/MDPreview/FileSupport.swift` 的 `DocumentKind`
   与 `codeLanguages`（44 种语言/扩展名映射 + `plaintext` 伪语言）。打开面板、
   抽屉过滤、文档内链接拦截、打开分派、高亮语言菜单、Info.plist 断言全部派生自
-  这里；web 侧 `web/src/languages.js` 注册 refractor 语法，selftest「双端语言
+  这里；web 侧 `web/src/kernel/core/languages.js` 注册 refractor 语法，selftest「双端语言
   清单一致」守门。
 - **理由**：把代码塞进 Markdown 围栏块虽省事，但会让只读文件进入可编辑数据模型——
   一次 ⌘S 就把代码写成 md；且 ProseMirror 解析大文件成本高、围栏转义会改字符。
@@ -293,30 +304,48 @@ WKWebView 承载 Milkdown 7.7（ProseMirror）前端。本文记录跨模块的�
 - **边界**：无扩展名文件（`Dockerfile`/`Makefile`）不识别；不做代码编辑、折叠、
   minimap 与 LSP；Markdown 围栏代码块没有行号；HTML 导出对代码文档不可用。
 
-## 3. 桥协议
+## 3. 桥协议（v2，2026-11-04 落地）
 
-- **v2 目标契约：已评审、暂缓实施（2026-10-21）**：可移植内核评审有条件通过，
-  三决策已定（桥统一消息协议 v2 / 路径语义入内核 / 规格壳技术中立），完整目标
-  规格与迁移方案（存档 spec §4.6）见
-  [history/decisions/2026-10-21-editor-kernel-spec.md](../history/decisions/2026-10-21-editor-kernel-spec.md)。
-  用户决定暂缓该工作，恢复壳工作时从存档重启；**本节 v1 描述即现行真相**。
-- JS → Swift：`window.webkit.messageHandlers.mdbridge.postMessage({op, ...})`，
-  op 集合见 `DocumentWindowController.handleBridgeMessage`
-  (boot/ready/changed/stats/sourceMode/selinfo/jserror/importImage)。
-- Swift → JS：`window.mdbridge.*` 方法调用；异步方法返回 Promise，
-  **Promise 不可跨桥序列化**，跨桥取值须页侧 `.then` 落到全局变量后由原生轮询
-  （自检 D2 即此模式）。
-- 图片导入双向对(2026-10-20):JS→Swift `importImage`(requestId/kind=
-  blob|file/mime/dataBase64/path),Swift→JS `onImageImported(requestId,
-  {ok,src})`;插入唯一入口是 `insertImageCommand`(formatCommand 转发)。
-- 代码视图增量(2026-11-04,向后兼容,纯 Swift→JS):`setCode(text,
-  {language, allowHighlight, lineNumbers?})`、`setCodeLanguage(id)`、
-  `setCodeLineNumbers(visible)`、`isCodeMode()`、`codeInfo()`（含
-  `lineNumbers`/`currentLine`）、`hasLanguages(ids)`。JS→Swift 无新增 op:
-  代码文档不发 `changed`/`stats`,行数与字符数由 Swift 侧按文本计算。
-- 命令转发：菜单/右键 → `performEditorAction` → spec.jsCommand →
-  `formatCommand`/`tableCommand`；milkdown 命令为**位置参数**形态
-  （如 `wrapInHeadingCommand(2)`），payload 标量需 `.fragmentsAllowed` 序列化。
-- markdownUpdated listener 经 200ms lodash debounce 异步到达；并发编辑窗内
-  会产生携带中间态的过期回调，消费方（Swift 脏标记）依赖 web 侧"过期过滤 +
-  同步基线"保证只收到与当前 doc 同步的报告（W5-T3）。
+- **帧形状**（`web/src/kernel/contract/envelope.js`，v 恒为 2）：
+  - 请求 `{v:2, op, id, payload}`；成功响应 `{v:2, id, ok:true, payload}`；
+    失败响应 `{v:2, id, ok:false, error:{code,message}}`；通知 `{v:2, op, payload}`（无 id、不响应）。
+  - 响应必回显请求 id；payload 只许 JSON 原语（递归校验）；单通道串行。
+  - 错误码五种：`unknown_op` / `bad_payload` / `not_ready` / `unsupported_version` / `internal`。
+- **握手**：首帧 `init` 的 `payload.opts.protocolVersion` 必须等于 2（缺=拒绝并置内核 disabled，
+  不静默降级）；成功后回 `{kernelVersion, protocolVersion, ops:[...]}`，此前除 `init` 外的
+  op 一律回 `not_ready`。
+- **宿主 op（39 个，单一清单 `web/src/kernel/contract/ops.js`）**：
+  会话 `init/setMarkdown/getMarkdown/getSaveMarkdown/markClean/setBaseDir/setTitle/setTheme/
+  setZoom/getState/toggleSource/focus/focusAt`；代码视图 `setCode/setCodeLanguage/
+  setCodeLineNumbers/codeInfo/hasLanguages`；命令 `undo/redo/requestStats/formatCommand/
+  tableCommand/insertTable/insertMarkdown/insertImage`；查找 `openFindBar/closeFindBar/
+  findNext/findPrev/findInfo`；输出 `exportStandaloneHTML/print/getContentSize`；
+  资源 `getResourceRefs`；诊断 `hasCommands/debugFocusTable/tableInfo/testImagePayload`。
+- **通知（7 个）**：`boot/ready/changed/stats/sourceMode/selinfo/jserror`。
+- **内核发起的请求（2 个）**：
+  - `resolveResources {refs[], baseDir}` → `{resources:{ref:[{url,exists,isImage,paths}]}}`：
+    装载前问「这个引用指向哪个真实文件」。请求**自包含**（带 baseDir），壳不猜当前文档目录
+    ——未保存/另存场景曾因此把引用误判为缺失。
+  - `importImage {kind:'blob'|'file', mime?, data?|path?}` → `{ok, src?}`：粘贴落盘。
+    取代 v1 的 `onImageImported` 反向回灌，选区快照在核内闭环。
+- **命令转发**：菜单/右键 → `performEditorAction` → spec.jsCommand → `formatCommand`/
+  `tableCommand` op，payload 直接作为 op payload（不再拼 JS 字面量）。
+- **异步消息**：markdownUpdated listener 的 200ms debounce 与「过期过滤 + 同步基线」不变
+  （W5-T3），仍是 `changed{dirty}` 的唯一来源。
+- **壳侧实现**：macOS 见 `Sources/MDPreview/KernelClient.swift`（帧编解码/id 关联/超时/请求应答）；
+  Windows 壳可参照 `web/test/support/fake-shell.js` 与 `web/test/support/dom.js` 的假壳，
+  协议测试 `web/test/contract.test.js` 不依赖任何 WebView。
+
+## 4. 内核分层与禁边（2026-11-04）
+
+- **四层，依赖单向**：`transport` → `contract` → `semantics` / `core`。
+  - `web/src/kernel/transport/channel.js`：唯一宿主感知点（`__mdHostChannel` / `__mdKernel`、
+    jserror 三源）。缺 channel 时 boot 显式失败，不静默降级。
+  - `web/src/kernel/contract/`：信封、op 清单与 payload 校验、注册表（id 关联/握手/错误码）。
+  - `web/src/kernel/semantics/`：路径与 markdown 文本语义（装载改写/保存还原/引用收集/落盘命名），
+    纯函数、零第三方依赖、不碰文件系统。
+  - `web/src/kernel/core/`：编辑器与 39 个 op 的唯一实现；经 `core/bus.js`（`notify`/`hostCall`）
+    与壳交互，不含宿主符号。
+- **组合根** `web/src/page.js`：装配 transport → contract → 注册 core ops → 绑总线 →（测试环境）装门面。
+- **禁边守门**：`web/check-kernel.mjs` 进构建（`build.sh`）：宿主符号只许出现在 `transport/`；
+  层间 import 只许下行；第三方依赖只许出现在 `core/`（编辑器引擎本身）。违规即构建失败。

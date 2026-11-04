@@ -9,9 +9,9 @@ domain: 编辑
 valueStream: 富文本编辑
 title: 用格式命令编辑文档结构
 entries:
-  - CMP-editor/web/src/commands.js#commandRegistry
+  - CMP-kernel-core/web/src/kernel/core/commands.js#commandRegistry
   - CMP-app-shell/Sources/MDPreview/EditorCommands.swift#EditorCommands
-  - CMP-editor/web/src/bridge.js#window.mdbridge
+  - CMP-kernel-contract/web/src/kernel/contract/ops.js#HOST_OPS
 docs:
   - path: doc/design/architecture.md
     heading: 3. 桥协议
@@ -47,7 +47,7 @@ tests:
 流程定义：`FLOW-EDIT-002`（格式分支）。
 
 1. 菜单/右键/快捷键命中 `EditorCommands` 动作。
-2. Swift 经桥调用 `window.mdbridge.formatCommand(name, payload)`。
+2. Swift 经桥发 op `formatCommand`（payload 为 `{name, payload?}`）。
 3. web 在 `commandRegistry` 查表执行；光标/选区更新。
 4. `changed` 上报，脏标记与状态栏更新。
 

@@ -34,6 +34,10 @@ doc/
 │   │   ├── CMP-image/spec.md
 │   │   ├── CMP-export/spec.md
 │   │   ├── CMP-code-view/spec.md
+│   │   ├── CMP-kernel-transport/spec.md
+│   │   ├── CMP-kernel-contract/spec.md
+│   │   ├── CMP-kernel-semantics/spec.md
+│   │   ├── CMP-kernel-core/spec.md
 │   │   └── CMP-diagnostics/spec.md
 │   └── scenarios/
 │       ├── editing/document-lifecycle/   ← 4 个
@@ -68,7 +72,7 @@ doc/
 4. **要了解系统现状** → [design/architecture.md](design/architecture.md)（安全/行为取舍、桥协议）；组件契约从 `design/components/` 进入，诊断面见 [CMP-diagnostics](design/components/CMP-diagnostics/spec.md)。
 5. **要看用户旅程** → `design/scenarios/`：16 个场景，按 领域/价值流/场景 分层；每个带入口、运行序、3+1 测试与验证债。
 6. **要领取一个任务** → `works/<工序ID>/brief.md`，从 roadmap 表进入对应工序目录；新工序按 brief/result 模板写，P1/P2 另加 `review.md`。
-7. **要做平台壳或动桥协议** → 先读存档 [history/decisions/2026-10-21-editor-kernel-spec.md](history/decisions/2026-10-21-editor-kernel-spec.md)：内核/壳分界、桥协议 v2 契约与迁移方案（2026-10-21 评审暂缓，恢复时从存档重启工序）。
+7. **要做平台壳或动桥协议** → 读 [architecture.md §3/§4](design/architecture.md)：v2 帧格式、39 个 op、握手与错误码、四层切分与禁边；参照实现在 `Sources/MDPreview/KernelClient.swift`，可运行契约在 `web/test/contract.test.js`；历史取舍见存档 [2026-10-21-editor-kernel-spec.md](history/decisions/2026-10-21-editor-kernel-spec.md)。
 8. **要查历史结论或踩过的坑** → `history/decisions/`、`history/works/`、[history/pitfalls.md](history/pitfalls.md)。
 
 ## 约定

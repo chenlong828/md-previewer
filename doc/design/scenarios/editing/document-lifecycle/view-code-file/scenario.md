@@ -11,8 +11,8 @@ title: 打开并查看代码文件（行号与按行阅读）
 entries:
   - CMP-document-io/Sources/MDPreview/DocumentWindowController.swift#openDocument
   - CMP-code-view/Sources/MDPreview/FileSupport.swift#kind(for:)
-  - CMP-code-view/web/src/code-view.js#showCode
-  - CMP-code-view/web/src/code-view.js#setCodeLineNumbers
+  - CMP-kernel-core/web/src/kernel/core/code-view.js#showCode
+  - CMP-kernel-core/web/src/kernel/core/code-view.js#setCodeLineNumbers
   - CMP-code-view/Sources/MDPreview/DocumentWindowController.swift#toggleCodeLineNumbersAction
   - CMP-app-shell/Sources/MDPreview/AppDelegate.swift#buildMenus
 docs:
@@ -55,8 +55,8 @@ tests:
 
 - `CMP-document-io#open-document`：`DocumentWindowController.openDocument` 按 `FileSupport.kind` 分派。
 - `CMP-code-view#kind`：`FileSupport.kind(for:)` / `codeLanguages`（扩展名 → 语言）。
-- `CMP-code-view#set-code`：`window.mdbridge.setCode` / `setCodeLanguage`；`opts.lineNumbers` 携带行号偏好。
-- `CMP-code-view#line-numbers`：`window.mdbridge.setCodeLineNumbers(visible)` / `codeInfo()`。
+- `CMP-code-view#set-code`：op `setCode`（payload 含 `text/language/allowHighlight/lineNumbers`）/ `setCodeLanguage`。
+- `CMP-code-view#line-numbers`：op `setCodeLineNumbers` / `codeInfo`。
 - `CMP-app-shell#menu-commands`：视图 → 高亮语言子菜单（自动 / 纯文本 / 语言表）；视图 →「显示行号」。
 - `CMP-code-view#line-layout`：`code-view.js` 的行拆分、行号生成内容、软换行、当前行。
 

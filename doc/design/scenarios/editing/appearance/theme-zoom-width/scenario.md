@@ -11,7 +11,7 @@ title: 切换主题、缩放与正文宽度
 entries:
   - CMP-app-shell/Sources/MDPreview/AppDelegate.swift#setAppearanceMode
   - CMP-app-shell/Sources/MDPreview/DocumentWindowController.swift#zoomIn
-  - CMP-editor/web/src/bridge.js#window.mdbridge
+  - CMP-kernel-contract/web/src/kernel/contract/ops.js#HOST_OPS
 docs:
   - path: README.md
     heading: 功能特性
@@ -42,7 +42,7 @@ tests:
 
 - `CMP-app-shell#appearance`：`AppDelegate.setAppearanceMode`。
 - `CMP-app-shell#zoom`：`DocumentWindowController.zoomIn/zoomOut/zoomReset`。
-- `CMP-editor#theme-zoom`：`window.mdbridge.setTheme/setZoom`。
+- `CMP-kernel-core#theme-zoom`：op `setTheme` / `setZoom`。
 - 宽度：`typora.css` 的 `#app` min-width 与视口策略。
 
 ## 3. 运行序

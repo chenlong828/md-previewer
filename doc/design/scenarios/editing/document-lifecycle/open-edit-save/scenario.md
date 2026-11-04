@@ -11,7 +11,7 @@ title: 打开、编辑并保存文档
 entries:
   - CMP-app-shell/Sources/MDPreview/DocumentWindowController.swift#openDocument
   - CMP-document-io/Sources/MDPreview/DocumentWindowController.swift#saveDocument
-  - CMP-editor/web/src/bridge.js#window.mdbridge
+  - CMP-kernel-contract/web/src/kernel/contract/ops.js#HOST_OPS
 docs:
   - path: doc/design/architecture.md
     heading: 2.2 保存无条件补尾换行
@@ -42,7 +42,7 @@ tests:
 
 - `CMP-app-shell#open-document`：`DocumentWindowController.openDocument`。
 - `CMP-document-io#save`：`DocumentWindowController.saveDocument`。
-- `CMP-editor#get-markdown`：`window.mdbridge.getMarkdown`。
+- `CMP-kernel-core#get-markdown`：op `getMarkdown`（写盘口径 `getSaveMarkdown`）。
 
 ## 3. 运行序
 

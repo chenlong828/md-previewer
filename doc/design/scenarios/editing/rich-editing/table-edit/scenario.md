@@ -9,8 +9,8 @@ domain: 编辑
 valueStream: 富文本编辑
 title: 编辑表格的行与列
 entries:
-  - CMP-editor/web/src/tables.js#tableCommandImpls
-  - CMP-editor/web/src/commands.js#commandRegistry
+  - CMP-kernel-core/web/src/kernel/core/tables.js#tableCommandImpls
+  - CMP-kernel-core/web/src/kernel/core/commands.js#commandRegistry
   - CMP-app-shell/Sources/MDPreview/DocumentWindowController.swift#tableCommand
 docs:
   - path: doc/design/architecture.md

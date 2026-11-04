@@ -9,8 +9,8 @@ domain: 编辑
 valueStream: 富文本编辑
 title: 在渲染视图与源码模式之间切换
 entries:
-  - CMP-editor/web/src/bridge.js#window.mdbridge
-  - CMP-editor/web/src/editor.js#toggleSource
+  - CMP-kernel-contract/web/src/kernel/contract/ops.js#HOST_OPS
+  - CMP-kernel-core/web/src/kernel/core/editor.js#toggleSource
   - CMP-app-shell/Sources/MDPreview/DocumentWindowController.swift#toggleSourceMode
 docs:
   - path: doc/design/architecture.md

@@ -10,8 +10,8 @@ valueStream: 图片
 title: 显示图片并编辑图片源码
 entries:
   - CMP-image/Sources/MDPreview/Util.swift#ImagePathRewriter
-  - CMP-image/web/src/image-view.js#getImageView
-  - CMP-editor/web/src/bridge.js#window.mdbridge
+  - CMP-kernel-core/web/src/kernel/core/image-view.js#getImageView
+  - CMP-kernel-contract/web/src/kernel/contract/ops.js#HOST_OPS
 docs:
   - path: doc/design/architecture.md
     heading: 2.1 ImagePathRewriter 宽松解析与改写边界

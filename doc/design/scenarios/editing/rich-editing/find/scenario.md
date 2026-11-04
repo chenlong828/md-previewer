@@ -9,8 +9,8 @@ domain: 编辑
 valueStream: 富文本编辑
 title: 在文档内查找
 entries:
-  - CMP-editor/web/src/find-bar.js#openFindBar
-  - CMP-editor/web/src/find.js#searchDoc
+  - CMP-kernel-core/web/src/kernel/core/find-bar.js#openFindBar
+  - CMP-kernel-core/web/src/kernel/core/find.js#searchDoc
   - CMP-app-shell/Sources/MDPreview/DocumentWindowController.swift#openFindBar
 docs:
   - path: doc/design/architecture.md

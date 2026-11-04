@@ -9,9 +9,9 @@ domain: 编辑
 valueStream: 富文本编辑
 title: 渲染数学公式与 Mermaid 图表
 entries:
-  - CMP-editor/web/src/editor.js#createEditor
-  - CMP-editor/web/src/mermaid-view.js#getMermaidView
-  - CMP-editor/web/src/bridge.js#window.mdbridge
+  - CMP-kernel-core/web/src/kernel/core/editor.js#createEditor
+  - CMP-kernel-core/web/src/kernel/core/mermaid-view.js#getMermaidView
+  - CMP-kernel-contract/web/src/kernel/contract/ops.js#HOST_OPS
 docs:
   - path: README.md
     heading: 功能特性
