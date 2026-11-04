@@ -7,6 +7,9 @@
   "scripts": {
     "build": "node build.mjs",
     "lint": "eslint src",
+    "test": "node --test test/",
+    "check:kernel": "node check-kernel.mjs",
+    "verify": "npm run lint && npm run check:kernel && npm test",
     "postinstall": "node check-deps.mjs"
   },
   "dependencies": {

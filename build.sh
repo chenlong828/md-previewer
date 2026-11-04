@@ -13,6 +13,9 @@ echo "==> [1/3] 构建前端资源 (esbuild)"
         npm install --registry="$NPM_REGISTRY" --no-audit --no-fund --cache ./.npm-cache
     fi
     node build.mjs
+    # 内核分层禁边 + 契约套件(纯 Node,不依赖 WebView):门禁失败即中断构建
+    node check-kernel.mjs
+    node --test test/
 )
 
 echo "==> [2/3] 编译 Swift ($CONFIG)"
