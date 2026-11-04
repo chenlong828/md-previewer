@@ -1,6 +1,7 @@
 // v2 页面入口：装配内核（transport → contract → core ops）并接上核心端口。
 // 壳必须在本 bundle 求值前注入 window.__mdHostChannel.post（见 KernelClient.installScript）。
 import './typora.css'
+import './kernel/components/minimap/minimap.css'
 import '@milkdown/prose/view/style/prosemirror.css'
 import '@milkdown/prose/tables/style/tables.css'
 import 'katex/dist/katex.min.css'
@@ -15,7 +16,7 @@ import { installV1Shim } from './v1-shim.js'
 export const KERNEL_VERSION = '0.1.0'
 
 // 组件端口接线（组合根职责）：组件之间不互相 import
-const { ops, findService } = createKernelOps()
+const { ops, findService, minimap } = createKernelOps()
 
 const kernel = bootKernel({
     win: window,
@@ -40,6 +41,8 @@ bindBus({
 // 自检/截图环境才装 v1 方法面（产品 bundle 不暴露 window.mdbridge）
 if (window.__MDP_TEST__ === true) installV1Shim()
 findService.setupFindBar()
+// 缩略图在页面组合根启动；bootCore/jsdom 测试不启动，避免测试必须实现 Canvas。
+minimap.start()
 
 // 源码模式 textarea 编辑 → 脏状态 + 统计（与渲染模式同一口径）
 document.getElementById('source-editor').addEventListener('input', () => {

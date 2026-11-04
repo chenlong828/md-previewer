@@ -2,7 +2,7 @@
 layer: plan
 module: global
 status: current
-updated: 2026-11-04
+updated: 2026-11-05
 ---
 
 # 技术债修复路线图
@@ -37,7 +37,7 @@ updated: 2026-11-04
 | [2026-11-04-scenario-inventory](../works/2026-11-04-scenario-inventory/brief.md) | 已实现场景/组件清点（7 组件、10 REQ、16 场景；REQ 验证后转） | 文档 | M | 五态迁移 | 🔄 收口中（卡片已落，3+1 复核待做） |
 | [2026-11-04-code-file-view](../history/works/2026-11-04-code-file-view/brief.md) | 代码文件只读查看 + 高亮语言切换（新组件 CMP-code-view；44 语言；6 入口面） | 功能 | M–L | 无 | ✅ 已完成（已归档；117 项 + 人工核对通过） |
 | [2026-11-04-code-view-line-numbers](../history/works/2026-11-04-code-view-line-numbers/brief.md) | 代码视图行号与按行阅读（逻辑行结构、行号、软换行、当前行、全局开关） | 功能/P2 | S–M | 代码文件查看 | ✅ 已完成（已归档；121 项 + 人工核对通过） |
-| [2026-11-04-document-minimap](../works/2026-11-04-document-minimap/brief.md) | 右侧文档缩略图与定位（新组件 CMP-minimap；Markdown + 代码；真缩略图；菜单开关） | 功能/P1 | M–L | 代码文件查看；P1 设计确认 | ⏸ 暂停排队（前置的 kernel-v2 已完成并归档，接入点已按四层结构就位，可随时启动） |
+| [2026-11-04-document-minimap](../history/works/2026-11-04-document-minimap/brief.md) | 右侧文档缩略图与定位（新组件 CMP-minimap / CMP-kernel-minimap；Markdown + 代码；真缩略图 DOM 快照 + 顶左 fit；菜单开关） | 功能/P1 | M–L | 代码文件查看；kernel-v2 七组件结构 | ✅ 已完成（已归档；85 项 + selftest + 用户验收通过） |
 | [2026-11-04-kernel-v2](../history/works/2026-11-04-kernel-v2/brief.md) | 可移植内核与桥协议 v2 落地（transport/contract/semantics/core 四层 + macOS 壳 v1→v2 一次切换；Windows 参照物） | 功能/架构 P1 | L | 存档规格 + 本次增量 | ✅ 完成并归档（2026-11-04；Node 78 项 + selftest 115 PASS；R9 关闭） |
 
 ## 批次与依赖链

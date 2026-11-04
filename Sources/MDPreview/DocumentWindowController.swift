@@ -67,6 +67,15 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
         return defaults.bool(forKey: codeLineNumbersDefaultsKey)
     }
 
+    /// 文档缩略图偏好(全局阅读设置,跨窗口;缺省开启)。
+    /// 偏好归 CMP-app-shell(Windows 壳可换自己的存储)；内核只接收布尔值。
+    static let minimapDefaultsKey = "minimapVisible"
+    static var minimapVisible: Bool {
+        let defaults = UserDefaults.standard
+        guard defaults.object(forKey: minimapDefaultsKey) != nil else { return true }
+        return defaults.bool(forKey: minimapDefaultsKey)
+    }
+
     var isCodeDocument: Bool {
         if case .code = documentKind { return true }
         return false
@@ -459,6 +468,8 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
             "protocolVersion": KernelClient.protocolVersion,
             "theme": AppDelegate.shared?.currentThemeJS() ?? "light",
             "zoom": UserDefaults.standard.double(forKey: "editorZoom").takingIfPositive() ?? 1.0,
+            // 缩略图偏好随 init 进入内核，避免新窗口先按默认 true 闪一下再隐藏。
+            "minimapVisible": Self.minimapVisible,
             // 文件名传给 web 层作为 document.title(HTML 导出标题的来源);无文件名时 web 层兜底 "MDPreview"
             // 目录模式传目录名
             "title": directoryMode ? (drawerRootURL?.lastPathComponent ?? "") : (fileURL?.lastPathComponent ?? ""),
@@ -1219,6 +1230,10 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
         case #selector(toggleCodeLineNumbersAction(_:)):
             menuItem.state = Self.codeLineNumbersVisible ? .on : .off
             return isCodeDocument
+        case #selector(toggleMinimapAction(_:)):
+            menuItem.state = Self.minimapVisible ? .on : .off
+            // 源码模式没有整页缩略图；但偏好仍可在渲染/代码态切换。
+            return isReady && !sourceModeCached
         default:
             return isReady
         }
@@ -1267,6 +1282,20 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
     func applyCodeLineNumbersPreference() {
         guard isCodeDocument, isReady else { return }
         kernel.send("setCodeLineNumbers", ["visible": Self.codeLineNumbersVisible])
+    }
+
+    /// 视图 → 显示文档缩略图:写全局偏好并广播所有窗口。
+    @objc func toggleMinimapAction(_ sender: Any?) {
+        let visible = !Self.minimapVisible
+        UserDefaults.standard.set(visible, forKey: Self.minimapDefaultsKey)
+        AppDelegate.shared?.applyMinimapVisibilityToAllDocuments()
+        AppDelegate.shared?.refreshViewMenuState()
+    }
+
+    /// 按当前全局偏好刷新本窗口缩略图(未就绪 no-op；源码模式由内核隐藏)。
+    func applyMinimapPreference() {
+        guard isReady else { return }
+        kernel.send("setMinimapVisible", ["visible": Self.minimapVisible])
     }
 
     /// 应用高亮语言选择:auto 清空覆盖、其余(含 plaintext)记为覆盖;只重绘不写文件。

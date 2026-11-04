@@ -7,6 +7,8 @@ export const HOST_OPS = Object.freeze([
   'setBaseDir', 'setTitle', 'setTheme', 'setZoom', 'getState', 'toggleSource', 'focus', 'focusAt',
   // 代码视图
   'setCode', 'setCodeLanguage', 'setCodeLineNumbers', 'codeInfo', 'hasLanguages',
+  // 缩略图
+  'setMinimapVisible', 'minimapInfo',
   // 命令
   'undo', 'redo', 'requestStats', 'formatCommand', 'tableCommand', 'insertTable',
   'insertMarkdown', 'insertImage',
@@ -37,6 +39,7 @@ const REQUIRED = {
   setCode: [['text', 'string']],
   setCodeLanguage: [['id', 'string']],
   setCodeLineNumbers: [['visible', 'boolean']],
+  setMinimapVisible: [['visible', 'boolean']],
   hasLanguages: [['ids', 'array']],
   formatCommand: [['name', 'string']],
   tableCommand: [['name', 'string']],

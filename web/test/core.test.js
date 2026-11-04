@@ -18,6 +18,18 @@ test('core 组：jsdom 内核（无 WebView）', async (t) => {
         assert.equal(notificationsOf(core.notifications, 'ready').length, 1)
     })
 
+    await t.test('缩略图：init 应用偏好，setMinimapVisible/minimapInfo 经端口工作', () => {
+        const initial = ops.minimapInfo()
+        assert.equal(initial.started, false)
+        assert.equal(initial.pref, true)
+        assert.equal(initial.surface, 'markdown')
+
+        assert.deepEqual(ops.setMinimapVisible({ visible: false }), { visible: false, effective: false })
+        assert.equal(ops.minimapInfo().pref, false)
+        ops.setMinimapVisible({ visible: true })
+        assert.equal(ops.minimapInfo().pref, true)
+    })
+
     await t.test('装载改写：经壳作答把相对引用改写为可加载 URL', () => {
         const md = ops.getMarkdown().md
         assert.match(md, /!\[图\]\(file:\/\/\/virtual\/base\/img\/a\.png\)/)

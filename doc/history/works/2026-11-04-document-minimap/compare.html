@@ -100,7 +100,7 @@
       <div class="card-head">
         <div>
           <div class="card-title"><span class="num">02</span>真缩略图</div>
-          <p class="card-desc">目标观感：真实字形/图片轮廓接近缩小版页面，最接近 Sublime；实现用 Canvas 文字采样，长文档按上限降级。</p>
+          <p class="card-desc">目标观感：真实字形/图片轮廓接近缩小版页面，最接近 Sublime；2026-11-05 最终实现用只读 DOM 克隆 + 顶左等比缩放（Canvas 采样已废弃）。</p>
         </div>
         <div class="tag">已选</div>
       </div>
@@ -132,7 +132,7 @@
     </div>
   </div>
 
-  <div class="foot"><span>示意原型：真实渲染内容截取；实现采用 Canvas 文字采样 + 图片缩略</span><span><b>结论</b>：采用方案 2 · 真缩略图；固定 120px，长文按采样上限降级，不复制 DOM。</span></div>
+  <div class="foot"><span>示意原型：真实渲染内容截取；最终实现采用只读 DOM 克隆 + 顶左等比缩放</span><span><b>结论</b>：采用方案 2 · 真缩略图；固定 120px，页面顶左对齐；空白区不参与定位。</span></div>
 </div>
 </body>
 </html>

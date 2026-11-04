@@ -16,6 +16,8 @@ export function createSessionOps(table) {
                 state.theme = opts.theme === 'dark' ? 'dark' : 'light'
                 if (typeof opts.baseDir === 'string') state.baseDir = opts.baseDir
                 use('editorSurface').applyThemeDom()
+                // 偏好属于宿主会话选项；缩略图组件只接受布尔值，不读 UserDefaults。
+                use('minimapSurface').setVisible(opts.minimapVisible !== false)
                 if (!state.editor) await use('editorSurface').createEditor()
                 if (opts.zoom) table.setZoom({ scale: opts.zoom })
                 table.setTitle({ title: opts.title || '' })

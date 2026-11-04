@@ -1,5 +1,5 @@
 // 代码面组件（CMP-kernel-code）：只读源码视图、高亮语言、行号、代码内查找。
-export { showCode, hideCode, setCodeLanguage, setCodeLineNumbers, isCodeMode, codeInfo } from './code-view.js'
+export { showCode, hideCode, setCodeLanguage, setCodeLineNumbers, isCodeMode, codeInfo, createCodeMinimapSource } from './code-view.js'
 export { hasLanguage, ensureLanguages } from './languages.js'
 
 import { findInCode, clearCodeFind, codeFindCount, hideCode, codeInfo } from './code-view.js'

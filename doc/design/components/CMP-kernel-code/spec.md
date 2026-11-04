@@ -3,7 +3,7 @@ layer: design
 module: kernel
 component: CMP-kernel-code
 status: active
-updated: 2026-11-04
+updated: 2026-11-05
 ---
 
 # CMP-kernel-code 组件规格
@@ -14,17 +14,19 @@ updated: 2026-11-04
 - 单元：组件
 - 层 / 类型：L1b 能力组件；代码面
 - 业务价值：代码文件只读可读：高亮、行号、语言切换、代码内查找，不与 Markdown 面互相污染。
-- 负责：showCode/hideCode、语言注册与按需加载、行号、代码内查找、codeInfo。
-- 不负责：文档种类判定（壳的 FileSupport）、编辑（代码恒只读）、查找栏 UI（find）。
-- 内部逻辑：`code-view.js` DOM 与高亮；`languages.js` 语法注册表；`ops.js` 5 个 op + 端口实现（codeSurface/codeLanguages/searchSurface）。
+- 负责：showCode/hideCode、语言注册与按需加载、行号、代码内查找、codeInfo；提供代码行缩略投影的**内部工厂**（不新增 host op）。
+- 不负责：文档种类判定（壳的 FileSupport）、编辑（代码恒只读）、查找栏 UI（find）、缩略图挂载/缩放/定位（minimap）。
+- 内部逻辑：`code-view.js` DOM 与高亮 + `createCodeMinimapSource`；`languages.js` 语法注册表；`ops.js` 5 个 op + 端口实现（codeSurface/codeLanguages/searchSurface）。
 - 拥有的数据：代码面 DOM 与语言表；不改文档内容、不发 changed。
 - 变化轴：op 集合增删（须同步 `contract/ops.js`）、代码面内的交互细节、引擎版本升级。
 - 公开契约（含能力 ID）：
   - `CMP-kernel-code#set-code`：setCode/setCodeLanguage/setCodeLineNumbers/codeInfo/hasLanguages：只读代码视图
   - `CMP-kernel-code#search`：findInCode/clearCodeFind/codeFindCount：代码面查找实现
+  - `CMP-kernel-code#minimap-source`（实现内部）：`createCodeMinimapSource` 返回 `{root, measure(), scrollTo(), snapshot()}`；`snapshot()` 把 `#code-view` 的页面宽度/内边距/缩放/背景/颜色/字体/行高/行号宽度内联到页面容器，并挂载 `<code>` 的只读 DOM 副本；经 `assemble.js` 的 `minimapSources.code` 注入，不是 host op。
 - 入口：
   - `components/code/index.js#createCodeSurface`
   - `components/code/index.js#createCodeSearch`
+  - `components/code/index.js#createCodeMinimapSource`（内部导出，只由组合根消费）
   - `components/code/ops.js#createCodeOps`
 - 依赖：自身目录 + `shared`（state/bus/ports）+ `semantics`；跨组件能力经 `shared/ports.js` 端口，
   由 `kernel/assemble.js` 注入（详见 architecture §4.2）。第三方依赖允许（引擎绑定层）。
@@ -35,5 +37,6 @@ updated: 2026-11-04
 ## 验证计划
 
 - selftest 代码视图组（语言切换、行号、查找命中）；Node core 组「代码视图信息与语言表」。
+- 缩略图：`minimap.test.js` surface 用例切换代码 source；`--screenshot` 长代码文件验证真实 token、行号/无行号与顶左缩放。
 - 禁边：`node check-kernel.mjs` 校验「组件只 import 自身 + shared + semantics」。
-- 回归门：Node 78 项 + selftest 115 断言全绿，断言数只增不减。
+- 回归门：Node 85 项 + selftest 全绿，断言数只增不减。

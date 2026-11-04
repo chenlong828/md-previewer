@@ -15,21 +15,37 @@ WKWebView 承载 Milkdown 7.7（ProseMirror）前端。本文记录跨模块的�
 > 11-04 迁至 [components/CMP-diagnostics/spec.md](components/CMP-diagnostics/spec.md) 并补组件卡；
 > 桥协议由 §4 顺延为 §3；`history/` 冻结件中的旧编号（§3/§4）不回改，按小节标题对应。
 
+现行组件层次（依赖视角；组件/端口明细见 §4）：
+
+```mermaid
+flowchart TB
+    subgraph SHELL["macOS 壳 · Sources/MDPreview · 单 executable target"]
+        direction TB
+        APP["CMP-app-shell · L2 整合<br/>main · AppDelegate · DocumentWindowController<br/>EditorCommands · KernelClient"]
+        L1["L1 领域组件（八）· 依赖为声明式<br/>editor · code-view · drawer · document-io<br/>image · export · diagnostics · minimap"]
+        APP -->|"编排"| L1
+    end
+    BR["v2 桥 · 单通道（JSON 帧）<br/>window.__mdHostChannel.post ⇄ mdbridge<br/>41 host op · 7 通知 · 2 内核请求"]
+    subgraph WEB["web 内核 · WKWebView · 本地 web/dist（无网络依赖）"]
+        direction TB
+        ROOT["L2 组合根 · 唯一装配点<br/>assemble.js（端口接线）· ops.js（op 汇总）· main.js（bootKernel）"]
+        COMP["L1b 组件（七）· 互不 import，跨组件只走端口<br/>document · editor · code · find · output · media · minimap"]
+        L1A["L1a 共享 · 零第三方依赖<br/>shared（state · bus · ports）｜ semantics（paths · markdown）"]
+        CTR["L1 contract · 唯一协议实现<br/>envelope（信封）· ops（清单）· registry（注册表/握手）"]
+        TR["L0 transport · 唯一宿主感知点<br/>channel（__mdHostChannel / __mdKernel / jserror 三源）"]
+        ROOT -->|"import + 装配"| COMP
+        COMP -->|"import"| L1A
+        ROOT -->|"import"| CTR
+        CTR -->|"注入 transport"| TR
+    end
+    APP -->|"帧（KernelClient.send）"| BR
+    BR -->|"帧（transport 收发）"| WEB
 ```
-┌────────────────────────────────────────────┐
-│  Swift/AppKit 壳                            │
-│  窗口/菜单/文件 IO/脏标记/文件监听/PDF 导出    │
-│  DocumentWindowController ── EditorWebView  │
-│        │  WKScriptMessageHandler 桥         │
-│        ▼                                    │
-│  WKWebView(本地 web/dist,无网络依赖)         │
-│  Milkdown 7.7 (ProseMirror)                 │
-│   ├ preset-commonmark / preset-gfm          │
-│   ├ plugin-diagram + 自定义 Mermaid NodeView │
-│   ├ plugin-math (KaTeX) / plugin-prism      │
-│   └ clipboard / trailing / listener         │
-└────────────────────────────────────────────┘
-```
+
+*读图：箭头为依赖/调用方向，桥的两端是 JSON 帧。壳侧八个组件同属一个 executable target，
+依赖只能是声明式的（app-shell ⇄ document-io ⇄ editor 成环），逐条以各组件规格的「依赖」行为准；
+内核侧的 import 边由 `web/check-kernel.mjs` 守门，跨组件能力走 §4.2 的十个端口。前端引擎
+Milkdown 7.7（ProseMirror）及其插件装配归 `components/editor`，明细见 CMP-editor 规格。*
 
 ## 1. 安全取舍
 
@@ -303,9 +319,9 @@ WKWebView 承载 Milkdown 7.7（ProseMirror）前端。本文记录跨模块的�
   查找，selftest 选择断言先红。
 - **边界**：无扩展名文件（`Dockerfile`/`Makefile`）不识别；不做代码编辑、折叠、
   LSP；Markdown 围栏代码块没有行号；HTML 导出对代码文档不可用。代码视图的
-  minimap 原为首版非目标，2026-11-04 由 [REQ-0011](../requirements/REQ-0011-document-minimap.md)
-  追加为**设计中能力**（`CMP-minimap`，未实现）；实现前本节仍按无 minimap 的
-  现行真相描述，实现后回填。
+  minimap 由 [REQ-0011](../requirements/REQ-0011-document-minimap.md) 追加，2026-11-04
+  已实现为 `CMP-minimap` / `CMP-kernel-minimap`；2026-11-05 起快照为只读 DOM 克隆 + 顶左等比缩放，缩略图只读，不改变代码只读、
+  512 KB 上限、行结构与复制/查找语义。
 
 ## 3. 桥协议（v2，2026-11-04 落地）
 
@@ -317,13 +333,14 @@ WKWebView 承载 Milkdown 7.7（ProseMirror）前端。本文记录跨模块的�
 - **握手**：首帧 `init` 的 `payload.opts.protocolVersion` 必须等于 2（缺=拒绝并置内核 disabled，
   不静默降级）；成功后回 `{kernelVersion, protocolVersion, ops:[...]}`，此前除 `init` 外的
   op 一律回 `not_ready`。
-- **宿主 op（39 个，单一清单 `web/src/kernel/contract/ops.js`）**：
+- **宿主 op（41 个，单一清单 `web/src/kernel/contract/ops.js`）**：
   会话 `init/setMarkdown/getMarkdown/getSaveMarkdown/markClean/setBaseDir/setTitle/setTheme/
   setZoom/getState/toggleSource/focus/focusAt`；代码视图 `setCode/setCodeLanguage/
   setCodeLineNumbers/codeInfo/hasLanguages`；命令 `undo/redo/requestStats/formatCommand/
   tableCommand/insertTable/insertMarkdown/insertImage`；查找 `openFindBar/closeFindBar/
   findNext/findPrev/findInfo`；输出 `exportStandaloneHTML/print/getContentSize`；
-  资源 `getResourceRefs`；诊断 `hasCommands/debugFocusTable/tableInfo/testImagePayload`。
+  缩略图 `setMinimapVisible/minimapInfo`；资源 `getResourceRefs`；
+  诊断 `hasCommands/debugFocusTable/tableInfo/testImagePayload`。
 - **通知（7 个）**：`boot/ready/changed/stats/sourceMode/selinfo/jserror`。
 - **内核发起的请求（2 个）**：
   - `resolveResources {refs[], baseDir}` → `{resources:{ref:[{url,exists,isImage,paths}]}}`：
@@ -339,7 +356,7 @@ WKWebView 承载 Milkdown 7.7（ProseMirror）前端。本文记录跨模块的�
   Windows 壳可参照 `web/test/support/fake-shell.js` 与 `web/test/support/dom.js` 的假壳，
   协议测试 `web/test/contract.test.js` 不依赖任何 WebView。
 
-## 4. 内核分层与组件（2026-11-04，2026-11-04 收口为六组件）
+## 4. 内核分层与组件（2026-11-04，缩略图落地后为七组件）
 
 - **分层与依赖单向**：`transport` → `contract` → `semantics` / `shared` → `components/*` → 组合根。
   - `web/src/kernel/transport/channel.js`：唯一宿主感知点（`__mdHostChannel` / `__mdKernel`、jserror 三源）。
@@ -348,24 +365,25 @@ WKWebView 承载 Milkdown 7.7（ProseMirror）前端。本文记录跨模块的�
   - `web/src/kernel/semantics/`：路径与 markdown 文本语义，纯函数、零第三方依赖、不碰文件系统。
   - `web/src/kernel/shared/`：会话状态单例（`state`）、通知/请求端口（`bus`）、组件端口注册表（`ports`）。
     零第三方依赖：`currentMarkdown()` 的引擎序列化经 `state.serialize` 钩子注入。
-  - `web/src/kernel/components/*`：六个功能组件（下表），引擎绑定允许第三方依赖。
+  - `web/src/kernel/components/*`：七个功能组件（下表），引擎绑定允许第三方依赖。
   - `web/src/kernel/assemble.js` + `ops.js`：组合根内核侧——注入端口、汇总 op 表（**唯一装配点**）。
 
-### 4.1 六个组件
+### 4.1 七个组件
 
 | 组件 | 业务能力 | 行数 | op 归属 |
 |---|---|---|---|
-| `components/document` | 会话与文档：建编辑器、装载/取回、基线、主题、缩放、状态、GC 引用收集 | ~140 | init/setMarkdown/getMarkdown/getSaveMarkdown/markClean/setBaseDir/setTitle/setTheme/setZoom/getState/toggleSource/getResourceRefs |
-| `components/editor` | 编辑面：Milkdown 装配、命令与表格、统计、选区、NodeView、焦点、撤销重做 | ~1050 | focus/focusAt/undo/redo/requestStats/formatCommand/tableCommand/insertTable/insertMarkdown/insertImage + 诊断 4 个 |
-| `components/code` | 代码面：只读源码视图、语言与行号、代码内查找 | ~550 | setCode/setCodeLanguage/setCodeLineNumbers/codeInfo/hasLanguages |
-| `components/find` | 查找：查找栏、命中遍历、ProseMirror 装饰 | ~300 | openFindBar/closeFindBar/findNext/findPrev/findInfo |
-| `components/output` | 输出：独立 HTML 导出、打印、内容几何 | ~100 | exportStandaloneHTML/print/getContentSize |
+| `components/document` | 会话与文档：建编辑器、装载/取回、基线、主题、缩放、状态、GC 引用收集 | ~139 | init/setMarkdown/getMarkdown/getSaveMarkdown/markClean/setBaseDir/setTitle/setTheme/setZoom/getState/toggleSource/getResourceRefs |
+| `components/editor` | 编辑面：Milkdown 装配、命令与表格、统计、选区、NodeView、焦点、撤销重做；Markdown 缩略投影 | ~1117 | focus/focusAt/undo/redo/requestStats/formatCommand/tableCommand/insertTable/insertMarkdown/insertImage + 诊断 4 个 |
+| `components/code` | 代码面：只读源码视图、语言与行号、代码内查找；代码行缩略投影 | ~622 | setCode/setCodeLanguage/setCodeLineNumbers/codeInfo/hasLanguages |
+| `components/find` | 查找：查找栏、命中遍历、ProseMirror 装饰 | ~304 | openFindBar/closeFindBar/findNext/findPrev/findInfo |
+| `components/output` | 输出：独立 HTML 导出、打印、内容几何 | ~104 | exportStandaloneHTML/print/getContentSize |
 | `components/media` | 图片媒体：粘贴载荷识别、导入编排（不碰 ProseMirror 事务） | ~75 | （无对外 op；供 diagnostics 的载荷识别） |
+| `components/minimap` | 缩略图：只读 DOM 快照、顶左等比缩放、视口/指针映射、显示策略与诊断 | ~730 | setMinimapVisible/minimapInfo |
 
 ### 4.2 组件端口（`shared/ports.js`）
 
 组件之间**不互相 import**，一切跨组件能力经端口：组合根 `provide(name, impl)`，消费方 `use(name)`；
-未装配即抛错（不静默降级）。当前七个端口：
+未装配即抛错（不静默降级）。当前十个端口：
 
 | 端口 | 提供方 | 消费方 | 内容 |
 |---|---|---|---|
@@ -377,6 +395,8 @@ WKWebView 承载 Milkdown 7.7（ProseMirror）前端。本文记录跨模块的�
 | `renderSurface` | editor | output | `setSourceMode`（导出前确保渲染模式） |
 | `imageInsertion` | editor | media | 图片节点插入（选区恢复 + 单事务） |
 | `mediaPaste` | media | editor / diagnostics | 粘贴监听安装、载荷识别 |
+| `minimapSurface` | minimap | document / minimap ops | `start` / `stop` / `setVisible` / `info` |
+| `minimapSources` | assemble（注入 editor / code 的内部工厂） | minimap | `{markdown, code}`：两面各自的只读 DOM 快照工厂（`measure/scrollTo/snapshot`） |
 
 ### 4.3 禁边守门（`web/check-kernel.mjs`，进构建）
 

@@ -122,6 +122,7 @@ func greet() -> String {
         let initOpts: [String: Any] = [
             "protocolVersion": KernelClient.protocolVersion,
             "theme": "light", "zoom": 1, "plugins": pluginSet, "baseDir": "/tmp",
+            "minimapVisible": true,
         ]
         kernel.send("init", ["markdown": SelftestRunner.sampleMarkdown, "opts": initOpts]) { [weak self] result in
             if case .success(let payload) = result { self?.kernel.recordHandshake(payload) }
@@ -148,6 +149,52 @@ func greet() -> String {
         waitForValue("mermaid svg 异步渲染就绪", timeout: 10,
                      script: "document.querySelectorAll('[data-type=diagram] svg').length",
                      test: { ($0 as? Int ?? 0) >= 1 })
+
+        // ── 缩略图：v2 op 往返、默认可见、开关即时生效
+        var miniInfo: [String: Any] = [:]
+        kernel.send("minimapInfo") { result in
+            if case .success(let payload) = result { miniInfo = payload }
+        }
+        waitFor("缩略图诊断(minimapInfo)", timeout: 10) { !miniInfo.isEmpty }
+        let miniSc = miniInfo["snapshotCount"] as? Int ?? 0
+        let miniCw = miniInfo["contentWidth"] as? Int ?? 0
+        let miniCh = miniInfo["contentHeight"] as? Int ?? 0
+        let miniRw = miniInfo["railWidth"] as? Int ?? 0
+        let miniRh = miniInfo["railHeight"] as? Int ?? 0
+        let miniVisible = (miniInfo["visible"] as? Bool) == true
+            && (miniInfo["surface"] as? String) == "markdown"
+            && (miniInfo["mode"] as? String) == "fit"
+            && miniSc > 0
+            && ((miniInfo["contentTop"] as? Int) ?? -1) == 0
+            && ((miniInfo["contentLeft"] as? Int) ?? -1) == 0
+            && miniCw > 0 && miniCh > 0
+            && miniCw <= miniRw && miniCh <= miniRh
+            && ((miniInfo["docHeight"] as? Int) ?? 0) > ((miniInfo["viewportHeight"] as? Int) ?? 0)
+        if miniVisible {
+            pass("缩略图 默认显示(\(miniSc) 快照, \(miniInfo["mode"] ?? "?"), \(miniCw)x\(miniCh))")
+        } else {
+            fail("缩略图 默认显示 → \(miniInfo)")
+        }
+        var miniBodyShown = false
+        self.evaluate("document.body.classList.contains('minimap-shown')") { r in
+            miniBodyShown = (r as? Bool) == true
+        }
+        if miniBodyShown { pass("缩略图 正文预留生效") } else { fail("缩略图 正文预留生效") }
+
+        var miniHidden = false
+        kernel.send("setMinimapVisible", ["visible": false]) { _ in
+            self.evaluate("!document.body.classList.contains('minimap-shown')") { r in
+                miniHidden = (r as? Bool) == true
+            }
+        }
+        waitFor("缩略图 开关隐藏", timeout: 10) { miniHidden }
+        var miniRestored = false
+        kernel.send("setMinimapVisible", ["visible": true]) { _ in
+            self.evaluate("document.body.classList.contains('minimap-shown')") { r in
+                miniRestored = (r as? Bool) == true
+            }
+        }
+        waitFor("缩略图 开关恢复", timeout: 10) { miniRestored }
 
         // ── 任务列表与表格诊断
         self.evaluate("(function(){var li=document.querySelector('li[data-item-type=task]');return li?JSON.stringify({outer:li.outerHTML.slice(0,200),attrs:JSON.stringify(li.dataset)}):'no-task-li'})()") { r in
@@ -766,22 +813,25 @@ func greet() -> String {
         }
         evaluate("window.mdbridge.setZoom(1.0)") { _ in }
 
-        // ── 宽度策略:正文 100% 跟随窗体,收缩下限由 CSS 变量 --editor-max-width 声明(不再锚定具体数字)
-        evaluate("(function(){var r=document.documentElement;return JSON.stringify({appW:document.getElementById('app').getBoundingClientRect().width,vw:r.clientWidth,minW:parseFloat(getComputedStyle(document.getElementById('app')).minWidth),declared:parseFloat(getComputedStyle(r).getPropertyValue('--editor-max-width'))})})()") { r in
+        // ── 宽度策略:正文 100% 跟随窗体可用宽(缩略图显示时扣除右侧预留),
+        // 收缩下限由 CSS 变量 --editor-max-width 声明(不再锚定具体数字)
+        evaluate("(function(){var r=document.documentElement;var b=getComputedStyle(document.body);var reserve=parseFloat(b.paddingRight)||0;return JSON.stringify({appW:document.getElementById('app').getBoundingClientRect().width,vw:r.clientWidth,reserve:reserve,minW:parseFloat(getComputedStyle(document.getElementById('app')).minWidth),declared:parseFloat(getComputedStyle(r).getPropertyValue('--editor-max-width'))})})()") { r in
             guard let json = r as? String,
                   let data = json.data(using: .utf8),
                   let dict = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                   let appW = dict["appW"] as? Double,
                   let vw = dict["vw"] as? Double,
+                  let reserve = dict["reserve"] as? Double,
                   let minW = dict["minW"] as? Double,
                   let declared = dict["declared"] as? Double else {
                 self.fail("宽度策略读取 → \(String(describing: r))")
                 return
             }
-            let fillsWindow = appW >= vw - 1.5
+            let available = max(0, vw - reserve)
+            let fillsWindow = appW >= available - 1.5
             // zoom 复位为 1 后,#app 的实际 min-width 应等于变量声明值
             let floorOk = declared > 0 && abs(minW - declared) < 1.5
-            if fillsWindow && floorOk { self.pass("宽度策略(100%+CSS变量下限)") } else { self.fail("宽度策略 → appW=\(appW) vw=\(vw) minW=\(minW) declared=\(declared)") }
+            if fillsWindow && floorOk { self.pass("宽度策略(100%+CSS变量下限)") } else { self.fail("宽度策略 → appW=\(appW) available=\(available) reserve=\(reserve) minW=\(minW) declared=\(declared)") }
         }
 
         // ── 文档内查找

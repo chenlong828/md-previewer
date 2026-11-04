@@ -11,6 +11,7 @@ enum MenuID {
     static let viewSourceMode = NSUserInterfaceItemIdentifier("view.sourceMode")
     static let viewDrawer = NSUserInterfaceItemIdentifier("view.drawer")
     static let viewCodeLineNumbers = NSUserInterfaceItemIdentifier("view.codeLineNumbers")
+    static let viewMinimap = NSUserInterfaceItemIdentifier("view.minimap")
     static let viewHighlightLanguage = NSUserInterfaceItemIdentifier("view.highlightLanguage")
     static let appearanceAuto = NSUserInterfaceItemIdentifier("appearance.auto")
     static let appearanceLight = NSUserInterfaceItemIdentifier("appearance.light")
@@ -212,6 +213,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
     }
 
+    /// 缩略图偏好变更后广播所有窗口;源码模式下的窗口由控制器/内核自行隐藏。
+    func applyMinimapVisibilityToAllDocuments() {
+        for controller in documents {
+            controller.applyMinimapPreference()
+        }
+    }
+
     func setAppearanceMode(_ mode: String) {
         switch mode {
         case "light": pinnedAppearance = NSAppearance.Name.aqua
@@ -243,6 +251,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         updateMenuItem(in: MenuID.viewMenu, id: MenuID.viewSourceMode, selected: inSource)
         updateMenuItem(in: MenuID.viewMenu, id: MenuID.viewDrawer, selected: currentDocument?.isDrawerVisible ?? false)
         updateMenuItem(in: MenuID.viewMenu, id: MenuID.viewCodeLineNumbers, selected: DocumentWindowController.codeLineNumbersVisible)
+        updateMenuItem(in: MenuID.viewMenu, id: MenuID.viewMinimap, selected: DocumentWindowController.minimapVisible)
     }
 
     private func updateMenuItem(in menuId: NSUserInterfaceItemIdentifier, id: NSUserInterfaceItemIdentifier, selected: Bool) {
@@ -455,6 +464,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 action: #selector(DocumentWindowController.toggleCodeLineNumbersAction(_:)),
                 keyEquivalent: "")
             lineNumberItem.identifier = MenuID.viewCodeLineNumbers
+            // 缩略图开关:全局阅读设置。源码模式置灰;入口只发偏好，绘制/定位在内核。
+            let minimapItem = menu.addItem(
+                withTitle: "显示文档缩略图",
+                action: #selector(DocumentWindowController.toggleMinimapAction(_:)),
+                keyEquivalent: "")
+            minimapItem.identifier = MenuID.viewMinimap
             // 高亮语言子菜单:代码文档专用(REQ-0009)。勾选状态由 menuNeedsUpdate 刷新,
             // 关闭自动置灰以避免 AppKit 默认校验覆盖我们的状态。
             Self.appendSubmenu("高亮语言", to: menu, id: MenuID.viewHighlightLanguage) { languageMenu in

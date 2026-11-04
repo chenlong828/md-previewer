@@ -4,6 +4,7 @@ import { createSessionOps } from './components/document/ops.js'
 import { createEditorOps } from './components/editor/ops.js'
 import { createCodeOps } from './components/code/ops.js'
 import { createFindOps } from './components/find/ops.js'
+import { createMinimapOps } from './components/minimap/ops.js'
 import { createOutputOps } from './components/output/ops.js'
 import { createDiagnosticsOps } from './components/editor/diagnostics-ops.js'
 
@@ -15,6 +16,7 @@ export function createOps() {
     Object.assign(table, createEditorOps(table))
     Object.assign(table, createCodeOps(table))
     Object.assign(table, createFindOps(table))
+    Object.assign(table, createMinimapOps(table))
     Object.assign(table, createOutputOps(table))
     Object.assign(table, createDiagnosticsOps(table))
     return table

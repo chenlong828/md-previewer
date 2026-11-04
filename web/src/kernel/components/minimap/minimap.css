@@ -1,0 +1,119 @@
+/* ============================================================
+ * 文档缩略图：固定右轨 + 只读 DOM 快照 + 顶左对齐的等比缩放
+ * 宽度、留白、滚动条宽度都在这里单点定义；正文不感知 minimap。
+ * ============================================================ */
+
+:root {
+    --minimap-width: 120px;
+    --minimap-gutter: 10px;
+    --minimap-reserve: 146px;
+    --minimap-scrollbar: 0px;
+    --minimap-bg: #ffffff;
+    --minimap-rail: #f7f8fa;
+    --minimap-border: #e2e6ec;
+    --minimap-viewport-fill: rgba(64, 132, 214, 0.16);
+    --minimap-viewport-stroke: rgba(64, 132, 214, 0.72);
+}
+
+html[data-theme="dark"] {
+    --minimap-bg: #2b2b2b;
+    --minimap-rail: #30333a;
+    --minimap-border: #4a4f58;
+    --minimap-viewport-fill: rgba(92, 159, 232, 0.20);
+    --minimap-viewport-stroke: rgba(92, 159, 232, 0.85);
+}
+
+#minimap {
+    display: none;
+    position: fixed;
+    top: 0;
+    right: calc(var(--minimap-gutter) + var(--minimap-scrollbar));
+    width: var(--minimap-width);
+    height: 100vh;
+    z-index: 90;
+    overflow: hidden;
+    border: 1px solid var(--minimap-border);
+    border-radius: 4px;
+    background: var(--minimap-rail);
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+    user-select: none;
+    -webkit-user-select: none;
+    touch-action: none;
+    cursor: default;
+}
+
+body.minimap-shown #minimap { display: block; }
+
+/* 源码模式没有稳定的整页排版，缩略图不参与；预留也在同一帧取消，避免 textarea 被挤窄。 */
+body.source-mode #minimap { display: none; }
+body.source-mode.minimap-shown { padding-right: 0; }
+body.source-mode.minimap-shown #find-bar { right: 18px; }
+
+#minimap.is-visible { display: block; }
+
+#minimap .minimap-stage {
+    position: absolute;
+    top: 0;
+    left: 0;
+    transform-origin: 0 0;
+    pointer-events: none;
+    contain: layout paint;
+    will-change: transform;
+}
+
+#minimap .minimap-stage * {
+    pointer-events: none !important;
+    caret-color: transparent !important;
+}
+
+#minimap .minimap-page {
+    box-sizing: border-box;
+    margin: 0;
+    overflow: hidden;
+    background: var(--bg-color);
+    color: var(--text-color);
+    pointer-events: none;
+    user-select: none;
+    -webkit-user-select: none;
+    caret-color: transparent;
+}
+
+#minimap .minimap-code-page code {
+    display: block;
+    border: 0;
+    background: none;
+    padding: 0;
+    border-radius: 0;
+    font: inherit;
+    white-space: normal;
+}
+
+#minimap .minimap-code-page.no-line-numbers .code-line {
+    grid-template-columns: 0 minmax(0, 1fr);
+    column-gap: 0;
+}
+
+#minimap .minimap-code-page.no-line-numbers .code-line-number {
+    display: none;
+}
+
+#minimap .minimap-viewport {
+    position: absolute;
+    z-index: 2;
+    box-sizing: border-box;
+    border: 1px solid var(--minimap-viewport-stroke);
+    background: var(--minimap-viewport-fill);
+    pointer-events: none;
+}
+
+/* 缩略图占用右侧空间时，正文与查找条一起让位；窗口过窄时由正文自身产生横向滚动。 */
+body.minimap-shown { padding-right: var(--minimap-reserve); }
+body.minimap-shown #find-bar {
+    right: calc(18px + var(--minimap-width) + var(--minimap-gutter) + var(--minimap-scrollbar));
+}
+
+@media print {
+    #minimap { display: none !important; }
+    body.minimap-shown { padding-right: 0 !important; }
+    body.minimap-shown #find-bar { right: 18px !important; }
+}

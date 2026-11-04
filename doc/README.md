@@ -35,11 +35,17 @@ doc/
 │   │   ├── CMP-image/spec.md
 │   │   ├── CMP-export/spec.md
 │   │   ├── CMP-code-view/spec.md
-│   │   ├── CMP-kernel-transport/spec.md   ← 内核四层（v2, 2026-11-04）
+│   │   ├── CMP-kernel-transport/spec.md   ← 内核分层（v2, 2026-11-04）
 │   │   ├── CMP-kernel-contract/spec.md
 │   │   ├── CMP-kernel-semantics/spec.md
-│   │   ├── CMP-kernel-core/spec.md
-│   │   ├── CMP-minimap/spec.md
+│   │   ├── CMP-kernel-document/spec.md    ← 七个功能组件
+│   │   ├── CMP-kernel-editor/spec.md
+│   │   ├── CMP-kernel-code/spec.md
+│   │   ├── CMP-kernel-find/spec.md
+│   │   ├── CMP-kernel-output/spec.md
+│   │   ├── CMP-kernel-media/spec.md
+│   │   ├── CMP-kernel-minimap/spec.md     ← 缩略图实现组件
+│   │   ├── CMP-minimap/spec.md            ← 缩略图领域能力
 │   │   └── CMP-diagnostics/spec.md
 │   └── scenarios/
 │       ├── editing/document-lifecycle/   ← 4 个
@@ -55,20 +61,19 @@ doc/
 │   ├── 2026-10-20-file-drawer/         ← 文件抽屉（收口中）
 │   ├── 2026-10-22-drawer-anchor-and-resize/ ← 抽屉锚点与宽度（收口中）
 │   ├── 2026-10-22-doc-split/           ← design 文档下沉（执行中）
-│   ├── 2026-11-04-scenario-inventory/  ← 已实现场景/组件清点（执行中）
-│   └── 2026-11-04-document-minimap/    ← 右侧文档缩略图（P1 设计，待确认）
+│   └── 2026-11-04-scenario-inventory/  ← 已实现场景/组件清点（执行中）
 └── history/                            ← 记忆：怎么走到这里的
     ├── decisions/
-    ├── works/                          ← 已归档工序（含 app-icon、code-file-view、code-view-line-numbers）
+    ├── works/                          ← 已归档工序（含 app-icon、code-file-view、code-view-line-numbers、document-minimap）
     └── pitfalls.md
 ```
 
 - **反占位**：`requirements/`、`design/components/`、`design/scenarios/` 均有真实卡片；`design/scenarios/_index.md` 为生成物，生成器接入前不手建；不预建空目录。
 - **全局设计文档**：`architecture.md` 用 `status: current`；本地 `doc-layout-spec` 已补「全局设计文档 | draft / current」状态行（2026-11-04 项目内扩展，主本未动）。
 - **组件与场景**：组件规格带 `component: CMP-xxx`，状态 `planned/active/retired`；场景带 `flow` 与 `scenario: SCN-xxxx`，状态 `draft/designed/verified/deprecated`。
-- **内核四层**：`CMP-kernel-transport` / `-contract` / `-semantics` / `-core` 是 2026-11-04 桥协议 v2 落地后的组件，依赖单向、由 `web/check-kernel.mjs` 守门；`CMP-image` 收缩为落盘/布局/GC 执行与 NodeView，路径语义移交 `CMP-kernel-semantics`。
-- **需求状态纪律**：新需求卡先 `accepted`；只有影响场景全部 `verified`，才转 `delivered`。当前 9 张 `accepted`、REQ-0009/REQ-0010 已 `delivered`，验证债见各场景卡 §6。
-- **P1 设计中的缩略图**：REQ-0011 / SCN-0017 / `CMP-minimap` 为 2026-11-04 新增的**设计文档**，尚未实现；组件状态 `planned`，实现前需用户确认组件切分与 source 契约（见 [brief](works/2026-11-04-document-minimap/brief.md)）。
+- **内核分层**：`CMP-kernel-transport` / `-contract` / `-semantics` + 七个功能组件（document/editor/code/find/output/media/minimap），依赖单向、由 `web/check-kernel.mjs` 守门；`CMP-image` 收缩为落盘/布局/GC 执行与 NodeView，路径语义移交 `CMP-kernel-semantics`。
+- **需求状态纪律**：新需求卡先 `accepted`；只有影响场景全部 `verified`，才转 `delivered`。当前 8 张 `accepted`、REQ-0009/REQ-0010/REQ-0011 已 `delivered`，验证债见各场景卡 §6。
+- **缩略图已交付**：REQ-0011 / SCN-0017 / `CMP-minimap` 为已交付能力；实现归 `CMP-kernel-minimap`，Markdown/代码只读快照工厂归 `CMP-kernel-editor` / `CMP-kernel-code`，偏好归 `CMP-app-shell`。自动门与用户验收均通过（见 [归档 brief](history/works/2026-11-04-document-minimap/brief.md)）。
 
 ## 阅读顺序
 

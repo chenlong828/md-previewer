@@ -5,6 +5,7 @@
 // 行结构是表现层：每个逻辑行一个 .code-line，行号由 CSS ::before 生成，不进入
 // 文本节点；逐行 .code-line-content 以 \n 拼接必须等于 state.codeText。
 import { state, setMode } from '../../shared/state.js'
+import { cloneReadonly } from '../../shared/readonly-clone.js'
 import { hasLanguage, highlightInto } from './languages.js'
 
 function codeView() {
@@ -286,6 +287,62 @@ export function codeInfo() {
         lineNumbers: state.codeLineNumbers,
         currentLine,
     }
+}
+
+// ---------- 缩略图只读快照（组件内部导出，只经 assemble 注入 minimapSources） ----------
+
+/** 代码面的只读快照：页面容器 + 已脱敏的代码行 DOM。 */
+export function createCodeMinimapSource() {
+    const root = codeView()
+
+    function measure() {
+        const view = codeView()
+        const rect = view?.getBoundingClientRect()
+        const contentWidth = Math.max(1, rect?.width || document.documentElement.clientWidth || 1)
+        const scrollTop = window.scrollY || document.documentElement.scrollTop || 0
+        const docHeight = Math.max(0, document.documentElement.scrollHeight || 0)
+        const viewportHeight = Math.max(0, window.innerHeight || document.documentElement.clientHeight || 0)
+        return { contentWidth, docHeight, viewportHeight, scrollTop, root: view || null }
+    }
+
+    function snapshot() {
+        const view = codeView()
+        const code = codeElement()
+        if (!view || !code) return null
+        const style = getComputedStyle(view)
+        const zoom = Number.parseFloat(style.zoom) || 1
+        const rect = view.getBoundingClientRect()
+        const page = document.createElement('div')
+        page.className = 'minimap-page minimap-code-page'
+        if (!state.codeLineNumbers) page.classList.add('no-line-numbers')
+        page.style.width = `${rect.width / zoom}px`
+        page.style.zoom = String(zoom)
+        page.style.boxSizing = 'border-box'
+        page.style.margin = '0'
+        page.style.overflow = 'hidden'
+        page.style.padding = `${style.paddingTop} ${style.paddingRight} ${style.paddingBottom} ${style.paddingLeft}`
+        page.style.background = style.backgroundColor
+        page.style.color = style.color
+        page.style.fontFamily = style.fontFamily
+        page.style.fontSize = style.fontSize
+        page.style.lineHeight = style.lineHeight
+        page.style.whiteSpace = 'normal'
+        page.style.tabSize = '4'
+        page.style.setProperty('--code-line-height', style.getPropertyValue('--code-line-height') || '1.55')
+        page.style.setProperty('--code-gutter-digits', style.getPropertyValue('--code-gutter-digits') || '2')
+        const content = cloneReadonly(code)
+        if (!content) return null
+        page.append(content)
+        return page
+    }
+
+    function scrollTo(top) {
+        const max = Math.max(0, document.documentElement.scrollHeight - window.innerHeight)
+        const target = Math.max(0, Math.min(max, Number(top) || 0))
+        window.scrollTo({ top: target, left: 0, behavior: 'auto' })
+    }
+
+    return { root, measure, scrollTo, snapshot }
 }
 
 // ---------- 代码内查找（文本选区实现，不重建 DOM，避免打断高亮结构） ----------

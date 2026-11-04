@@ -19,6 +19,7 @@ import { scheduleStats } from './stats.js'
 import { selInfoProse } from './selinfo.js'
 import { getMermaidView } from './mermaid-view.js'
 import { getImageView } from './image-view.js'
+import { cloneReadonly } from '../../shared/readonly-clone.js'
 
 import { fourSpaceListItem } from './list-indent.js'
 
@@ -227,6 +228,59 @@ export function createImageInsertion() {
             })
         },
     }
+}
+
+// ---------- 缩略图只读快照（组件内部导出，只经 assemble 注入 minimapSources） ----------
+
+function pageStyleFromRoot(root) {
+    const style = getComputedStyle(root)
+    const zoom = Number.parseFloat(style.zoom) || 1
+    const rect = root.getBoundingClientRect()
+    return { style, zoom, rect }
+}
+
+/** Markdown 面的只读快照：页面容器 + 已脱敏的真实渲染 DOM。 */
+export function createMarkdownMinimapSource() {
+    const root = document.getElementById('app')
+
+    function measure() {
+        const app = document.getElementById('app')
+        const rect = app?.getBoundingClientRect()
+        const contentWidth = Math.max(1, rect?.width || document.documentElement.clientWidth || 1)
+        const scrollTop = window.scrollY || document.documentElement.scrollTop || 0
+        const docHeight = Math.max(0, document.documentElement.scrollHeight || 0)
+        const viewportHeight = Math.max(0, window.innerHeight || document.documentElement.clientHeight || 0)
+        return { contentWidth, docHeight, viewportHeight, scrollTop, root: app || null }
+    }
+
+    function snapshot() {
+        const app = document.getElementById('app')
+        const prose = app?.querySelector('.ProseMirror')
+        if (!app || !prose) return null
+        const { style, zoom, rect } = pageStyleFromRoot(app)
+        const page = document.createElement('div')
+        page.className = 'minimap-page minimap-markdown-page'
+        page.style.width = `${rect.width / zoom}px`
+        page.style.zoom = String(zoom)
+        page.style.boxSizing = 'border-box'
+        page.style.margin = '0'
+        page.style.overflow = 'hidden'
+        page.style.padding = `${style.paddingTop} ${style.paddingRight} ${style.paddingBottom} ${style.paddingLeft}`
+        page.style.background = style.backgroundColor
+        page.style.color = style.color
+        const content = cloneReadonly(prose)
+        if (!content) return null
+        page.append(content)
+        return page
+    }
+
+    function scrollTo(top) {
+        const max = Math.max(0, document.documentElement.scrollHeight - window.innerHeight)
+        const target = Math.max(0, Math.min(max, Number(top) || 0))
+        window.scrollTo({ top: target, left: 0, behavior: 'auto' })
+    }
+
+    return { root, measure, scrollTo, snapshot }
 }
 
 /** editorSurface：document 组件所需的编辑面能力（组件间唯一相识面） */

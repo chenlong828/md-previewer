@@ -28,9 +28,9 @@ function registerAll(registry) {
   for (const op of HOST_OPS) registry.register(op, () => ({}));
 }
 
-test('契约清单：39 个 host op、7 个通知、2 个内核请求，且不重复', () => {
-  assert.equal(HOST_OPS.length, 39);
-  assert.equal(new Set(HOST_OPS).size, 39);
+test('契约清单：41 个 host op、7 个通知、2 个内核请求，且不重复', () => {
+  assert.equal(HOST_OPS.length, 41);
+  assert.equal(new Set(HOST_OPS).size, 41);
   assert.deepEqual([...NOTIFICATIONS], ['boot', 'ready', 'changed', 'stats', 'sourceMode', 'selinfo', 'jserror']);
   assert.deepEqual([...KERNEL_REQUESTS], ['resolveResources', 'importImage']);
 });
@@ -121,6 +121,27 @@ test('bad_payload：字段缺失或类型不对 → bad_payload 并指出字段'
   const wrongType = await shell.request('setCode', { text: 42 });
   assert.equal(wrongType.error.code, CODES.badPayload);
   assert.match(wrongType.error.message, /text/);
+});
+
+test('缩略图 op：setMinimapVisible 必须带 boolean，缺字段/错类型 → bad_payload', async () => {
+  const { shell } = makeKernel({
+    registerOps: (registry) => {
+      registry.register('init', () => ({}));
+      registry.register('setMinimapVisible', () => ({ visible: true }));
+    },
+  });
+  await shell.request('init', V2_INIT);
+
+  const missing = await shell.request('setMinimapVisible', {});
+  assert.equal(missing.error.code, CODES.badPayload);
+  assert.match(missing.error.message, /visible/);
+
+  const wrongType = await shell.request('setMinimapVisible', { visible: 'true' });
+  assert.equal(wrongType.error.code, CODES.badPayload);
+  assert.match(wrongType.error.message, /visible/);
+
+  const valid = await shell.request('setMinimapVisible', { visible: true });
+  assert.equal(valid.ok, true);
 });
 
 test('not_ready：握手前的 gated op 显式报错；init 后可调用', async () => {

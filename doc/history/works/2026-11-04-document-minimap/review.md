@@ -1,14 +1,14 @@
 ---
-layer: works
+layer: history
 module: navigation
-status: active
-updated: 2026-11-04
+status: frozen
+updated: 2026-11-05
 ---
 
 # 设计评审批次：右侧文档缩略图（P1）
 
-> 对应 brief：[brief.md](brief.md)；需求 [REQ-0011](../../requirements/REQ-0011-document-minimap.md)；场景 [SCN-0017](../../design/scenarios/navigation/in-document/minimap-navigation/scenario.md)；组件 [CMP-minimap](../../design/components/CMP-minimap/spec.md)。
-> 结论：**有条件通过**（条件见 §4）。这是 P1 第一次门（切分/契约），**用户确认前不编码**；实现后的最终门另记。
+> 对应 brief：[brief.md](brief.md)；需求 [REQ-0011](../../../requirements/REQ-0011-document-minimap.md)；场景 [SCN-0017](../../../design/scenarios/navigation/in-document/minimap-navigation/scenario.md)；组件 [CMP-minimap](../../../design/components/CMP-minimap/spec.md)。
+> 结论：**第一门有条件通过**（条件见 §4）。用户已确认并转入实现；**实现后复审见 §6**，最终门已于 2026-11-05 通过。
 
 ## 1. 走查范围
 
@@ -30,7 +30,7 @@ updated: 2026-11-04
 
 | 决策 | 选择 | 代价/被否方案 |
 |---|---|---|
-| 真缩略图的实现 | **Canvas 文字采样 + 图片缩略**，不复制 DOM、不截图 | 观感不是逐像素截图；被否：DOM clone（临时编辑态/长文内存/双份 DOM）、截图（只能截视口，无法覆盖全文） |
+| 真缩略图的实现 | **只读 DOM 克隆 + 顶左等比缩放（fit）**，不截图（2026-11-05 修订） | 临时编辑态/内存通过脱敏与单份副本控制；被否：Canvas 采样（保真不足）、截图（只能截视口） |
 | 组件边界 | 新增 `CMP-minimap`，source 投影由 `CMP-editor` / `CMP-code-view` 提供，组合根注入 | 比“组件内直接查 DOM”多一层契约；被否：把缩略图塞进两个内容面（复制核心） |
 | 布局 | 固定 120px，正文预留 146px，保留 8px 系统滚动条；v1 不做宽度拖拽 | 占用正文宽度；被否：悬浮覆盖正文（遮挡）、独立窗口（超出需求） |
 | 场景归属 | 新增 `SCN-0017`，放 `navigation/in-document` | 新增 value stream；被否：塞进 SCN-0002/0016（一个需求跨两个旅程，断言分散） |
@@ -42,13 +42,13 @@ updated: 2026-11-04
 |---|---|
 | 导出隔离 | `web/src/export.js` 只取 `getHTML()`，缩略图 DOM 不进入；打印用 `@media print` 隐藏并取消预留 |
 | 无脏变更 | 组件只读 source/滚动，不调 `markClean`、不写 `state.lastMarkdown`/`codeText`；selftest 断言 `changed` 计数不增 |
-| 滚动热路径 | 滚动只更新视口框（rAF），内容层防抖重绘；不复制 DOM、不在滚动中测量整篇 |
+| 滚动热路径 | 滚动只更新视口框（rAF），快照防抖重建；滚动中不克隆 DOM、不测量整篇 |
 | 代码面既有边界 | 代码只读、512 KB 上限、行结构/行号/查找不变；source 只读 `lineMeta`/`state.codeText` |
 | 布局不放大预留 | `body` 不做 `zoom`，`--app-zoom` 只作用于 `#app`/`#code-view`；146px 预留保持视觉恒定 |
-| 临时编辑态 | 图片/Mermaid `editing` 用占位，不把源码 textarea 当正文 |
+| 临时编辑态 | 脱敏移除 textarea/按钮等临时控件，不把编辑控件当正文 |
 | 浏览器滚动权威 | 组件不维护第二份 scrollTop；`scrollTo` 夹取；点击越界不产生负滚动 |
 | 菜单/数据所有权 | 偏好只在 `CMP-app-shell` 写 `UserDefaults`；组件只读投影；web 不回写 |
-| 依赖 | 无新第三方依赖；Canvas/DOM 标准能力；source 普通对象无框架类型泄漏 |
+| 依赖 | 无新第三方依赖；DOM/Pointer Events/CSS transform 标准能力；source 普通对象无框架类型泄漏 |
 | 删除测试 | 通过：两个内容面各自重建会复制核心复杂度，不消失 |
 
 ### Hold
@@ -79,13 +79,34 @@ updated: 2026-11-04
 
 条件（均为 Decision now 档）：
 
-1. 用户确认 §2 Decision now 的 5 项，尤其是 `CMP-minimap` + source 投影的切分、Canvas 真缩略图方案、固定 120px。
+1. 用户确认 §2 Decision now 的 5 项，尤其是 `CMP-minimap` + source 快照的切分、DOM 真缩略图方案、固定 120px。
 2. 确认 `SCN-0017` 放在 `navigation/in-document`（新增 value stream），不塞进既有 SCN-0002/0016。
 3. 确认实现顺序：T15 minimap 骨架 → T16/T17 source → T18 菜单/桥 → T19 验证；P1 设计门未过不写实现代码。
 
-**待用户确认**：2026-11-04 文档已出，未签字。
+**用户确认**：2026-11-04 设计门通过；2026-11-05 实现验收通过。
 
 ## 5. 开放问题
 
-- 视觉验收的“接近 compare.png”由用户在 verify 阶段判定；若要求更接近截图的字形精度，需要重开 Decision now（DOM clone/其他方案），不能悄悄加大采样成本。
+- 视觉验收的“接近 compare.png”由用户在 verify 阶段判定；若要求更接近截图的字形精度，需要重开 Decision now（提高快照保真/缩放策略），不能悄悄加大采样成本。
 - 真实拖拽手感、触控板惯性按 R8 列为人工点验，不作为自动化通过条件。
+
+## 6. 实现后复审（2026-11-04）
+
+用户确认 P1 设计后，实现按 v2 七组件结构落地。第一门的五项 Decision now 不变，但实现细节有一处重要修正：
+
+| 项 | 第一门设想 | 实现落地 | 结论 |
+|---|---|---|---|
+| 缩略图归属 | 新组件 `CMP-minimap`，source 由 domain editor/code 的公开投影提供 | 领域卡 `CMP-minimap` + 实现组件 `CMP-kernel-minimap`；source 是 editor/code 的**内部工厂**，经 `minimapSources` 端口注入 | 保持“一个组件只干一件事”；避免把 source 提升为跨域公开契约 |
+| source 形状 | 跨组件 `CMP-editor#minimap-source` / `CMP-code-view#minimap-source` | 不新增公开契约；`createMarkdownMinimapSource` / `createCodeMinimapSource` 只由 `assemble.js` 消费 | 领域卡不复制实现契约；`check-kernel` 禁跨组件 import |
+| 协议 | `setMinimapVisible` + `minimapInfo` + `init.opts.minimapVisible` | 同上；`HOST_OPS` 39→41，握手 `protocolVersion=2` | 加法扩展，向后兼容 |
+| 布局 | 120px 轨 + 146px 预留 | 同上；源码模式同步取消预留；动态读系统滚动条宽度 | 无变更 |
+| 验证 | 3+1 自动化 + 人工 | Node 85 项；selftest 缩略图 4 组断言；Markdown/长代码截图已出 | 2026-11-05 用户验收通过 |
+
+**复审四档**：
+
+- **Blocker**：无。
+- **Decision now**：维持“第七个功能组件”边界；2026-11-05 真缩略图实现改为 DOM 克隆 + 顶左 fit；source 工厂留在内容面内部；不把 minimap 逻辑塞进 `CMP-kernel-core`（该组件已退役）或 document。理由：缩略图是独立阅读能力，和文档会话/编辑面不是同一变化轴。
+- **Verified sound**：`minimap.test.js` 覆盖顶左 fit/内容矩形/空白区不响应/按内容高度拖动/只读脱敏；`core.test.js` 覆盖 init 偏好与 op 往返；selftest 覆盖默认显示/正文预留/开关；`check-kernel` 43 文件通过；`./build.sh debug` 全绿。
+- **Hold**：性能阈值未仪表化；键盘/无障碍未做。均不阻塞本次交付。
+
+**最终门通过**：2026-11-05 用户确认 Markdown 与代码窗口效果并同意提交推送；SCN-0017 转 `verified`、REQ-0011 转 `delivered`，本工序归档。

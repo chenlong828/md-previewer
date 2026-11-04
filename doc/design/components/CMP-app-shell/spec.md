@@ -14,8 +14,8 @@ updated: 2026-11-04
 - 单元：组件
 - 层 / 类型：L2 整合；技术边界 + 应用编排
 - 业务价值：为使用者提供「一个进程、一个 Dock 图标、多个文档窗口」的 macOS 应用外壳；没有它，文件无法被打开到正确的窗口，菜单/快捷键/最近文件也没有统一入口。
-- 负责：应用启动与参数路由、窗口创建/替换/关闭、菜单与快捷键、最近文件、缩放与外观的应用、退出前的脏文档确认；**壳侧 v2 协议客户端 `KernelClient`**（帧编解码、id→completion 表、超时、内核请求应答）；「视图 → 高亮语言」菜单只做入口与勾选同步，语言判定归 `CMP-code-view`；「视图 → 显示行号」菜单只做入口/勾选与全局广播，偏好判定归 `CMP-code-view`；「视图 → 显示文档缩略图」菜单只做入口/勾选、偏好存储与全局广播，绘制/交互归 `CMP-minimap`。
-- 不负责：文件内容读写（`CMP-document-io`）、编辑器内部行为（`CMP-editor`）、抽屉树（`CMP-drawer`）、导出实现（`CMP-export`）、缩略图绘制/内容投影/滚动定位（`CMP-minimap`）、帧格式与 op 校验（`CMP-kernel-contract`）、编辑与导出能力实现（`CMP-kernel-editor` / `CMP-kernel-output` 等六组件）、注入脚本（v2 起产品路径为零）。
+- 负责：应用启动与参数路由、窗口创建/替换/关闭、菜单与快捷键、最近文件、缩放与外观的应用、退出前的脏文档确认；**壳侧 v2 协议客户端 `KernelClient`**（帧编解码、id→completion 表、超时、内核请求应答）；「视图 → 高亮语言」菜单只做入口与勾选同步，语言判定归 `CMP-code-view`；「视图 → 显示行号」菜单只做入口/勾选与全局广播，偏好判定归 `CMP-code-view`；「视图 → 显示文档缩略图」菜单只做入口/勾选、偏好存储与全局广播，快照/交互归 `CMP-minimap`。
+- 不负责：文件内容读写（`CMP-document-io`）、编辑器内部行为（`CMP-editor`）、抽屉树（`CMP-drawer`）、导出实现（`CMP-export`）、缩略图快照/内容投影/滚动定位（`CMP-minimap` / `CMP-kernel-minimap`）、帧格式与 op 校验（`CMP-kernel-contract`）、编辑与导出能力实现（`CMP-kernel-editor` / `CMP-kernel-output` 等七组件）、注入脚本（v2 起产品路径为零）。
 - 内部逻辑：`AppDelegate` 维护文档窗口集合与打开路由；`DocumentWindowController` 承载单文档窗口并把菜单动作翻成 op（`kernel.send`）；`EditorCommands` 是菜单/右键共用的命令表；`KernelClient` 是协议客户端（`installScript` 注入 channel → `attach` → `send`/`receive`/`respond`，`info` 存握手结果）。
 - 拥有的数据：窗口 frame、最近文件列表、缩放比例、外观锁定；不拥有文档正文。
 - 变化轴：打开方式的增减（CLI/拖放/Finder/⌘O/最近）、窗口模型、菜单命令表。
@@ -38,16 +38,16 @@ updated: 2026-11-04
   - `CMP-app-shell/Sources/MDPreview/AppDelegate.swift#openInNewWindow`
   - `CMP-app-shell/Sources/MDPreview/DocumentWindowController.swift#openDocument`
   - `CMP-app-shell/Sources/MDPreview/DocumentWindowController.swift#toggleCodeLineNumbersAction`
-  - `CMP-app-shell/Sources/MDPreview/DocumentWindowController.swift#toggleMinimapAction`（planned，REQ-0011）
+  - `CMP-app-shell/Sources/MDPreview/DocumentWindowController.swift#toggleMinimapAction`
   - `CMP-app-shell/Sources/MDPreview/EditorCommands.swift#EditorCommands`
   - `CMP-app-shell/Sources/MDPreview/AppDelegate.swift#buildMenus`
   - `CMP-app-shell/Sources/MDPreview/AppDelegate.swift#applyCodeLineNumbersToAllDocuments`
-  - `CMP-app-shell/Sources/MDPreview/AppDelegate.swift#applyMinimapVisibilityToAllDocuments`（planned，REQ-0011）
+  - `CMP-app-shell/Sources/MDPreview/AppDelegate.swift#applyMinimapVisibilityToAllDocuments`
   - `CMP-app-shell/Sources/MDPreview/KernelClient.swift#KernelClient`（`installScript`/`send`/`receive`/`respond`/`info`）
   - `CMP-app-shell/Sources/MDPreview/DocumentWindowController.swift#resolveResources`（内核 `resolveResources` 请求的应答方）
   - `CMP-app-shell/Sources/MDPreview/DocumentWindowController.swift#performImport`（内核 `importImage` 请求的应答方）
   - `CMP-app-shell/Sources/MDPreview/EditorWebView.swift#makeConfiguration`（注入 channel；`testFacade` 才装 `__MDP_TEST__` 门面）
-- 依赖：`CMP-document-io`（打开/保存）、`CMP-editor`（内容面）、`CMP-drawer`（目录导航）、`CMP-export`（导出）、`CMP-diagnostics`（测试入口）、`CMP-kernel-contract`（帧格式/op 清单/错误码）、`CMP-kernel-transport`（channel 契约）、`CMP-kernel-semantics`（保存口径经 `getSaveMarkdown` 取用）；`CMP-minimap` 仅通过桥的 `setMinimapVisible` 入口联动，不直接 import。
+- 依赖：`CMP-document-io`（打开/保存）、`CMP-editor`（内容面）、`CMP-drawer`（目录导航）、`CMP-export`（导出）、`CMP-diagnostics`（测试入口）、`CMP-kernel-contract`（帧格式/op 清单/错误码）、`CMP-kernel-transport`（channel 契约）、`CMP-kernel-semantics`（保存口径经 `getSaveMarkdown` 取用）；`CMP-minimap` / `CMP-kernel-minimap` 仅通过 `setMinimapVisible` 与 `init.opts.minimapVisible` 联动，不直接 import。
 - 冷热属性：冷路径；不进入编辑输入热路径。缩略图开关是低频菜单动作，广播只调用桥，不重绘正文。
 - 尺寸预算：目标 ≤120k token；当前约 2.3k 行（main 362 + AppDelegate 523 + KernelClient 171 + 窗口编排 1527 + EditorCommands 104），缩略图菜单/偏好另计，实测待脚本。
 - 单独运行：`./.build/debug/MDPreview --multiwindow-test --fileA=a.md --fileB=b.md`；菜单/缩放用 `--selftest`。
@@ -79,9 +79,9 @@ updated: 2026-11-04
 | `#appearance` | `--selftest`：「深色主题切换」 |
 | `#highlight-language-menu` | `--selftest`：「代码视图 语言表覆盖扩展名」「代码视图 双端语言清单一致」；勾选/置灰人工 |
 | `#code-line-numbers-menu` | `--selftest`：「代码视图 行号开关与复制文本」；勾选/跨窗口广播人工（R8，2026-11-04 用户确认） |
-| `#minimap-menu` | `--selftest`：「缩略图 代码面与开关」：菜单动作切换偏好、广播所有窗口、源码模式置灰；勾选/跨窗口继承人工（R8） |
+| `#minimap-menu` | `--selftest`：「缩略图 默认显示」「缩略图 开关隐藏/恢复」（经 `setMinimapVisible`）；菜单勾选/跨窗口继承人工（R8） |
 | `#open-document` / `#quit` | 人工：CLI/拖放/⌘O/最近 + 脏文档退出 |
-| `#protocol-client` | `--selftest`：「v2 握手响应」「v2 握手(protocolVersion=2, ops=39)」「v2 op 往返(getState)」「装载改写(内核改写+壳作答)」「保存口径(内核还原相对路径)」；协议层本身由 `web/test/contract.test.js` 18 项覆盖（不依赖 WebView） |
+| `#protocol-client` | `--selftest`：「v2 握手响应」「v2 握手(protocolVersion=2, ops=41)」「v2 op 往返(getState)」「缩略图诊断(minimapInfo)」「装载改写(内核改写+壳作答)」「保存口径(内核还原相对路径)」；协议层本身由 `web/test/contract.test.js` 19 项覆盖（不依赖 WebView） |
 
 ## 数据所有权与预算
 
@@ -91,7 +91,7 @@ updated: 2026-11-04
 | 窗口 frame / 缩放 / 外观 | 本组件 | 本组件 | UserDefaults |
 | 文档正文 | `CMP-document-io` | 本组件只传引用 | 不复制 |
 | 代码行号显示偏好 | `CMP-code-view`（控制器静态入口） | 本组件菜单勾选 | 单一来源，本组件不另存 |
-| 缩略图显示偏好 | 本组件（`UserDefaults["minimapVisible"]`，默认 true） | 本组件菜单勾选、各窗口 `setMinimapVisible` | 单一来源；`CMP-minimap` 只读投影 |
+| 缩略图显示偏好 | 本组件（`UserDefaults["minimapVisible"]`，默认 true） | 本组件菜单勾选、各窗口 `setMinimapVisible` | 单一来源；`CMP-minimap` 只读快照 |
 | 待决请求（id → completion + 超时句柄） | 本组件 `KernelClient.send` | 响应到达时结算 | 单实例；超时与响应二者先到者结算 |
 | 握手结果（kernelVersion/protocolVersion/ops） | 本组件 `recordHandshake` | 自检断言、错误上报 | 单次握手，不重试 |
 

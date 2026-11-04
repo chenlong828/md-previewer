@@ -2,9 +2,20 @@
 // 页面入口与测试组合根都走这里；组件之间互不 import，全部经本文件接线。
 import { provide, resetPorts } from './shared/ports.js'
 import { createFindService } from './components/find/index.js'
-import { createCodeSearch, createCodeSurface, createCodeLanguages } from './components/code/index.js'
-import { createEditorSurface, createRenderSurface, createImageInsertion } from './components/editor/editor.js'
+import {
+    createCodeSearch,
+    createCodeSurface,
+    createCodeLanguages,
+    createCodeMinimapSource,
+} from './components/code/index.js'
+import {
+    createEditorSurface,
+    createRenderSurface,
+    createImageInsertion,
+    createMarkdownMinimapSource,
+} from './components/editor/editor.js'
 import { createMediaPaste } from './components/media/image-paste.js'
+import { createMinimap, createMinimapSurface } from './components/minimap/index.js'
 import { createOps } from './ops.js'
 
 /**
@@ -14,6 +25,7 @@ import { createOps } from './ops.js'
 export function createKernelOps({ fresh = false } = {}) {
     if (fresh) resetPorts()
     const findService = createFindService()
+    const minimap = createMinimap()
     provide('findService', findService)
     provide('searchSurface', createCodeSearch())
     provide('codeSurface', createCodeSurface())
@@ -22,5 +34,11 @@ export function createKernelOps({ fresh = false } = {}) {
     provide('renderSurface', createRenderSurface())
     provide('imageInsertion', createImageInsertion())
     provide('mediaPaste', createMediaPaste())
-    return { ops: createOps(), findService }
+    // 缩略图只消费只读快照与自身 surface；正文/代码组件不 import 缩略图。
+    provide('minimapSurface', createMinimapSurface(minimap))
+    provide('minimapSources', {
+        markdown: createMarkdownMinimapSource,
+        code: createCodeMinimapSource,
+    })
+    return { ops: createOps(), findService, minimap }
 }
