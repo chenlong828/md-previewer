@@ -5,8 +5,10 @@ import WebKit
 /// JS → Swift 通过 window.webkit.messageHandlers.mdbridge.postMessage({op:..., ...})
 /// Swift → JS 通过 evaluateJavaScript 调用 window.mdbridge 上的方法。
 final class EditorWebView: WKWebView, WKScriptMessageHandler, WKNavigationDelegate {
-    /// 收到来自 web 的消息 (op, payload)
+    /// 收到来自 web 的消息 (op, payload)：仅旧式字典帧会走到这里
     var onBridgeMessage: ((String, [String: Any]) -> Void)?
+    /// v2 帧入口：返回 true 表示已由 KernelClient 消费（不再走旧处理器）
+    var onKernelMessage: ((Any) -> Bool)?
     var onDocumentLinkActivated: ((URL) -> Void)?
     var onPageReady: (() -> Void)?
     /// 拖入的是图片文件时交控制器导入(其余文件仍走开新窗)
@@ -19,6 +21,12 @@ final class EditorWebView: WKWebView, WKScriptMessageHandler, WKNavigationDelega
 
     static func makeConfiguration() -> WKWebViewConfiguration {
         let config = WKWebViewConfiguration()
+        // v2 传输通道：必须在 bundle 求值前注入（内核缺 channel 会显式失败）
+        config.userContentController.addUserScript(WKUserScript(
+            source: KernelClient.installScript,
+            injectionTime: .atDocumentStart,
+            forMainFrameOnly: true
+        ))
         // 消息处理在 init 中注册(需要回填弱引用代理的 target)
         // 编辑器无需持久化站点数据(纯本地文档工具),用内存存储避免写用户目录
         config.websiteDataStore = .nonPersistent()
@@ -78,6 +86,7 @@ final class EditorWebView: WKWebView, WKScriptMessageHandler, WKNavigationDelega
     // MARK: - JS 消息代理中转
 
     func relayMessage(_ body: Any) {
+        if onKernelMessage?(body) == true { return }
         guard let dict = body as? [String: Any], let op = dict["op"] as? String else { return }
         onBridgeMessage?(op, dict)
     }

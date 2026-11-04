@@ -13,6 +13,8 @@ final class SelftestRunner: NSObject {
     private var window: NSWindow!
     private var bootReceived = false
     private var readyReceived = false
+    private let kernel = KernelClient()
+    private let lightKernel = KernelClient()
     /// 等待间隔命名常量(非魔力裸数字:注明依据)
     enum Polling {
         /// 几何收敛轮询间隔:一轮布局+合成至少数帧,0.05s 足以观察到变化
@@ -96,19 +98,18 @@ func greet() -> String {
         window.contentView?.addSubview(webview)
         window.orderFrontRegardless() // 需要参与渲染,但 app 为 .prohibited 不抢焦点
 
+        kernel.attach(to: webview)
+        webview.onKernelMessage = { [weak self] body in
+            self?.kernel.receive(body) ?? false
+        }
+        kernel.onNotification = { [weak self] op, payload in
+            self?.handleNotification(op: op, payload: payload)
+        }
+        kernel.onRequest = { [weak self] op, payload, reply in
+            self?.handleKernelRequest(op: op, payload: payload, reply: reply)
+        }
         webview.onBridgeMessage = { [weak self] op, payload in
-            guard let self else { return }
-            if op == "boot" { self.bootReceived = true }
-            if op == "ready" { self.readyReceived = true }
-            if op == "changed" {
-                changedTotalCount += 1
-                if (payload["dirty"] as? Bool) ?? true { changedTrueCount += 1 }
-            }
-            if op == "jserror" {
-                let msg = payload["message"] as? String ?? "?"
-                let stack = payload["stack"] as? String ?? ""
-                print("WEB-JS-ERROR: \(msg)\n\(stack.prefix(1200))")
-            }
+            self?.handleNotification(op: op, payload: payload)
         }
 
         webview.loadFileURL(pageURL, allowingReadAccessTo: URL(fileURLWithPath: "/"))
@@ -118,9 +119,31 @@ func greet() -> String {
 
         // ── 初始化编辑器(baseDir 供图片源码编辑框做相对路径换算)
         let pluginSet = ProcessInfo.processInfo.environment["MDP_PLUGINS"] ?? "full"
-        let optsJSON = "{\"theme\":\"light\",\"zoom\":1,\"plugins\":\"\(pluginSet)\",\"baseDir\":\"/tmp\"}"
-        evaluate("void window.mdbridge.init(\(JSArgs.string(SelftestRunner.sampleMarkdown)), \(optsJSON))") { _ in }
+        let initOpts: [String: Any] = [
+            "protocolVersion": KernelClient.protocolVersion,
+            "theme": "light", "zoom": 1, "plugins": pluginSet, "baseDir": "/tmp",
+        ]
+        kernel.send("init", ["markdown": SelftestRunner.sampleMarkdown, "opts": initOpts]) { [weak self] result in
+            if case .success(let payload) = result { self?.kernel.recordHandshake(payload) }
+        }
         waitFor("编辑器初始化(ready)", timeout: 30) { self.readyReceived }
+        // v2 通道自证：握手拿到协议版本与 op 清单，且一次真实 op 往返成立
+        // （ready 通知先于 init 响应到达，因此这里等响应落表，不假设顺序）
+        waitFor("v2 握手响应", timeout: 10) { !self.kernel.info.isEmpty }
+        let handshakeVersion = kernel.info["protocolVersion"] as? Int ?? -1
+        let handshakeOps = (kernel.info["ops"] as? [String]) ?? []
+        if handshakeVersion == KernelClient.protocolVersion && handshakeOps.contains("getState") {
+            pass("v2 握手(protocolVersion=2, ops=\(handshakeOps.count))")
+        } else {
+            fail("v2 握手(version=\(handshakeVersion), ops=\(handshakeOps.count))")
+        }
+        var stateRoundTrip = false
+        kernel.send("getState") { result in
+            if case .success(let payload) = result {
+                stateRoundTrip = (payload["theme"] as? String) == "light" && payload["zoom"] != nil
+            }
+        }
+        waitFor("v2 op 往返(getState)", timeout: 10) { stateRoundTrip }
         // 条件轮询替代纯睡:mermaid 异步渲染以 svg 挂载为准
         waitForValue("mermaid svg 异步渲染就绪", timeout: 10,
                      script: "document.querySelectorAll('[data-type=diagram] svg').length",
@@ -919,6 +942,42 @@ func greet() -> String {
         }
     }
 
+    /// v2 通知统一入口（boot/ready/changed/jserror 与旧桥同名同形状）
+    private func handleNotification(op: String, payload: [String: Any]) {
+        if op == "boot" { bootReceived = true }
+        if op == "ready" { readyReceived = true }
+        if op == "changed" {
+            changedTotalCount += 1
+            if (payload["dirty"] as? Bool) ?? true { changedTrueCount += 1 }
+        }
+        if op == "jserror" {
+            let msg = payload["message"] as? String ?? "?"
+            let stack = payload["stack"] as? String ?? ""
+            print("WEB-JS-ERROR: \(msg)\n\(stack.prefix(1200))")
+        }
+    }
+
+    /// 内核发起的请求：自检场景的文档在 /tmp，资源问答按缺省作答（引用保持原文）
+    private func handleKernelRequest(
+        op: String,
+        payload: [String: Any],
+        reply: @escaping (Result<[String: Any], KernelClient.KernelError>) -> Void
+    ) {
+        switch op {
+        case "resolveResources":
+            let refs = payload["refs"] as? [String] ?? []
+            var resources: [String: Any] = [:]
+            for ref in refs {
+                resources[ref] = ["url": NSNull(), "exists": false, "isImage": false, "paths": [String]()]
+            }
+            reply(.success(["resources": resources]))
+        case "importImage":
+            reply(.success(["ok": false]))
+        default:
+            reply(.failure(KernelClient.KernelError(code: "unknown_op", message: "自检未实现 \(op)")))
+        }
+    }
+
     /// 第二个页面实例验证 plugins 配置真实生效(OQ-1 选 a:保留轻量模式能力)
     private func runPluginSetCheck() {
         guard let pageURL = WebLocator.indexURL() else {
@@ -936,17 +995,27 @@ func greet() -> String {
         lightWebview.autoresizingMask = [.width, .height]
         lightWindow.contentView?.addSubview(lightWebview)
         lightWindow.orderFrontRegardless()
-        lightWebview.onBridgeMessage = { [weak self] op, _ in
+        lightKernel.attach(to: lightWebview)
+        lightWebview.onKernelMessage = { [weak self] body in
+            self?.lightKernel.receive(body) ?? false
+        }
+        lightKernel.onNotification = { [weak self] op, _ in
             guard let self else { return }
             if op == "boot" { self.lightBootReceived = true }
             if op == "ready" { self.lightReadyReceived = true }
+        }
+        lightKernel.onRequest = { [weak self] op, payload, reply in
+            self?.handleKernelRequest(op: op, payload: payload, reply: reply)
         }
         lightWebview.loadFileURL(pageURL, allowingReadAccessTo: URL(fileURLWithPath: "/"))
 
         waitFor("OQ-1 轻量页脚本加载", timeout: 30) { self.lightBootReceived }
         let lightMD = "# 轻量\n\n```mermaid\ngraph LR\n  A --> B\n```\n\n$E = mc^2$\n"
-        let lightOpts = "{\"theme\":\"light\",\"zoom\":1,\"plugins\":\"no-diagram\"}"
-        evaluate("void window.mdbridge.init(\(JSArgs.string(lightMD)), \(lightOpts))", on: lightWebview) { _ in }
+        let lightOpts: [String: Any] = [
+            "protocolVersion": KernelClient.protocolVersion,
+            "theme": "light", "zoom": 1, "plugins": "no-diagram",
+        ]
+        lightKernel.send("init", ["markdown": lightMD, "opts": lightOpts]) { _ in }
         waitFor("OQ-1 轻量初始化(ready)", timeout: 30) { self.lightReadyReceived }
 
         var diagramOff = false

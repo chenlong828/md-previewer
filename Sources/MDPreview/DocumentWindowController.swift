@@ -20,6 +20,8 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
     private var isConfirmingClose = false
 
     private var webView: EditorWebView!
+    /// v2 内核客户端（协议见 kernel/contract；Windows 壳参照实现）
+    private let kernel = KernelClient()
     var webViewIfNeeded: EditorWebView? { webView }
     private var statusLabel: NSTextField!
     private var zoomLabel: NSTextField!
@@ -124,8 +126,18 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
 
         webView = EditorWebView(configuration: EditorWebView.makeConfiguration())
         webView.translatesAutoresizingMaskIntoConstraints = false
+        kernel.attach(to: webView)
+        webView.onKernelMessage = { [weak self] body in
+            self?.kernel.receive(body) ?? false
+        }
         webView.onBridgeMessage = { [weak self] op, payload in
             self?.handleBridgeMessage(op: op, payload: payload)
+        }
+        kernel.onNotification = { [weak self] op, payload in
+            self?.handleBridgeMessage(op: op, payload: payload)
+        }
+        kernel.onRequest = { [weak self] op, payload, reply in
+            self?.handleKernelRequest(op: op, payload: payload, reply: reply)
         }
         webView.onPageReady = { [weak self] in
             self?.pushInitialContent()
@@ -413,13 +425,9 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
     /// forceReload 传目录,前者解析出 doc.md/resource/... 恒不存在 → 图片全不显示)。
     private func injectMarkdown(_ text: String, docURL: URL) {
         isLoadingContent = true
-        let rewritten = ImagePathRewriter.forLoad(text, baseURL: docURL.deletingLastPathComponent())
-        // baseDir 供图片源码编辑框做 相对路径⇄绝对 file:// 的同构换算
-        let optsJSON = (try? JSONSerialization.data(
-            withJSONObject: ["baseDir": docURL.deletingLastPathComponent().path],
-            options: [.fragmentsAllowed]))
-            .flatMap { String(data: $0, encoding: .utf8) } ?? "{}"
-        callJS("window.mdbridge.setMarkdown(\(JSArgs.string(rewritten)), \(optsJSON))") { [weak self] _ in
+        // 路径改写已入内核：壳只回答「这个引用指向哪个真实文件」（resolveResources）
+        let baseDir = docURL.deletingLastPathComponent().path
+        kernel.send("setMarkdown", ["md": text, "baseDir": baseDir]) { [weak self] _ in
             DispatchQueue.main.async {
                 guard let self else { return }
                 self.isLoadingContent = false
@@ -449,19 +457,23 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
     /// 编辑器加载完成后注入初始内容(空文档)
     private func pushInitialContent() {
         let opts: [String: Any] = [
+            // 握手字段：版本不符时内核拒绝服务（不静默降级）
+            "protocolVersion": KernelClient.protocolVersion,
             "theme": AppDelegate.shared?.currentThemeJS() ?? "light",
             "zoom": UserDefaults.standard.double(forKey: "editorZoom").takingIfPositive() ?? 1.0,
             // 文件名传给 web 层作为 document.title(HTML 导出标题的来源);无文件名时 web 层兜底 "MDPreview"
             // 目录模式传目录名
             "title": directoryMode ? (drawerRootURL?.lastPathComponent ?? "") : (fileURL?.lastPathComponent ?? ""),
         ]
-        let optsJSON = (try? JSONSerialization.data(withJSONObject: opts))
-            .flatMap { String(data: $0, encoding: .utf8) } ?? "{}"
-        callJS("window.mdbridge.init('', \(optsJSON))") { result in
-            // isReady 的唯一赋值点在桥消息 "ready" 分支(含暂存文档补载);
-            // 这里只留诊断日志。init 的 evaluateJavaScript 完成与 ready 消息到达
-            // 谁先谁后都安全:补载动作只在桥分支发生,openDocument 自带守卫。
-            os_log(.info, "editor init callback: %{public}@", "\(result ?? "")")
+        kernel.send("init", ["markdown": "", "opts": opts]) { [weak self] result in
+            switch result {
+            case .success(let payload):
+                self?.kernel.recordHandshake(payload)
+                os_log(.info, "kernel handshake: %{public}@", "\(payload["kernelVersion"] ?? "?")")
+            case .failure(let error):
+                // isReady 的唯一赋值点在通知 "ready" 分支；这里只记录握手失败
+                os_log(.error, "kernel init failed: %{public}@ %{public}@", error.code, error.message)
+            }
         }
     }
 
@@ -593,8 +605,6 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
             let where_ = payload["where"] as? String ?? ""
             let stack = payload["stack"] as? String ?? ""
             print("WEB-JS-ERROR: \(msg) @ \(where_)\n\(stack)")
-        case "importImage":
-            handleImportImage(payload)
         default:
             break
         }
@@ -603,23 +613,65 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
     // MARK: - 图片导入(粘贴请求 / 拖放 / 插入菜单 共用的偶发路径)
     // 偶发路径独立成路:落盘失败只弹窗,不进编辑主路径,不拖垮编辑器。
 
-    /// web 粘贴拦截后的落盘请求:blob(剪贴板位图字节)或 file(本地图片路径)。
-    /// 完成后回灌 mdbridge.onImageImported(requestId, {ok, src}) — 失败也回灌
-    /// (ok:false,web 只清挂起表,提示由原生弹窗负责)。
-    private func handleImportImage(_ payload: [String: Any]) {
-        guard let requestId = payload["requestId"] as? String else { return }
-        // 回灌统一出口:成功携带 src;失败只置 ok:false,提示由原生负责
-        func reply(_ imported: ImageStore.Imported?) {
-            var body: [String: Any] = ["ok": imported != nil]
-            if let imported { body["src"] = imported.url.absoluteString }
-            let json = (try? JSONSerialization.data(withJSONObject: body, options: [.fragmentsAllowed]))
-                .flatMap { String(data: $0, encoding: .utf8) } ?? "{\"ok\":false}"
-            callJS("window.mdbridge.onImageImported(\(JSArgs.string(requestId)), \(json))")
+    // MARK: - 内核发起的请求（v2）
+
+    /// 内核请求分发：resolveResources（装载前问真实文件）、importImage（粘贴落盘）。
+    /// 两个请求都不进编辑主路径——失败只影响一次装载/一次粘贴，壳负责提示。
+    private func handleKernelRequest(
+        op: String,
+        payload: [String: Any],
+        reply: @escaping (Result<[String: Any], KernelClient.KernelError>) -> Void
+    ) {
+        switch op {
+        case "resolveResources":
+            reply(.success(resolveResources(payload)))
+        case "importImage":
+            reply(performImport(payload))
+        default:
+            reply(.failure(KernelClient.KernelError(code: "unknown_op", message: "未实现的请求 \(op)")))
         }
+    }
+
+    /// 资源问答：每个引用给出可加载 URL（字面写法存在才算）与全部存在的候选绝对路径。
+    /// 候选两口径（字面 + 百分比解码）是为 GC 的「宁多保护」——任一存在就不当作无引用。
+    private func resolveResources(_ payload: [String: Any]) -> [String: Any] {
+        guard let refs = payload["refs"] as? [String] else { return ["resources": [:]] }
+        var resources: [String: Any] = [:]
+        let baseDir = fileURL?.deletingLastPathComponent()
+        for ref in refs {
+            var answer: [String: Any] = ["url": NSNull(), "exists": false, "isImage": false, "paths": [String]()]
+            defer { resources[ref] = answer }
+            guard let baseDir else { continue }
+            let literal = URL(fileURLWithPath: ref, relativeTo: baseDir).standardizedFileURL
+            let decodedRef = ref.split(separator: "/", omittingEmptySubsequences: false)
+                .map { $0.removingPercentEncoding ?? String($0) }
+                .joined(separator: "/")
+            let decoded = URL(fileURLWithPath: decodedRef, relativeTo: baseDir).standardizedFileURL
+            var paths: [String] = []
+            let literalExists = FileManager.default.fileExists(atPath: literal.path)
+            if literalExists { paths.append(literal.path) }
+            if decoded.path != literal.path, FileManager.default.fileExists(atPath: decoded.path) {
+                paths.append(decoded.path)
+            }
+            answer["exists"] = literalExists
+            answer["isImage"] = !paths.isEmpty && isImageFile(URL(fileURLWithPath: paths[0]))
+            answer["paths"] = paths
+            if literalExists { answer["url"] = literal.absoluteString }
+        }
+        return ["resources": resources]
+    }
+
+    private func isImageFile(_ url: URL) -> Bool {
+        guard let type = UTType(filenameExtension: url.pathExtension) else { return false }
+        return type.conforms(to: .image)
+    }
+
+    /// 粘贴图片落盘：blob（剪贴板位图字节）或 file（本地图片路径），返回 {ok, src}。
+    /// 失败也回 {ok:false}（提示由原生弹窗负责，内核只要求「有答复」）。
+    private func performImport(_ payload: [String: Any]) -> Result<[String: Any], KernelClient.KernelError> {
         guard let fileURL else {
             promptSaveBeforeImagePaste()
-            reply(nil)
-            return
+            return .success(["ok": false])
         }
         do {
             let imported: ImageStore.Imported
@@ -634,10 +686,10 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
             } else {
                 throw ImageStore.ImportError.emptyData
             }
-            reply(imported)
+            return .success(["ok": true, "src": imported.url.absoluteString])
         } catch {
             alertImportFailure(error)
-            reply(nil)
+            return .success(["ok": false])
         }
     }
 

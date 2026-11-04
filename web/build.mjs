@@ -7,7 +7,7 @@ rmSync(outdir, { recursive: true, force: true })
 mkdirSync(outdir, { recursive: true })
 
 await build({
-    entryPoints: ['src/main.js'],
+    entryPoints: ['src/page.js'],
     bundle: true,
     outfile: `${outdir}/bundle.js`,
     format: 'iife',
