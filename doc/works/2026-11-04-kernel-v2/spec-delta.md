@@ -176,6 +176,7 @@ web/src/
 | semantics import core/contract | 同脚本：`kernel/semantics/**` 的 import 白名单 |
 | core 出现 `wcwidth` 类 DOM 全局以外的宿主对象 | 同脚本：`kernel/core/**` 禁 `window.webkit`/`document.title` 以外的宿主面（`document` 允许，属 DOM） |
 | 契约 payload 出现第三方类型 | 契约测试断言：payload 结构仅 JSON 原语（递归检查） |
+| 内核层引入第三方依赖 | 仅 `kernel/core/` 允许（Milkdown/refractor 等引擎本身）；transport/contract/semantics 必须零依赖 |
 | 壳解析/改写 markdown | Swift 侧 grep 守门：`Sources/MDPreview` 禁 `imagePattern`/`forLoad`/`forSave` 类残留（`Util.swift` 对应符号删除后自然消失，脚本断言不存在） |
 
 `web/check-kernel.mjs` 进 `build.sh` 与 `npm run lint` 链路，失败即中断构建。
