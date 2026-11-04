@@ -1,3 +1,10 @@
+---
+layer: history
+module: global
+status: frozen
+updated: 2026-11-04
+---
+
 # result.md — 可移植内核 v2 与桥协议切换（2026-11-04）
 
 ## 交付了什么
