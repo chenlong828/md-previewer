@@ -38,7 +38,7 @@ updated: 2026-11-04
 | [2026-11-04-code-file-view](../history/works/2026-11-04-code-file-view/brief.md) | 代码文件只读查看 + 高亮语言切换（新组件 CMP-code-view；44 语言；6 入口面） | 功能 | M–L | 无 | ✅ 已完成（已归档；117 项 + 人工核对通过） |
 | [2026-11-04-code-view-line-numbers](../history/works/2026-11-04-code-view-line-numbers/brief.md) | 代码视图行号与按行阅读（逻辑行结构、行号、软换行、当前行、全局开关） | 功能/P2 | S–M | 代码文件查看 | ✅ 已完成（已归档；121 项 + 人工核对通过） |
 | [2026-11-04-document-minimap](../works/2026-11-04-document-minimap/brief.md) | 右侧文档缩略图与定位（新组件 CMP-minimap；Markdown + 代码；真缩略图；菜单开关） | 功能/P1 | M–L | 代码文件查看；P1 设计确认 | ⏸ 暂停排队（kernel-v2 重构 web/src 装配与桥层，v2 落地后按新结构接入） |
-| [2026-11-04-kernel-v2](../works/2026-11-04-kernel-v2/brief.md) | 可移植内核与桥协议 v2 落地（transport/contract/semantics/core 四层 + macOS 壳 v1→v2 一次切换；Windows 参照物） | 功能/架构 P1 | L | 存档规格 + 本次增量 | 🔄 执行中（第二次门已过；T2–T4 完成，T5 壳切换待做） |
+| [2026-11-04-kernel-v2](../works/2026-11-04-kernel-v2/brief.md) | 可移植内核与桥协议 v2 落地（transport/contract/semantics/core 四层 + macOS 壳 v1→v2 一次切换；Windows 参照物） | 功能/架构 P1 | L | 存档规格 + 本次增量 | 🔄 执行中（第二次门已过；T2–T4 完成，T5 壳切换进行中） |
 
 ## 批次与依赖链
 
