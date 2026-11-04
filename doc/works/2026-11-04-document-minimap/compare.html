@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<style>
+  :root {
+    --ink: #1f2328;
+    --muted: #6b7280;
+    --line: #d9dee5;
+    --accent: #4a90e2;
+    --card: #ffffff;
+    --bg: #eef1f5;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: var(--bg); color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif; }
+  body { width: 1900px; height: 1560px; overflow: hidden; }
+  .page { padding: 34px 48px 0; }
+  .kicker { font-size: 13px; letter-spacing: .12em; text-transform: uppercase; color: #7a8494; font-weight: 600; }
+  h1 { margin: 8px 0 4px; font-size: 32px; line-height: 1.25; letter-spacing: -0.02em; font-weight: 700; }
+  .sub { margin: 0; color: var(--muted); font-size: 15px; }
+  .sub b { color: #3d4654; font-weight: 600; }
+
+  .cards { display: grid; grid-template-columns: 1fr 1fr; gap: 26px; margin-top: 26px; }
+  .card { background: var(--card); border: 1px solid #e2e6ec; border-radius: 16px; padding: 18px 18px 16px;
+    box-shadow: 0 10px 30px rgba(38, 50, 68, .07); }
+  .card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; min-height: 66px; }
+  .card-title { font-size: 19px; font-weight: 700; letter-spacing: -0.01em; }
+  .card-title .num { color: #9aa4b2; font-weight: 600; margin-right: 4px; }
+  .card-desc { margin: 5px 0 0; font-size: 13px; color: var(--muted); line-height: 1.55; max-width: 540px; }
+  .tag { flex: none; margin-top: 2px; font-size: 12px; font-weight: 600; color: #1d6f42; background: #e9f6ee;
+    border: 1px solid #c9e8d5; border-radius: 999px; padding: 4px 10px; }
+  .tag.neutral { color: #5b6472; background: #f1f3f6; border-color: #e1e5eb; }
+
+  .window { margin-top: 12px; width: 850px; border: 1px solid #d6dbe2; border-radius: 11px; overflow: hidden;
+    box-shadow: 0 8px 22px rgba(24, 35, 50, .10); background: #fff; }
+  .titlebar { height: 34px; background: #eef1f4; border-bottom: 1px solid #dbe0e6; display: flex; align-items: center; padding: 0 12px; position: relative; }
+  .lights { display: flex; gap: 7px; }
+  .lights i { width: 11px; height: 11px; border-radius: 50%; display: block; }
+  .lights i:nth-child(1) { background: #ff5f57; }
+  .lights i:nth-child(2) { background: #febc2e; }
+  .lights i:nth-child(3) { background: #28c840; }
+  .win-title { position: absolute; left: 50%; transform: translateX(-50%); font-size: 12px; color: #6f7885; font-weight: 500; }
+  .stage { display: flex; height: 850px; background: #fff; }
+  .paper { width: 730px; height: 850px; background-image: url("readme-crop.png"); background-repeat: no-repeat;
+    background-size: 730px auto; background-position: 0 -949px; position: relative; }
+  .paper::after { content: ""; position: absolute; right: 0; top: 0; bottom: 0; width: 18px;
+    background: linear-gradient(90deg, rgba(255,255,255,0), rgba(255,255,255,.82)); pointer-events: none; }
+  .rail { width: 120px; height: 850px; border-left: 1px solid #e2e6eb; position: relative; background: #fbfbfb; flex: none; }
+  .rail img { display: block; width: 120px; height: 850px; }
+  .rail::after { content: ""; position: absolute; right: 0; top: 0; bottom: 0; width: 8px;
+    background: linear-gradient(90deg, rgba(0,0,0,0), rgba(0,0,0,.035)); pointer-events: none; }
+  .note { position: absolute; right: 128px; top: 316px; display: flex; align-items: center; gap: 8px; }
+  .note span { font-size: 11.5px; color: #4a90e2; background: rgba(255,255,255,.94); border: 1px solid #cfe0f5;
+    border-radius: 999px; padding: 3px 8px; box-shadow: 0 2px 8px rgba(40,80,140,.08); white-space: nowrap; }
+  .note em { display: block; width: 22px; height: 1px; background: #7cb0ea; position: relative; }
+  .note em::after { content: ""; position: absolute; right: -3px; top: -3px; width: 7px; height: 7px; border-radius: 50%; background: #4a90e2; }
+
+  .details { margin-top: 22px; display: grid; grid-template-columns: 1fr 1fr; gap: 26px; padding: 0 18px; }
+  .detail { display: flex; gap: 18px; align-items: flex-start; }
+  .detail-label { width: 84px; flex: none; padding-top: 2px; }
+  .detail-label strong { display: block; font-size: 14px; }
+  .detail-label span { display: block; font-size: 12px; color: var(--muted); margin-top: 4px; line-height: 1.5; }
+  .zoom { width: 360px; height: 270px; border: 1px solid #d8dee6; border-radius: 10px; background-color: #fbfbfb;
+    background-repeat: no-repeat; overflow: hidden; box-shadow: 0 4px 14px rgba(30,40,55,.06); }
+  .zoom.struct { background-image: url("mini-struct-120.png"); background-size: 360px 2550px; background-position: 0 -840px; }
+  .zoom.true { background-image: url("mini-true-120.png"); background-size: 360px 2550px; background-position: 0 -840px; }
+  .legend { display: flex; gap: 16px; align-items: center; margin-top: 9px; font-size: 11.5px; color: #75808f; }
+  .legend i { display: inline-block; width: 14px; height: 5px; border-radius: 2px; margin-right: 5px; vertical-align: 1px; }
+  .foot { margin-top: 18px; font-size: 12.5px; color: #7a8494; display: flex; justify-content: space-between; }
+  .foot b { color: #556070; font-weight: 600; }
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="kicker">MDPreview · 右侧文档缩略图</div>
+  <h1>两种缩略图方案对比</h1>
+  <p class="sub">同一篇文档、同一滚动位置 · 缩略图宽度 <b>120px</b>（v1 固定）· 蓝色框为当前视口</p>
+
+  <div class="cards">
+    <div class="card">
+      <div class="card-head">
+        <div>
+          <div class="card-title"><span class="num">01</span>结构缩略图</div>
+          <p class="card-desc">按块绘制标题、正文行、代码块、图片和表格。字形不可读，但结构、密度和位置稳定；长文档开销可控。</p>
+        </div>
+        <div class="tag neutral">备选</div>
+      </div>
+      <div class="window">
+        <div class="titlebar"><div class="lights"><i></i><i></i><i></i></div><div class="win-title">MDPreview — README.md</div></div>
+        <div class="stage">
+          <div class="paper"></div>
+          <div class="rail"><img src="mini-struct-120.png" alt="结构缩略图"></div>
+          <div class="note"><span>当前视口框</span><em></em></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-head">
+        <div>
+          <div class="card-title"><span class="num">02</span>真缩略图</div>
+          <p class="card-desc">目标观感：真实字形/图片轮廓接近缩小版页面，最接近 Sublime；实现用 Canvas 文字采样，长文档按上限降级。</p>
+        </div>
+        <div class="tag">已选</div>
+      </div>
+      <div class="window">
+        <div class="titlebar"><div class="lights"><i></i><i></i><i></i></div><div class="win-title">MDPreview — README.md</div></div>
+        <div class="stage">
+          <div class="paper"></div>
+          <div class="rail"><img src="mini-true-120.png" alt="真缩略图"></div>
+          <div class="note"><span>当前视口框</span><em></em></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="details">
+    <div class="detail">
+      <div class="detail-label"><strong>细节 ×3</strong><span>线条 = 正文行<br>深色 = 标题<br>色块 = 图片/代码/表格</span></div>
+      <div>
+        <div class="zoom struct"></div>
+        <div class="legend"><span><i style="background:#3a3a3a"></i>标题</span><span><i style="background:#c7c7c7"></i>正文行</span><span><i style="background:#e3eef8;border:1px solid #cddded"></i>图片</span><span><i style="background:#eef2f6;border:1px solid #dde5ee"></i>代码</span></div>
+      </div>
+    </div>
+    <div class="detail">
+      <div class="detail-label"><strong>细节 ×3</strong><span>真实字形与图片轮廓<br>接近 Sublime 的观感<br>但 120px 下字仍不可读</span></div>
+      <div>
+        <div class="zoom true"></div>
+        <div class="legend"><span>同一段内容：标题 + 正文 + 图片 + 代码 + 表格</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="foot"><span>示意原型：真实渲染内容截取；实现采用 Canvas 文字采样 + 图片缩略</span><span><b>结论</b>：采用方案 2 · 真缩略图；固定 120px，长文按采样上限降级，不复制 DOM。</span></div>
+</div>
+</body>
+</html>

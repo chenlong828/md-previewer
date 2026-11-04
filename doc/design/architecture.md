@@ -302,7 +302,10 @@ WKWebView 承载 Milkdown 7.7（ProseMirror）前端。本文记录跨模块的�
   规则会污染 Markdown 围栏代码块的底色/内边距；行号若改回文本节点会污染复制/
   查找，selftest 选择断言先红。
 - **边界**：无扩展名文件（`Dockerfile`/`Makefile`）不识别；不做代码编辑、折叠、
-  minimap 与 LSP；Markdown 围栏代码块没有行号；HTML 导出对代码文档不可用。
+  LSP；Markdown 围栏代码块没有行号；HTML 导出对代码文档不可用。代码视图的
+  minimap 原为首版非目标，2026-11-04 由 [REQ-0011](../requirements/REQ-0011-document-minimap.md)
+  追加为**设计中能力**（`CMP-minimap`，未实现）；实现前本节仍按无 minimap 的
+  现行真相描述，实现后回填。
 
 ## 3. 桥协议（v2，2026-11-04 落地）
 
