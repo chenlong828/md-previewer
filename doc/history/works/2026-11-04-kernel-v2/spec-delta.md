@@ -1,7 +1,7 @@
 ---
-layer: works
+layer: history
 module: global
-status: active
+status: frozen
 updated: 2026-11-04
 ---
 
@@ -284,3 +284,18 @@ core `state` 增加显式 `mode: 'markdown' | 'code'`，`sourceMode` 仅在 `mod
 
 
 **Q3 结论（2026-11-04）**：选 `jsdom`（30.1.3）。实测 Milkdown/ProseMirror 在 jsdom 内可完整建编辑器，装载/序列化/插图/通知全跑通（core 组 10 项），无需 happy-dom 对照。
+
+## 9. 落地偏差记录（2026-11-04 收口时回填）
+
+实现过程中有三处与本文件先前裁决不同，以「实际交付」为准：
+
+1. **§2.1「core 按模块处理、不新增 CMP 编号」** → 实际登记为 `CMP-kernel-core`，
+   但在规格里明确标注「组合模块、无独立对外契约」：它不进契约清单、不被壳直接依赖，
+   只借组件卡描述 39 op 的归属与数据所有权。理由：四层若只登记三层，op 清单的
+   「实现在哪」在组件树里会失联。
+2. **§2.2「CMP-image 退役（拆）」** → 实际保留 active、职责收缩：解析类能力
+   （`#for-load`/`#for-save`/引用收集）移交 `CMP-kernel-semantics`，落盘/布局/GC 执行/
+   NodeView 仍在组件内。理由：GC 的删盘与导入的原子写仍是业务能力，拆进 app-shell
+   会让「图片资源」失去唯一主人；退役口径留待 Windows 壳落地后再评估。
+3. **§3.3 `resolveResources` 请求形状** → 由 `{refs[]}` 改为 `{refs[], baseDir}`：
+   真实壳自检发现「让壳猜当前文档目录」会在未保存/另存场景把引用误判为缺失。

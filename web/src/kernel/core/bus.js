@@ -1,5 +1,5 @@
 // 内核 ⇄ 壳 的端口：core 只经这两个函数与壳交互，不感知宿主实现。
-// 组合根在启动时绑定一次（v2：kernel/main.js；迁移期：src/bridge.js 的 v1 适配）。
+// 组合根在启动时绑定一次（v2：kernel/main.js；v2：由 page.js 组合根注入）。
 let notifier = null
 let hostCaller = null
 

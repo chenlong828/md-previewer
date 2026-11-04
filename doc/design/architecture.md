@@ -119,26 +119,26 @@ WKWebView 承载 Milkdown 7.7（ProseMirror）前端。本文记录跨模块的�
 - **导入落盘约定**(ImageStore 单点定义):粘贴截图/图片文件路径、拖入图片
   文件、格式→插入图片菜单,统一把图片复制到 `<文档目录>/resource/<md文件名>/`,
   剪贴板位图命名 `img_NNN.ext`(目录内序号递增,mime 定扩展名),文件导入保留
-  原名(冲突加 `-2` 后缀);编辑器内插入的 src 为绝对 file:// URL,保存时由
-  ImagePathRewriter 还原为相对路径。落盘失败(目录不可列举/不可写、非图片等)
+  原名(冲突加 `-2` 后缀);编辑器内插入的 src 为绝对 file:// URL,保存时由内核
+  `getSaveMarkdown` 按写盘口径还原为相对路径(壳不再改写正文)。落盘失败(目录不可列举/不可写、非图片等)
   一律原样抛错、由原生弹窗提示,绝不静默降级——序号命名依赖目录列举,静默
   当空目录会让序号回绕、`.atomic` 写盘覆盖既有图片(selftest 防覆盖用例守门)。
 - **关闭清理(资源 GC)**:`windowWillClose` 唯一钩子,此刻磁盘内容是权威
   终态(保存/放弃决策已在 windowShouldClose→beginConfirmClose 完成)。判定
-  复用 ImagePathRewriter 的同一套行规则与目的地解析(只读收集器
-  `referencedLocalImagePaths`,围栏内不算引用,零解析重复):目录内 UTType
+  的引用集合由内核提供(op `getResourceRefs` → `semantics.collectResourceRefs`,
+  围栏内不算引用,零解析重复;壳只做差集与删盘,取不到集合则保守跳过):目录内 UTType
   为图片且不被引用 → 删除,非图片文件一律不动;目录清空连带移除
   `resource/<md文件名>/`,随之为空亦移除 `resource/`。撤销粘贴的孤儿文件由
   本机制在关闭时清除——撤销不立即删盘(⌘⇧Z 重做会指向已删文件破图,用户
   2026-10-20 定稿关闭时统一 GC)。引用与候选路径双侧经 `standardizedFileURL`
-  规范化比对(消解 `./` 冗余段);相对引用按改写器原样与 CommonMark %XX
+  规范化比对(消解 `./` 冗余段);相对引用按字面写法与 CommonMark %XX
   解码两种口径收集(均以文件实际存在为准,宁多保护不误删)。file:// 目的地
   解码用手工分段(`percentDecodedPath`),不用 URL(string:)(混排内容会再
   转义合法 %XX,坑档案 P4)。清理失败 os_log 不打断关闭。
 - **路径分离**:导入是偶发慢路径——web 捕获阶段拦截 paste(非图片载荷放行给
-  milkdown clipboard 文本链路)→ 桥 op `importImage` → 原生落盘 → 回灌
-  `onImageImported(requestId,{ok,src})` → 恢复粘贴时刻选区插入节点;失败由
-  原生弹窗,web 只清挂起表。未保存文档(无归属目录)原生弹「请先保存」。
+  milkdown clipboard 文本链路)→ 内核向壳发请求 `importImage`(请求-应答,
+  选区快照留在核内)→ 壳落盘并就地问答 `{ok,src}` → 内核按快照插入节点;失败由
+  壳弹窗,内核只清挂起状态(不再有 `onImageImported` 反向回灌)。未保存文档(无归属目录)原生弹「请先保存」。
 - **边界**:一次粘贴只取第一张图片;手敲空格路径在编辑器内即时成图
   (milkdown input rule),相对 src 在保存+重载前可能破图;导出 HTML 不内联
   图片(保持 file:// 引用);图片缩放(width/height)需扩展 schema 与往返

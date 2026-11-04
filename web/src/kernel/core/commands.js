@@ -26,6 +26,6 @@ export const commandRegistry = {
     wrapInHeadingCommand, wrapInBlockquoteCommand, wrapInBulletListCommand, wrapInOrderedListCommand,
     insertHrCommand, createCodeBlockCommand, turnIntoTextCommand,
     insertTableCommand, toggleStrikethroughCommand,
-    // Swift 经 onImageImported 回灌/拖放导入后转发(插入图片节点,唯一入口)
+    // 壳/拖放导入完成后经 op insertImage 转发(插入图片节点,唯一入口)
     insertImageCommand,
 }

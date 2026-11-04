@@ -1,7 +1,7 @@
 ---
-layer: works
+layer: history
 module: global
-status: active
+status: frozen
 updated: 2026-11-04
 ---
 
@@ -65,7 +65,7 @@ updated: 2026-11-04
 | T4 | change | core（组合模块） | `web/src` 迁入 core、39 个 op 处理器抽出、`bridge.js` 拆解、模式状态机、`lastMarkdown` 收口 | Node 套件 core 组绿；无宿主符号（lint 守门） | ✅ 已完成（2026-11-04；39 op 单点实现、jsdom core 组 10 项绿、selftest 121/121） |
 | T5 | change | CMP-app-shell（含 document-io） | Swift：`send(op,payload,id)` + 响应表；30 处 callJS 收敛；PDF 几何/print op；导出改响应携带 | 编译通过 + 自检中产品路径无 `evaluateJavaScript` 取数 | ✅ 已完成（2026-11-04；callJS 全收敛、Swift 改写器删除、GC/保存走内核；selftest 115 PASS） |
 | T6 | verify | — | Node 全绿 + selftest 全绿 + 人工点验（R8 交互清单） | result.md 记录命令与输出；blocker 清零 | ✅ 已完成（78 项 Node + 115 selftest + 粘贴链路 e2e 取证；打印/另存时序转人工清单） |
-| T7 | doc | — | architecture/组件规格/roadmap/risks/README 收口；R9 关闭；规格升格 | 文档与实现一致；引用无归档件依据 | 🔄 进行中（architecture §1.3/§2.1/§3/§4 已升 v2；组件规格补写中） |
+| T7 | doc | — | architecture/组件规格/roadmap/risks/README 收口；R9 关闭；规格升格 | 文档与实现一致；引用无归档件依据 | ✅ 已完成（architecture/组件规格/README/roadmap/risks 同步 v2；R9 关闭） |
 
 依赖：T2 → T3 → T4 → T5 → T6 → T7；T4 与 T5 可并行（文件不相交）。
 T6 依赖 T4+T5 合流。T7 在 T6 绿后执行。
