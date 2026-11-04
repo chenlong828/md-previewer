@@ -245,13 +245,8 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
                 return
             }
             // 先把光标移到点击处(同步返回该处是否在表格内),再构建菜单
-            let js = "JSON.stringify(window.mdbridge.focusAt(\(x), \(y)))"
-            callJS(js) { result in
-                var inTable = false
-                if let json = result as? String,
-                   let d = (try? JSONSerialization.jsonObject(with: json.data(using: .utf8)!)) as? [String: Any] {
-                    inTable = (d["inTable"] as? Bool) ?? false
-                }
+            kernel.send("focusAt", ["x": Double(x), "y": Double(y)]) { result in
+                let inTable = (try? result.get())?["inTable"] as? Bool ?? false
                 DispatchQueue.main.async {
                     done(self.buildContextMenu(inTable: inTable))
                 }
@@ -397,9 +392,12 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
             "allowHighlight": allowHighlight,
             "lineNumbers": Self.codeLineNumbersVisible,
         ]
-        let optsJSON = (try? JSONSerialization.data(withJSONObject: opts))
-            .flatMap { String(data: $0, encoding: .utf8) } ?? "{}"
-        callJS("window.mdbridge.setCode(\(JSArgs.string(text)), \(optsJSON))") { [weak self] _ in
+        kernel.send("setCode", [
+            "text": text,
+            "language": language,
+            "allowHighlight": allowHighlight,
+            "lineNumbers": Self.codeLineNumbersVisible,
+        ]) { [weak self] _ in
             DispatchQueue.main.async {
                 guard let self else { return }
                 self.isLoadingContent = false
@@ -522,13 +520,12 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
             DispatchQueue.main.async {
                 guard let self else { return }
                 self.isLoadingContent = false
-                let restored = ImagePathRewriter.forSave(markdown, baseURL: url.deletingLastPathComponent())
                 do {
-                    try TextFile.write(restored, to: url)
+                    try TextFile.write(markdown, to: url)
                     self.isDirty = false
-                    self.callJS("window.mdbridge.markClean()")
-                    // 另存为后文档目录变化,同步 web 层的图片路径换算基准
-                    self.callJS("window.mdbridge.setBaseDir(\(JSArgs.string(url.deletingLastPathComponent().path)))") { _ in }
+                    self.kernel.send("markClean")
+                    // 另存为后文档目录变化,同步内核的图片路径换算基准
+                    self.kernel.send("setBaseDir", ["path": url.deletingLastPathComponent().path])
                     self.updateTitle()
                     self.updateStateLabel()
                     self.startFileMonitor()
@@ -544,33 +541,38 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
         }
     }
 
+    /// 保存取数：内核按写盘口径还原图片相对路径（壳不再解析 markdown）
     private func fetchMarkdown(_ completion: @escaping (String) -> Void) {
-        callJS("window.mdbridge.getMarkdown()") { result in
-            completion((result as? String) ?? "")
+        kernel.send("getSaveMarkdown") { result in
+            completion((try? result.get())?["md"] as? String ?? "")
         }
     }
 
-    // MARK: - JS 桥
+    // MARK: - 内核调用（v2 单通道）
 
-    private func callJS(_ script: String, completion: ((Any?) -> Void)? = nil) {
+    /// 产品路径不执行任何注入脚本：所有能力经 op 通道（见 kernel/contract/ops.js）。
+    /// 保留的诊断入口只在自检/截图/调试环境使用（G1：诊断求值限定）。
+
+    /// 供 AppDelegate 推送主题等全局设置
+    func setTheme(_ theme: String) {
+        kernel.send("setTheme", ["theme": theme])
+    }
+
+    /// 调试定位：把光标放进文档首张表格（诊断专用）
+    func debugFocusTableForDiagnostics() {
+        kernel.send("debugFocusTable")
+    }
+
+    /// 诊断用:执行 JS 并取回结果（仅自检/截图/调试入口；G1 诊断求值限定）
+    func evaluateForDiagnostics(_ script: String, completion: ((Any?) -> Void)? = nil) {
         webView.evaluateJavaScript(script) { result, error in
             if let error = error as NSError?,
                error.domain != "WebKitErrorDomain" || error.code != 0 {
-                os_log(.error, "JS error: %{public}@ for %{private}@",
+                os_log(.error, "diagnostics JS error: %{public}@ for %{private}@",
                        error.localizedDescription, String(script.prefix(120)))
             }
             completion?(result)
         }
-    }
-
-    /// 供 AppDelegate 推送主题等全局设置
-    func callJSPublic(_ script: String) {
-        callJS(script)
-    }
-
-    /// 诊断用:执行 JS 并取回结果
-    func evaluateForDiagnostics(_ script: String, completion: ((Any?) -> Void)? = nil) {
-        callJS(script, completion: completion)
     }
 
     private func handleBridgeMessage(op: String, payload: [String: Any]) {
@@ -718,7 +720,7 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
         }
         do {
             let imported = try ImageStore.import(.file(url.standardizedFileURL), docURL: fileURL!)
-            callJS("window.mdbridge.insertImage(\(JSArgs.string(imported.url.absoluteString)), \"\", \"\")")
+            kernel.send("insertImage", ["src": imported.url.absoluteString, "alt": "", "title": ""])
         } catch {
             alertImportFailure(error)
         }
@@ -753,24 +755,12 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
 
     // MARK: - 编辑命令转发
 
-    func editorUndo() { callJS("window.mdbridge.undo()") }
-    func editorRedo() { callJS("window.mdbridge.redo()") }
+    func editorUndo() { kernel.send("undo") }
+    func editorRedo() { kernel.send("redo") }
     func formatCommand(_ name: String, payload: Any? = nil) {
-        let payloadJS: String
-        if let payload = payload {
-            // fragmentsAllowed:标量 payload(如标题级别数字)也合法
-            if let data = try? JSONSerialization.data(withJSONObject: payload, options: [.fragmentsAllowed]),
-               let json = String(data: data, encoding: .utf8) {
-                payloadJS = json
-            } else {
-                payloadJS = "undefined"
-            }
-        } else {
-            payloadJS = "undefined"
-        }
-        callJS("window.mdbridge.formatCommand(\(JSArgs.string(name)), \(payloadJS))")
+        kernel.send("formatCommand", payload.map { ["name": name, "payload": $0] } ?? ["name": name])
     }
-    func insertTable() { callJS("window.mdbridge.insertTable(3,3)") }
+    func insertTable() { kernel.send("insertTable", ["row": 3, "col": 3]) }
 
     /// 按注册表把动作转发到 web 命令(JS 命令名由 spec 携带,双端一致由 selftest 校验):
     /// 表格组走 tableCommand,其余走 formatCommand
@@ -784,9 +774,9 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
     }
     func toggleSourceMode() {
         guard !isCodeDocument else { return }
-        callJS("window.mdbridge.toggleSource()") { [weak self] result in
+        kernel.send("toggleSource") { [weak self] result in
             DispatchQueue.main.async {
-                if let v = result as? Bool { self?.sourceModeCached = v }
+                if let v = (try? result.get())?["sourceMode"] as? Bool { self?.sourceModeCached = v }
                 self?.updateStateLabel()
                 AppDelegate.shared?.refreshViewMenuState()
             }
@@ -797,13 +787,13 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
     /// 光标是否在表格内(由 web 端 selinfo 消息维护,用于右键菜单/菜单校验)
     private(set) var inTableCached = false
 
-    func focusEditor() { callJS("window.mdbridge.focus()") }
+    func focusEditor() { kernel.send("focus") }
 
     // MARK: - 文档内查找
 
-    func openFindBar() { callJS("window.mdbridge.openFindBar()") }
-    func findNext() { callJS("window.mdbridge.findNext()") }
-    func findPrev() { callJS("window.mdbridge.findPrev()") }
+    func openFindBar() { kernel.send("openFindBar") }
+    func findNext() { kernel.send("findNext") }
+    func findPrev() { kernel.send("findPrev") }
 
     @objc func findAction(_ sender: Any?) { openFindBar() }
     @objc func findNextAction(_ sender: Any?) { findNext() }
@@ -843,7 +833,7 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
     // MARK: - 表格行列操作
 
     func tableCommand(_ name: String) {
-        callJS("window.mdbridge.tableCommand(\(JSArgs.string(name)))")
+        kernel.send("tableCommand", ["name": name])
     }
 
     @objc func insertRowAboveAction(_ sender: Any?) { performEditorAction(.rowAbove) }
@@ -860,12 +850,12 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
         get { UserDefaults.standard.double(forKey: "editorZoom").takingIfPositive() ?? 1.0 }
         set {
             UserDefaults.standard.set(newValue, forKey: "editorZoom")
-            // 夹取(0.5–3)归 web 端 mdbridge.setZoom 单点负责,此处透传并采用其返回的有效值
-            callJS("window.mdbridge.setZoom(\(newValue))") { [weak self] result in
-                guard let effective = result as? Double else { return }
+            // 夹取(0.5–3)归内核 setZoom 单点负责,此处透传并采用其返回的有效值
+            kernel.send("setZoom", ["scale": newValue]) { [weak self] result in
+                guard let effective = (try? result.get())?["zoom"] as? Double else { return }
                 self?.zoomText = String(format: "缩放 %.0f%%", effective * 100)
-                // 直接让 web 端重报词数以恢复状态栏(消息通道自带节流,无固定延时)
-                self?.callJS("window.mdbridge.requestStats()")
+                // 直接让内核重报词数以恢复状态栏(消息通道自带节流,无固定延时)
+                self?.kernel.send("requestStats")
             }
         }
     }
@@ -877,7 +867,7 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
     // MARK: - 打印 / 导出
 
     func printDocument() {
-        callJS("window.print()")
+        kernel.send("print")
     }
 
     func exportPDF() {
@@ -889,8 +879,8 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
     }
 
     private func inSourceModeIf(_ handler: @escaping (Bool) -> Void) {
-        callJS("window.mdbridge.isSourceMode()") { result in
-            handler((result as? Bool) ?? false)
+        kernel.send("getState") { result in
+            handler((try? result.get())?["sourceMode"] as? Bool ?? false)
         }
     }
 
@@ -902,22 +892,10 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
         } else {
             bodySel = inSource ? "document.getElementById('source-editor')" : "document.getElementById('app')"
         }
-        let script = """
-        (function() {
-            var el = \(bodySel);
-            var r = document.documentElement;
-            return JSON.stringify({
-                w: Math.max(el.scrollWidth, r.clientWidth),
-                h: Math.max(el.scrollHeight, r.scrollHeight)
-            });
-        })()
-        """
-        callJS(script) { [weak self] result in
+        kernel.send("getContentSize") { [weak self] result in
             guard let self else { return }
-            guard let json = result as? String,
-                  let data = json.data(using: .utf8),
-                  let dims = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                  let h = dims["h"] as? Double, h > 0
+            guard let dims = try? result.get(),
+                  let h = dims["height"] as? Double, h > 0
             else {
                 self.pendingExportPDF = false
                 return
@@ -932,9 +910,9 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
         attempts: Int, last: CGFloat? = nil, _ completion: @escaping () -> Void
     ) {
         guard attempts > 0 else { completion(); return } // 兜底:迟迟不收敛也尽力截取
-        callJS("Math.max(document.documentElement.scrollHeight)") { [weak self] result in
+        kernel.send("getContentSize") { [weak self] result in
             guard let self else { return }
-            let current = CGFloat((result as? Double) ?? 0)
+            let current = CGFloat((try? result.get())?["height"] as? Double ?? 0)
             if let last, abs(current - last) < 0.5 {
                 // 收敛后再让一拍合成器完成 raster,下一次 RunLoop tick 即可截取
                 DispatchQueue.main.async { completion() }
@@ -980,9 +958,9 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
 
     func exportHTML() {
         guard isReady else { return }
-        callJS("window.mdbridge.exportStandaloneHTML()") { [weak self] result in
+        kernel.send("exportStandaloneHTML") { [weak self] result in
             DispatchQueue.main.async {
-                guard let html = result as? String else {
+                guard let html = (try? result.get())?["html"] as? String else {
                     let alert = NSAlert()
                     alert.messageText = "导出 HTML 失败"
                     alert.runModal()
@@ -1022,7 +1000,7 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
         // web 层 document.title 与文件名保持同步(导出 HTML 的 <title> 取自它);
         // web 未就绪时不推送,初始标题由 pushInitialContent 的 opts 携带
         if isReady {
-            callJS("window.mdbridge.setTitle(\(JSArgs.string(name)))")
+            kernel.send("setTitle", ["title": name])
         }
     }
 
@@ -1196,17 +1174,23 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
     private func cleanOrphanResources() {
         guard !isCodeDocument else { return } // 代码文档没有图片资源,不做清理
         guard let fileURL else { return } // 新建未保存文档:无资源目录,无清理对象
-        guard let (text, _) = TextFile.read(at: fileURL) else {
-            os_log(.error, "资源清理:文档读取失败 %{public}@", fileURL.path)
-            return
-        }
-        do {
-            let removed = try ImageStore.cleanUnreferenced(docURL: fileURL, markdown: text)
-            if !removed.isEmpty {
-                os_log(.info, "资源清理:%{public}@ 移除 %{public}@", fileURL.lastPathComponent, removed.joined(separator: ", "))
+        // 引用集合由内核给出（解析单点在 web）；取不到就保守跳过——宁可不删，不可误删
+        kernel.send("getResourceRefs", timeout: 2) { [weak self] result in
+            guard let self else { return }
+            guard case .success(let payload) = result,
+                  let paths = payload["paths"] as? [String] else {
+                os_log(.error, "资源清理:引用集合不可得,跳过 %{public}@", fileURL.lastPathComponent)
+                return
             }
-        } catch {
-            os_log(.error, "资源清理失败 %{public}@ → %{public}@", fileURL.lastPathComponent, "\(error)")
+            do {
+                let removed = try ImageStore.cleanUnreferenced(docURL: fileURL, referenced: Set(paths))
+                if !removed.isEmpty {
+                    os_log(.info, "资源清理:%{public}@ 移除 %{public}@",
+                           fileURL.lastPathComponent, removed.joined(separator: ", "))
+                }
+            } catch {
+                os_log(.error, "资源清理失败 %{public}@ → %{public}@", fileURL.lastPathComponent, "\(error)")
+            }
         }
     }
 
@@ -1282,8 +1266,7 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
     /// 按当前全局偏好刷新本窗口代码视图的行号布局(非代码文档/未就绪 no-op)。
     func applyCodeLineNumbersPreference() {
         guard isCodeDocument, isReady else { return }
-        let flag = Self.codeLineNumbersVisible ? "true" : "false"
-        callJS("window.mdbridge.setCodeLineNumbers(\(flag))")
+        kernel.send("setCodeLineNumbers", ["visible": Self.codeLineNumbersVisible])
     }
 
     /// 应用高亮语言选择:auto 清空覆盖、其余(含 plaintext)记为覆盖;只重绘不写文件。
@@ -1291,7 +1274,7 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
     private func applyHighlightLanguage(_ id: String) {
         codeLanguageOverride = (id == FileSupport.autoLanguageID) ? nil : id
         let language = effectiveCodeLanguage
-        callJS("window.mdbridge.setCodeLanguage(\(JSArgs.string(language)))") { [weak self] _ in
+        kernel.send("setCodeLanguage", ["id": language]) { [weak self] _ in
             DispatchQueue.main.async { self?.updateStateLabel() }
         }
     }
@@ -1328,7 +1311,7 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
     @objc func orderedListAction(_ sender: Any?) { performEditorAction(.orderedList) }
     @objc func codeBlockAction(_ sender: Any?) { performEditorAction(.codeBlock) }
     @objc func mathBlockAction(_ sender: Any?) {
-        callJS("window.mdbridge.insertMarkdown(\(JSArgs.string("$$\n\n$$")))") { [weak self] _ in
+        kernel.send("insertMarkdown", ["md": "$$\n\n$$"]) { [weak self] _ in
             self?.focusEditor()
         }
     }

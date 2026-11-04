@@ -72,7 +72,7 @@ if isSelftest {
             report(false, "首个文档窗口存在")
             exit(1)
         }
-        doc.evaluateForDiagnostics("window.mdbridge.debugFocusTable()") { _ in }
+        doc.debugFocusTableForDiagnostics()
         // 轮询等待 selinfo 上报 inTableCached 翻转为 true(等信号而非盲等)
         var waited = 0.0
         while !doc.inTableCached && waited < 5.0 {

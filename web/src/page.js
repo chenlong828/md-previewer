@@ -36,7 +36,8 @@ bindBus({
     callHost: (op, payload) => kernel.registry.callHost(op, payload),
 })
 
-installV1Shim()
+// 自检/截图环境才装 v1 方法面（产品 bundle 不暴露 window.mdbridge）
+if (window.__MDP_TEST__ === true) installV1Shim()
 setupFindBar()
 
 // 源码模式 textarea 编辑 → 脏状态 + 统计（与渲染模式同一口径）

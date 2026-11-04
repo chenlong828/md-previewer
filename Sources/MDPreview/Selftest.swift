@@ -92,7 +92,7 @@ func greet() -> String {
             backing: .buffered,
             defer: false
         )
-        webview = EditorWebView(configuration: EditorWebView.makeConfiguration())
+        webview = EditorWebView(configuration: EditorWebView.makeConfiguration(testFacade: true))
         webview.frame = window.contentView!.bounds
         webview.autoresizingMask = [.width, .height]
         window.contentView?.addSubview(webview)
@@ -878,8 +878,7 @@ func greet() -> String {
         }
         if bigOK { pass("大文档 PDF 完整性") } else { fail("大文档 PDF 完整性") }
 
-        // ── Swift 侧图片路径改写与落盘导入
-        testPathRewriter()
+        // ── 图片落盘导入与资源 GC（路径改写已入内核，见 web 侧黄金对拍与装载改写自检）
         testImageStore()
         testImageCleanup()
 
@@ -1048,7 +1047,7 @@ func greet() -> String {
             backing: .buffered,
             defer: false
         )
-        let lightWebview = EditorWebView(configuration: EditorWebView.makeConfiguration())
+        let lightWebview = EditorWebView(configuration: EditorWebView.makeConfiguration(testFacade: true))
         lightWebview.frame = NSRect(x: 0, y: 0, width: 800, height: 600)
         lightWebview.autoresizingMask = [.width, .height]
         lightWindow.contentView?.addSubview(lightWebview)
@@ -1375,98 +1374,6 @@ func greet() -> String {
         }
     }
 
-    private func testPathRewriter() {
-        let baseURL = URL(fileURLWithPath: "/tmp/selftest-doc-\(getpid())")
-        let fm = FileManager.default
-        try? fm.createDirectory(at: baseURL, withIntermediateDirectories: true)
-        let imgPath = baseURL.appendingPathComponent("pic.png").path
-        fm.createFile(atPath: imgPath, contents: Data([1, 2, 3]))
-
-        let md = "![图](pic.png)\n\n```swift\nlet s = \"![x](fake.png)\"\n```\n"
-        let rewritten = ImagePathRewriter.forLoad(md, baseURL: baseURL)
-        if rewritten.contains(baseURL.appendingPathComponent("pic.png").absoluteString) {
-            pass("图片路径改写(加载)")
-        } else {
-            fail("图片路径改写(加载) → \(rewritten)")
-        }
-        if rewritten.contains("![x](fake.png)") {
-            pass("代码围栏不受改写影响")
-        } else {
-            fail("代码围栏不受改写影响 → \(rewritten)")
-        }
-
-        let saved = ImagePathRewriter.forSave(rewritten, baseURL: baseURL)
-        if saved.contains("![图](pic.png)") {
-            pass("图片路径还原(保存)")
-        } else {
-            fail("图片路径还原(保存) → \(saved)")
-        }
-
-        let missing = ImagePathRewriter.forLoad("![m](not-there.png)", baseURL: baseURL)
-        if missing.contains("not-there.png") && !missing.contains("file://") {
-            pass("缺失文件保持原样")
-        } else {
-            fail("缺失文件保持原样 → \(missing)")
-        }
-
-        // ── 空格路径(wechat-offline 导出形态):严格 CommonMark 不认为它是图片,
-        //    改写器必须接住并输出 %20 编码的 file:// URL,保存后以 <> 包裹还原,
-        //    二次加载回到同一改写结果(定点)。
-        let spacedDir = baseURL.appendingPathComponent("res dir", isDirectory: true)
-        try? fm.createDirectory(at: spacedDir, withIntermediateDirectories: true)
-        fm.createFile(atPath: spacedDir.appendingPathComponent("img_001.jpg").path, contents: Data([1, 2, 3]))
-        let spacedMD = "![图](res dir/img_001.jpg)"
-        let rewrittenSpaced = ImagePathRewriter.forLoad(spacedMD, baseURL: baseURL)
-        if rewrittenSpaced.contains("res%20dir/img_001.jpg"), rewrittenSpaced.contains("file://"),
-           !rewrittenSpaced.contains(" ") {
-            pass("空格路径改写(加载)")
-        } else {
-            fail("空格路径改写(加载) → \(rewrittenSpaced)")
-        }
-        let savedSpaced = ImagePathRewriter.forSave(rewrittenSpaced, baseURL: baseURL)
-        if savedSpaced == "![图](<res dir/img_001.jpg>)" {
-            pass("空格路径还原(保存,< 包裹定点)")
-        } else {
-            fail("空格路径还原(保存) → \(savedSpaced)")
-        }
-        let reloaded = ImagePathRewriter.forLoad(savedSpaced, baseURL: baseURL)
-        if reloaded == rewrittenSpaced {
-            pass("空格路径二次加载一致")
-        } else {
-            fail("空格路径二次加载一致 → \(reloaded)")
-        }
-
-        // ── 标题保留:加载时保留 "title",保存后回到原写法
-        let titled = "![图](pic.png \"标题\")"
-        let rewrittenTitled = ImagePathRewriter.forLoad(titled, baseURL: baseURL)
-        if rewrittenTitled.contains("file://"), rewrittenTitled.contains("\"标题\"") {
-            pass("标题保留改写")
-        } else {
-            fail("标题保留改写 → \(rewrittenTitled)")
-        }
-        let savedTitled = ImagePathRewriter.forSave(rewrittenTitled, baseURL: baseURL)
-        if savedTitled == titled {
-            pass("标题还原(保存)")
-        } else {
-            fail("标题还原(保存) → \(savedTitled)")
-        }
-
-        // ── 远程图与 <> 包裹目的地不误改
-        let remote = ImagePathRewriter.forLoad("![r](https://e.com/a.png)", baseURL: baseURL)
-        if remote.contains("https://e.com/a.png") && !remote.contains("file://") {
-            pass("远程图不改写")
-        } else {
-            fail("远程图不改写 → \(remote)")
-        }
-        let bracketed = ImagePathRewriter.forLoad("![b](<pic.png>)", baseURL: baseURL)
-        if bracketed.contains(baseURL.appendingPathComponent("pic.png").absoluteString) {
-            pass("<> 包裹目的地改写")
-        } else {
-            fail("<> 包裹目的地改写 → \(bracketed)")
-        }
-        try? fm.removeItem(at: baseURL)
-    }
-
     // MARK: - 图片落盘导入测试
 
     private func testImageStore() {
@@ -1575,20 +1482,31 @@ func greet() -> String {
                 围栏里写 ![x](resource/文档/orphan.png) 不算引用
                 ```
                 """
-            let removed1 = try ImageStore.cleanUnreferenced(docURL: docURL, markdown: md)
+            // 引用集合来自内核（getResourceRefs）：装载同一篇文档后取集合，再让 GC 做差集
+            var referencedPaths: Set<String> = []
+            waitForCollect("资源清理-取引用集合", timeout: 20) { done in
+                self.kernel.send("setMarkdown", ["md": md, "baseDir": base]) { _ in
+                    self.kernel.send("getResourceRefs") { refs in
+                        referencedPaths = Set((try? refs.get())?["paths"] as? [String] ?? [])
+                        done()
+                    }
+                }
+            }
+            let removed1 = try ImageStore.cleanUnreferenced(docURL: docURL, referenced: referencedPaths)
             if removed1 == ["orphan.png"],
+               referencedPaths.count == 4,
                fm.fileExists(atPath: dir.appendingPathComponent("img_001.png").path),
                fm.fileExists(atPath: dir.appendingPathComponent("keep me.jpg").path),
                fm.fileExists(atPath: dir.appendingPathComponent("abs ref.png").path),
                fm.fileExists(atPath: dir.appendingPathComponent("dot ref.png").path),
                fm.fileExists(atPath: dir.appendingPathComponent("notes.txt").path) {
-                pass("资源清理-孤儿删除且被引用/非图片保留")
+                pass("资源清理-孤儿删除且被引用/非图片保留(集合=\(referencedPaths.count))")
             } else {
-                fail("资源清理-孤儿删除且被引用/非图片保留 → 删=\(removed1)")
+                fail("资源清理-孤儿删除且被引用/非图片保留 → 删=\(removed1) 集合=\(referencedPaths.count)")
             }
 
             // 引用清空:图片全删,非图片文件撑住目录
-            let removed2 = try ImageStore.cleanUnreferenced(docURL: docURL, markdown: "无图文档")
+            let removed2 = try ImageStore.cleanUnreferenced(docURL: docURL, referenced: [])
             if removed2.sorted() == ["abs ref.png", "dot ref.png", "img_001.png", "keep me.jpg"].sorted(),
                fm.fileExists(atPath: dir.appendingPathComponent("notes.txt").path) {
                 pass("资源清理-引用清空图片全删,非图片撑住目录")
@@ -1598,7 +1516,7 @@ func greet() -> String {
 
             // 无任何文件:目录与 resource/ 连带移除(不留空壳)
             try fm.removeItem(at: dir.appendingPathComponent("notes.txt"))
-            _ = try ImageStore.cleanUnreferenced(docURL: docURL, markdown: "无图文档")
+            _ = try ImageStore.cleanUnreferenced(docURL: docURL, referenced: [])
             let resourceRoot = docURL.deletingLastPathComponent().appendingPathComponent("resource")
             if !fm.fileExists(atPath: dir.path), !fm.fileExists(atPath: resourceRoot.path) {
                 pass("资源清理-空目录与resource连带移除")
@@ -1608,11 +1526,15 @@ func greet() -> String {
 
             // 无资源目录:调用安全无副作用(新建未保存/首次打开文档路径)
             let bareDoc = URL(fileURLWithPath: "/tmp/selftest-gc-\(getpid())/bare.md")
-            let removed3 = try ImageStore.cleanUnreferenced(docURL: bareDoc, markdown: "任意")
+            let removed3 = try ImageStore.cleanUnreferenced(docURL: bareDoc, referenced: [])
             if removed3.isEmpty, !fm.fileExists(atPath: ImageStore.directory(for: bareDoc).path) {
                 pass("资源清理-无目录安全跳过")
             } else {
                 fail("资源清理-无目录安全跳过 → \(removed3)")
+            }
+            // 恢复编辑器的基准目录：后续图片用例假设 baseDir=/tmp
+            waitForCollect("资源清理-恢复基准目录", timeout: 10) { done in
+                self.kernel.send("setBaseDir", ["path": "/tmp"]) { _ in done() }
             }
         } catch {
             fail("资源清理用例异常 → \(error)")

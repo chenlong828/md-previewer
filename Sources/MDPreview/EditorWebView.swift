@@ -2,8 +2,8 @@ import AppKit
 import WebKit
 
 /// 承载 Milkdown 编辑器的 WebView。
-/// JS → Swift 通过 window.webkit.messageHandlers.mdbridge.postMessage({op:..., ...})
-/// Swift → JS 通过 evaluateJavaScript 调用 window.mdbridge 上的方法。
+/// JS → Swift：v2 帧经 window.__mdHostChannel.post（JSON 字符串）→ messageHandlers.mdbridge；
+/// Swift → JS：v2 帧经 evaluateJavaScript 投递到 window.__mdKernel.receive（见 KernelClient）。
 final class EditorWebView: WKWebView, WKScriptMessageHandler, WKNavigationDelegate {
     /// 收到来自 web 的消息 (op, payload)：仅旧式字典帧会走到这里
     var onBridgeMessage: ((String, [String: Any]) -> Void)?
@@ -19,8 +19,16 @@ final class EditorWebView: WKWebView, WKScriptMessageHandler, WKNavigationDelega
     // 避免多窗口下事件穿越 N 个已废弃监视器(审计 #20)。
     private var eventMonitors: [Any] = []
 
-    static func makeConfiguration() -> WKWebViewConfiguration {
+    /// - Parameter testFacade: 自检/截图环境装 v1 方法面（供既有自检脚本调用），产品不装
+    static func makeConfiguration(testFacade: Bool = false) -> WKWebViewConfiguration {
         let config = WKWebViewConfiguration()
+        if testFacade {
+            config.userContentController.addUserScript(WKUserScript(
+                source: "window.__MDP_TEST__ = true;",
+                injectionTime: .atDocumentStart,
+                forMainFrameOnly: true
+            ))
+        }
         // v2 传输通道：必须在 bundle 求值前注入（内核缺 channel 会显式失败）
         config.userContentController.addUserScript(WKUserScript(
             source: KernelClient.installScript,

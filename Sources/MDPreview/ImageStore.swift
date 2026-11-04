@@ -17,7 +17,7 @@ enum ImageStore {
 
     struct Imported {
         /// 落盘后的绝对 file URL(直接作为 image 节点 src,保存时由
-        /// ImagePathRewriter 还原为相对路径)
+        /// 内核写盘口径还原为相对路径)
         let url: URL
         let fileName: String
     }
@@ -86,17 +86,15 @@ enum ImageStore {
     /// 撤销粘贴的孤儿文件由此在关闭时清除(撤销不立即删盘——重做会指向
     /// 已删文件变破图)。
     ///
-    /// 判定:复用 ImagePathRewriter 的同一套引用解析(围栏内不算引用);
-    /// 只清理 UTType 判定为图片的文件,非图片文件(未来附件/用户手放杂物)
-    /// 一律不动。目录清空则连同 `resource/<md文件名>/` 移除,`resource/`
-    /// 随之为空亦移除。失败原样抛错,由调用方记日志、不打断关闭。
+    /// 判定:引用集合由内核提供（getResourceRefs，围栏内不算引用，两口径宁多保护）；
+    /// 本函数只做「集合差 + 删盘」，不再解析 markdown。只清理 UTType 判定为图片的文件,
+    /// 非图片文件(未来附件/用户手放杂物)一律不动。目录清空则连同 `resource/<md文件名>/`
+    /// 移除,`resource/` 随之为空亦移除。失败原样抛错,由调用方记日志、不打断关闭。
     /// 返回被删除的文件名(供日志与自检断言)。
     @discardableResult
-    static func cleanUnreferenced(docURL: URL, markdown: String) throws -> [String] {
+    static func cleanUnreferenced(docURL: URL, referenced: Set<String>) throws -> [String] {
         let dir = directory(for: docURL)
         guard FileManager.default.fileExists(atPath: dir.path) else { return [] }
-        let referenced = ImagePathRewriter.referencedLocalImagePaths(
-            in: markdown, baseURL: docURL.deletingLastPathComponent())
         var deleted: [String] = []
         for item in try existingFiles(in: dir) {
             let url = dir.appendingPathComponent(item)

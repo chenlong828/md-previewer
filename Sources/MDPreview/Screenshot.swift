@@ -74,7 +74,7 @@ final class ScreenshotRunner: NSObject {
         guard let webView = controller?.webViewIfNeeded else { exit(3) }
         // 诊断:确认 DOM 内容与窗口状态
         controller?.evaluateForDiagnostics(
-            "JSON.stringify({mdReady: !!window.mdbridge, pmLen: (document.querySelector('.ProseMirror')||{innerHTML:''}).innerHTML.length, readyState: document.readyState, theme: document.documentElement.getAttribute('data-theme'), images: Array.prototype.map.call(document.querySelectorAll('.md-image-render img'), function(i){return {src: (i.getAttribute('src')||'').slice(0,120), w: i.naturalWidth, complete: i.complete}})})") { result in
+            "JSON.stringify({mdReady: !!window.__mdKernel, pmLen: (document.querySelector('.ProseMirror')||{innerHTML:''}).innerHTML.length, readyState: document.readyState, theme: document.documentElement.getAttribute('data-theme'), images: Array.prototype.map.call(document.querySelectorAll('.md-image-render img'), function(i){return {src: (i.getAttribute('src')||'').slice(0,120), w: i.naturalWidth, complete: i.complete}})})") { result in
             print("SCREENSHOT dom:", result ?? "nil")
         }
         if let win = controller?.window {

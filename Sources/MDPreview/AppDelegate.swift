@@ -201,7 +201,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func pushThemeToWeb() {
         let theme = currentThemeJS()
         for controller in documents {
-            controller.callJSPublic("window.mdbridge.setTheme(\(JSArgs.string(theme)))")
+            controller.setTheme(theme)
         }
     }
 
