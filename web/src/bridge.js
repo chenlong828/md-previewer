@@ -1,21 +1,42 @@
-// 桥接 API:window.mdbridge 是 Swift 壳调用的唯一入口表面。
+// 桥接 API（v1 过渡层，T5 切换后整文件删除）：window.mdbridge 是 Swift 壳当前调用的入口。
+// 内核能力全部来自 kernel/core；本文件只做「v1 调用面 ↔ v2 op 面」的临时适配。
 // Swift↔JS 命令名的 JS 侧权威见 commands.js 与 tables.js。
 import { editorViewCtx } from '@milkdown/core'
 import { TextSelection } from '@milkdown/prose/state'
 import { isInTable } from '@milkdown/prose/tables'
 import { undo, redo } from '@milkdown/prose/history'
 import { replaceAll, insert } from '@milkdown/utils'
-import { state, post, currentMarkdown } from './state.js'
-import { computeStats } from './stats.js'
-import { createEditor, toggleSource as applySourceToggle, applyThemeDom, applyMermaidTheme } from './editor.js'
-import { findKey, findUI } from './find.js'
-import { openFindBar, closeFindBar, stepFind, runFind } from './find-bar.js'
-import { showCode, hideCode, setCodeLanguage as applyCodeLanguage, setCodeLineNumbers as applyCodeLineNumbers, isCodeMode, codeInfo, codeFindCount } from './code-view.js'
-import { hasLanguage } from './languages.js'
-import { tableCommandImpls } from './tables.js'
-import { commandRegistry } from './commands.js'
-import { exportStandaloneHTML } from './export.js'
-import { handleImported, extractImagePayload } from './image-paste.js'
+import { post } from './v1-channel.js'
+import { state, currentMarkdown } from './kernel/core/state.js'
+import { bindBus } from './kernel/core/bus.js'
+import { computeStats } from './kernel/core/stats.js'
+import { createEditor, toggleSource as applySourceToggle, applyThemeDom, applyMermaidTheme } from './kernel/core/editor.js'
+import { findKey, findUI } from './kernel/core/find.js'
+import { openFindBar, closeFindBar, stepFind, runFind } from './kernel/core/find-bar.js'
+import { showCode, hideCode, setCodeLanguage as applyCodeLanguage, setCodeLineNumbers as applyCodeLineNumbers, isCodeMode, codeInfo, codeFindCount } from './kernel/core/code-view.js'
+import { hasLanguage } from './kernel/core/languages.js'
+import { tableCommandImpls } from './kernel/core/tables.js'
+import { commandRegistry } from './kernel/core/commands.js'
+import { exportStandaloneHTML } from './kernel/core/export.js'
+import { extractImagePayload } from './kernel/core/image-paste.js'
+
+// v1 适配：把内核总线接到 window.webkit 通道；hostCall 用 requestId 关联响应。
+// 迁移完成后（T5）本块由 transport + contract 取代。
+const importPending = new Map()
+let importSeq = 0
+bindBus({
+    notify: (op, payload) => post({ op, ...payload }),
+    callHost: (op, payload) => new Promise((resolve, reject) => {
+        if (op !== 'importImage') {
+            reject(new Error(`v1 adapter: unsupported host call ${op}`))
+            return
+        }
+        importSeq += 1
+        const requestId = `img-${importSeq}`
+        importPending.set(requestId, { resolve, reject })
+        post({ op, requestId, ...payload })
+    }),
+})
 
 window.mdbridge = {
     async init(markdown, opts = {}) {
@@ -134,7 +155,7 @@ window.mdbridge = {
         applyMermaidTheme()
         if (state.ready) {
             // 已渲染的 mermaid 图需要重绘
-            state.editor.action(replaceAll(state.lastMarkdown))
+            state.editor.action(replaceAll(currentMarkdown()))
         }
     },
 
@@ -335,9 +356,13 @@ window.mdbridge = {
         return this.formatCommand('insertImageCommand', { src: src || '', alt: alt || '', title: title || '' })
     },
 
-    /** 粘贴图片导入回灌:原生 ImageStore 落盘后按 requestId 恢复选区插入 */
+    /** 粘贴图片导入回灌：兑现 hostCall('importImage') 的响应（选区快照在 image-paste 内闭环） */
     onImageImported(requestId, payload) {
-        return handleImported(requestId, payload)
+        const entry = importPending.get(requestId)
+        if (!entry) return false
+        importPending.delete(requestId)
+        entry.resolve(payload || {})
+        return true
     },
 
     /** 测试辅助:剪贴板图片载荷识别(blob=截图位图 / file=本地图片路径) */
@@ -361,7 +386,7 @@ window.mdbridge = {
     },
 
     requestStats() {
-        post({ op: 'stats', ...computeStats(state.sourceMode ? document.getElementById('source-editor').value : state.lastMarkdown) })
+        post({ op: 'stats', ...computeStats(currentMarkdown()) })
     },
 
     exportStandaloneHTML,

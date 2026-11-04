@@ -53,7 +53,8 @@ for (const file of walk(KERNEL_DIR)) {
   for (const match of text.matchAll(/from\s+['"]([^'"]+)['"]/g)) {
     const spec = match[1];
     if (!spec.startsWith('.')) {
-      violations.push(`${rel}: 内核模块不得 import 第三方包 "${spec}"（依赖只允许出现在 core 的适配位置，见规格）`);
+      // 第三方依赖只允许出现在 core（编辑器引擎本身）；transport/contract/semantics 必须零依赖
+      if (layer !== 'core') violations.push(`${rel}: ${layer} 层不得 import 第三方包 "${spec}"`);
       continue;
     }
     const ok = allowed.length === 0 ? false : allowed.some((prefix) => spec.startsWith(prefix) || spec === '.') ;

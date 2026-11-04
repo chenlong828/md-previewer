@@ -4,7 +4,7 @@
 //
 // 行结构是表现层：每个逻辑行一个 .code-line，行号由 CSS ::before 生成，不进入
 // 文本节点；逐行 .code-line-content 以 \n 拼接必须等于 state.codeText。
-import { state } from './state.js'
+import { state, setMode } from './state.js'
 import { hasLanguage, highlightInto } from './languages.js'
 
 function codeView() {
@@ -214,7 +214,7 @@ function render() {
 
 /** 进入代码视图。opts.language 由 Swift 解析为最终语言 id；allowHighlight=false 走纯文本。 */
 export function showCode(text, opts = {}) {
-    state.codeMode = true
+    setMode('code')
     state.codeText = text || ''
     state.codeLanguage = opts.language || ''
     state.codeAllowHighlight = opts.allowHighlight !== false
@@ -237,7 +237,7 @@ export function showCode(text, opts = {}) {
 /** 退出代码视图（切回 Markdown/目录模式时由 bridge.setMarkdown 调用）。 */
 export function hideCode() {
     if (!state.codeMode) return
-    state.codeMode = false
+    setMode('markdown')
     state.codeText = ''
     state.codeLanguage = ''
     state.codeTokenCount = 0

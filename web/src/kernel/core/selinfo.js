@@ -2,7 +2,7 @@
 import { Plugin } from '@milkdown/prose/state'
 import { $prose } from '@milkdown/utils'
 import { isInTable } from '@milkdown/prose/tables'
-import { post } from './state.js'
+import { notify } from './bus.js'
 
 export const selInfoProse = $prose(() => {
     let last
@@ -14,7 +14,7 @@ export const selInfoProse = $prose(() => {
                     try { inTable = isInTable(view.state) } catch (e) { /* ignore */ }
                     if (last !== undefined && inTable === last) return
                     last = inTable
-                    post({ op: 'selinfo', inTable })
+                    notify('selinfo', { inTable })
                 },
             }
         },

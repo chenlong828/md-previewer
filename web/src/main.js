@@ -1,9 +1,9 @@
-// 入口:样式装配、查找栏 wiring、启动消息。职责模块见同目录各文件
-// (state/stats/editor/find/find-bar/tables/selinfo/mermaid-view/export/bridge)。
+// 页面入口（v1 过渡）：样式装配、查找栏 wiring、启动消息。
+// 内核能力在 kernel/core；v2 页面入口在 T5 切换为 page.js + kernel/main.js。
 import './bridge.js'
-import { post } from './state.js'
-import { scheduleStats } from './stats.js'
-import { setupFindBar } from './find-bar.js'
+import { notify } from './kernel/core/bus.js'
+import { scheduleStats } from './kernel/core/stats.js'
+import { setupFindBar } from './kernel/core/find-bar.js'
 
 // ProseMirror 基础样式统一从 @milkdown/prose 取(禁止独立 prosemirror-* 来源)
 import '@milkdown/prose/view/style/prosemirror.css'
@@ -15,11 +15,11 @@ import './typora.css'
 
 // 源码模式 textarea 编辑 → 标记脏状态
 document.getElementById('source-editor').addEventListener('input', () => {
-    post({ op: 'changed' })
+    notify('changed', { dirty: true })
     scheduleStats()
 })
 
 setupFindBar()
 
 // 通知原生:页面脚本已就绪
-post({ op: 'boot' })
+notify('boot', {})

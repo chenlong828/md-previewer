@@ -11,7 +11,8 @@ import { clipboard } from '@milkdown/plugin-clipboard'
 import { trailing } from '@milkdown/plugin-trailing'
 import { getMarkdown, replaceAll } from '@milkdown/utils'
 import mermaid from 'mermaid'
-import { state, post, currentMarkdown } from './state.js'
+import { state, currentMarkdown } from './state.js'
+import { notify } from './bus.js'
 import { ensureLanguages } from './languages.js'
 import { scheduleStats } from './stats.js'
 import { findKey, findUI, findProsePlugin } from './find.js'
@@ -101,12 +102,11 @@ export async function createEditor() {
 
     editor.action((ctx) => {
         ctx.get(listenerCtx).markdownUpdated((_ctx, markdown, _prev) => {
-            state.lastMarkdown = markdown
             // 单一脏机制:防抖窗(200ms)内的并发编辑会产生携带中间态的过期回调;
             // 只认与当前 doc 同步的序列化结果,过期回调直接丢弃——最新状态必有
             // 更新的回调跟进。基线对齐由 setMarkdown/markClean 同步保证,回调只做比对。
             if (markdown === currentMarkdown()) {
-                post({ op: 'changed', dirty: markdown !== state.baselineMarkdown })
+                notify('changed', { dirty: markdown !== state.baselineMarkdown })
             }
             scheduleStats()
             // 查找进行中:文档变化后刷新计数(插件 apply 已重算匹配)
@@ -177,7 +177,7 @@ export function toggleSource(force) {
         if (wasClean) state.baselineMarkdown = state.editor.action(getMarkdown())
     }
     state.sourceMode = target
-    post({ op: 'sourceMode', value: target })
+    notify('sourceMode', { value: target })
     // 查找进行中:切换后在新界面重新搜索
     if (document.body.classList.contains('finding') && findUI.query) {
         runFind(findUI.query, { caseSensitive: findUI.caseSensitive })

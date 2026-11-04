@@ -1,5 +1,6 @@
-// 词数统计:纯计算 + 节流上报
-import { state, post } from './state.js'
+// 词数统计：纯计算 + 节流上报
+import { currentMarkdown } from './state.js'
+import { notify } from './bus.js'
 
 const CJK_RE = /[\u2E80-\u2FFF\u3040-\u30FF\u31C0-\u31FF\u3400-\u4DBF\u4E00-\u9FFF\uF900-\uFAFF]/
 
@@ -15,6 +16,7 @@ export function scheduleStats() {
     if (statsTimer) return
     statsTimer = setTimeout(() => {
         statsTimer = null
-        post({ op: 'stats', ...computeStats(state.lastMarkdown) })
+        // 单一真相源：源码模式读 textarea、渲染模式读编辑器 doc（不读旧镜像）
+        notify('stats', computeStats(currentMarkdown()))
     }, 250)
 }
