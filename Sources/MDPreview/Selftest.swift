@@ -896,6 +896,9 @@ func greet() -> String {
         //    红→绿守门:修复前 listItemIndent:'one' 每级只缩 2 空格。
         testListIndent()
 
+        // ── 装载改写/保存口径端到端：内核改写 + 壳作答 + 内核还原（R9 的运行时证据）
+        testKernelRewrite()
+
         // ── OQ-1/pluginSet 配置可达性:_init 必须先解析 opts 再建编辑器,
         //    no-diagram 轻量模式真正生效(mermaid 围栏保持代码块、math 仍加载)。
         //    修复前 opts 在创建之后才赋值,条件分支不可达,这里恒红。
@@ -942,6 +945,37 @@ func greet() -> String {
         }
     }
 
+    /// 装载改写与保存口径的端到端：相对引用→file://（内核经 resolveResources 问壳），
+    /// 保存时再还原成相对路径。这是 R9「语义单点在 web」在真实壳里的运行时证据。
+    private func testKernelRewrite() {
+        var loadOK = false
+        var saveOK = false
+        waitForCollect("装载改写(内核改写+壳作答)", timeout: 20) { done in
+            let dir = URL(fileURLWithPath: NSTemporaryDirectory())
+                .appendingPathComponent("mdp-v2-rewrite-\(UInt32.random(in: 0..<UInt32.max))", isDirectory: true)
+            try? FileManager.default.createDirectory(at: dir.appendingPathComponent("img"), withIntermediateDirectories: true)
+            // 只要文件存在即可（NodeView 是否解码成功不影响 src 断言）
+            try? Data([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]).write(to: dir.appendingPathComponent("img/k.png"))
+            self.kernel.send("setMarkdown", ["md": "![k](img/k.png)", "baseDir": dir.path]) { result in
+                let ok = (try? result.get())?["ok"] as? Bool ?? false
+                self.evaluate("(function(){var i=document.querySelector('.md-image img');return i?i.getAttribute('src'):''})()") { r in
+                    let src = r as? String ?? ""
+                    loadOK = ok && src.hasPrefix("file://") && src.hasSuffix("img/k.png")
+                    self.kernel.send("getSaveMarkdown") { saved in
+                        let md = (try? saved.get())?["md"] as? String ?? ""
+                        saveOK = md.contains("![k](img/k.png)") && !md.contains("file://")
+                        // 恢复标准样例，后续检查不受影响
+                        self.kernel.send("setMarkdown", ["md": SelftestRunner.sampleMarkdown, "baseDir": "/tmp"]) { _ in
+                            done()
+                        }
+                    }
+                }
+            }
+        }
+        if loadOK { pass("装载改写(内核改写+壳作答)") } else { fail("装载改写(内核改写+壳作答)") }
+        if saveOK { pass("保存口径(内核还原相对路径)") } else { fail("保存口径(内核还原相对路径)") }
+    }
+
     /// v2 通知统一入口（boot/ready/changed/jserror 与旧桥同名同形状）
     private func handleNotification(op: String, payload: [String: Any]) {
         if op == "boot" { bootReceived = true }
@@ -966,9 +1000,33 @@ func greet() -> String {
         switch op {
         case "resolveResources":
             let refs = payload["refs"] as? [String] ?? []
+            let basePath = payload["baseDir"] as? String
             var resources: [String: Any] = [:]
             for ref in refs {
-                resources[ref] = ["url": NSNull(), "exists": false, "isImage": false, "paths": [String]()]
+                var paths: [String] = []
+                var url: Any = NSNull()
+                if let basePath {
+                    let literal = URL(fileURLWithPath: basePath, isDirectory: true)
+                        .appendingPathComponent(ref).standardizedFileURL
+                    let decodedRef = ref.split(separator: "/", omittingEmptySubsequences: false)
+                        .map { $0.removingPercentEncoding ?? String($0) }
+                        .joined(separator: "/")
+                    let decoded = URL(fileURLWithPath: basePath, isDirectory: true)
+                        .appendingPathComponent(decodedRef).standardizedFileURL
+                    if FileManager.default.fileExists(atPath: literal.path) {
+                        paths.append(literal.path)
+                        url = literal.absoluteString
+                    }
+                    if decoded.path != literal.path, FileManager.default.fileExists(atPath: decoded.path) {
+                        paths.append(decoded.path)
+                    }
+                }
+                resources[ref] = [
+                    "url": url,
+                    "exists": !paths.isEmpty,
+                    "isImage": true,
+                    "paths": paths,
+                ]
             }
             reply(.success(["resources": resources]))
         case "importImage":

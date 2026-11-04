@@ -68,13 +68,14 @@ export function createOps() {
         /** 装载磁盘 markdown：先问壳每个引用的真实位置，再改写为可加载 URL */
         async setMarkdown(payload = {}) {
             const md = typeof payload.md === 'string' ? payload.md : ''
+            const baseDir = typeof payload.baseDir === 'string' ? payload.baseDir : state.baseDir
             let text = md
             if (md.length > 0) {
                 const refs = collectImageRefs(md)
                 if (refs.length > 0) {
                     let resources = {}
                     try {
-                        const answer = await hostCall('resolveResources', { refs })
+                        const answer = await hostCall('resolveResources', { refs, baseDir })
                         resources = (answer && answer.resources) || {}
                     } catch (e) {
                         // 壳未实现该请求（v1 适配）：按原文装载，缺失引用保持原样
@@ -379,7 +380,7 @@ export function createOps() {
             let resources = {}
             if (refs.length > 0) {
                 try {
-                    const answer = await hostCall('resolveResources', { refs })
+                    const answer = await hostCall('resolveResources', { refs, baseDir: state.baseDir })
                     resources = (answer && answer.resources) || {}
                 } catch (e) {
                     console.warn('resolveResources unavailable; no refs collected', e)

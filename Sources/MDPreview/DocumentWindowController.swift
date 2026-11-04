@@ -637,7 +637,10 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
     private func resolveResources(_ payload: [String: Any]) -> [String: Any] {
         guard let refs = payload["refs"] as? [String] else { return ["resources": [:]] }
         var resources: [String: Any] = [:]
-        let baseDir = fileURL?.deletingLastPathComponent()
+        // 请求自带 baseDir（内核知道这批引用属于哪篇文档），无则以当前文档目录兜底
+        let requested = payload["baseDir"] as? String
+        let baseDir = requested.map { URL(fileURLWithPath: $0, isDirectory: true) }
+            ?? fileURL?.deletingLastPathComponent()
         for ref in refs {
             var answer: [String: Any] = ["url": NSNull(), "exists": false, "isImage": false, "paths": [String]()]
             defer { resources[ref] = answer }
