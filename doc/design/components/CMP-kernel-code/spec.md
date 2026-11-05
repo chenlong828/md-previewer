@@ -39,4 +39,4 @@ updated: 2026-11-05
 - selftest 代码视图组（语言切换、行号、查找命中）；Node core 组「代码视图信息与语言表」。
 - 缩略图：`minimap.test.js` surface 用例切换代码 source；`--screenshot` 长代码文件验证真实 token、行号/无行号与顶左缩放。
 - 禁边：`node check-kernel.mjs` 校验「组件只 import 自身 + shared + semantics」。
-- 回归门：Node 85 项 + selftest 全绿，断言数只增不减。
+- 回归门：Node 86 项 + selftest 全绿，断言数只增不减。

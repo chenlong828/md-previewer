@@ -6,10 +6,13 @@ import { use } from '../../shared/ports.js'
 import { shouldShow } from './visibility.js'
 import {
     clamp,
+    cropPanTop,
     isInsideContent,
     isInsideViewport,
+    maxScrollTop,
     scrollTopForDrag,
     scrollTopForPointer,
+    scrollTopForThumbDrag,
     viewportMetrics,
 } from './viewport.js'
 import { fitThumbnail } from './thumbnail.js'
@@ -48,6 +51,7 @@ export function createMinimap() {
     let lastMeasure = null
     let lastLayout = null
     let lastPageRect = null
+    let lastPan = 0
     let snapshotCount = 0
     let redrawCount = 0
     let snapshotWarned = false
@@ -112,8 +116,10 @@ export function createMinimap() {
 
     function clearSnapshot() {
         stage?.replaceChildren()
+        if (stage) stage.style.top = '0px'
         lastLayout = null
         lastPageRect = null
+        lastPan = 0
         if (viewport) {
             viewport.style.display = 'none'
             viewport.style.width = '0px'
@@ -139,12 +145,31 @@ export function createMinimap() {
             railHeight: railHeight(),
         })
         if (!layout.scale) return false
-        stage.style.transform = `scale(${layout.scale})`
+        applyStage(layout, 0)
         lastLayout = layout
         lastPageRect = { width: pageRect.width, height: pageRect.height }
+        lastPan = 0
         snapshotCount += 1
         redrawCount += 1
         return true
+    }
+
+    function applyStage(layout, panTop) {
+        if (!stage) return
+        stage.style.transform = `scale(${layout.scale})`
+        stage.style.left = '0px'
+        stage.style.top = `${-panTop}px`
+    }
+
+    function currentPanTop(measured) {
+        if (!lastLayout || lastLayout.mode !== 'crop') return 0
+        return cropPanTop({
+            docHeight: measured?.docHeight || 0,
+            viewportHeight: measured?.viewportHeight || 0,
+            scrollTop: measured?.scrollTop || 0,
+            railHeight: railHeight(),
+            contentHeight: lastLayout.height,
+        })
     }
 
     function updateViewport() {
@@ -152,13 +177,22 @@ export function createMinimap() {
             if (viewport) viewport.style.display = 'none'
             return
         }
+        const panTop = cropPanTop({
+            docHeight: lastMeasure.docHeight,
+            viewportHeight: lastMeasure.viewportHeight,
+            scrollTop: window.scrollY || document.documentElement.scrollTop || 0,
+            railHeight: railHeight(),
+            contentHeight: lastLayout.mode === 'crop' ? lastLayout.height : 0,
+        })
+        lastPan = panTop
+        applyStage(lastLayout, panTop)
         const metrics = viewportMetrics({
             docHeight: lastMeasure.docHeight,
             viewportHeight: lastMeasure.viewportHeight,
             scrollTop: window.scrollY || document.documentElement.scrollTop || 0,
             railHeight: railHeight(),
             railWidth: railWidth(),
-            contentTop: lastLayout.top,
+            contentTop: lastLayout.top - panTop,
             contentHeight: lastLayout.height,
             contentLeft: lastLayout.left,
             contentWidth: lastLayout.width,
@@ -252,13 +286,15 @@ export function createMinimap() {
     }
 
     function currentMetrics(measured) {
+        const panTop = currentPanTop(measured)
+        lastPan = panTop
         return viewportMetrics({
             docHeight: measured.docHeight,
             viewportHeight: measured.viewportHeight,
             scrollTop: measured.scrollTop,
             railHeight: railHeight(),
             railWidth: railWidth(),
-            contentTop: lastLayout?.top || 0,
+            contentTop: (lastLayout?.top || 0) - panTop,
             contentHeight: lastLayout?.height,
             contentLeft: lastLayout?.left || 0,
             contentWidth: lastLayout?.width,
@@ -273,30 +309,35 @@ export function createMinimap() {
         if (!measured) return
         const x = pointerX(event)
         const y = pointerY(event)
+        const metrics = currentMetrics(measured)
         if (!isInsideContent({
             pointerX: x,
             pointerY: y,
-            contentLeft: lastLayout.left,
-            contentTop: lastLayout.top,
-            contentWidth: lastLayout.width,
-            contentHeight: lastLayout.height,
+            contentLeft: metrics.contentLeft,
+            contentTop: metrics.contentTop,
+            contentWidth: metrics.contentWidth,
+            contentHeight: metrics.contentHeight,
         })) {
             // 轨道空白区不参与文档定位，避免整轨 100% 映射造成偏差。
             return
         }
         event.preventDefault()
         event.stopPropagation()
-        const metrics = currentMetrics(measured)
         if (isInsideViewport(y, metrics)) {
-            drag = { startScrollTop: measured.scrollTop, startY: y, pointerId: event.pointerId }
+            drag = {
+                startScrollTop: measured.scrollTop,
+                startY: y,
+                pointerId: event.pointerId,
+                boxHeight: metrics.boxHeight,
+            }
         } else {
             active.scrollTo?.(scrollTopForPointer({
                 pointerY: y,
                 railHeight: railHeight(),
                 docHeight: measured.docHeight,
                 viewportHeight: measured.viewportHeight,
-                contentTop: lastLayout.top,
-                contentHeight: lastLayout.height,
+                contentTop: metrics.contentTop,
+                contentHeight: metrics.contentHeight,
             }))
             drag = null
         }
@@ -311,16 +352,37 @@ export function createMinimap() {
     function onPointerMove(event) {
         if (!visible || !drag || event.pointerId !== drag.pointerId || !lastLayout) return
         event.preventDefault()
-        const target = scrollTopForDrag({
-            startScrollTop: drag.startScrollTop,
-            startPointerY: drag.startY,
-            pointerY: pointerY(event),
-            railHeight: railHeight(),
-            docHeight: lastMeasure?.docHeight || 0,
-            viewportHeight: lastMeasure?.viewportHeight || window.innerHeight || 0,
-            contentTop: lastLayout.top,
-            contentHeight: lastLayout.height,
-        })
+        const y = pointerY(event)
+        const height = railHeight()
+        const docHeight = lastMeasure?.docHeight || 0
+        const viewportHeight = lastMeasure?.viewportHeight || window.innerHeight || 0
+        let target
+        if (lastLayout.mode === 'crop' && lastLayout.height > height) {
+            // 长文裁切：视口框是整篇滚动条的滑块，指针与框 1:1 跟手。
+            target = scrollTopForThumbDrag({
+                startScrollTop: drag.startScrollTop,
+                startPointerY: drag.startY,
+                pointerY: y,
+                railHeight: height,
+                boxHeight: drag.boxHeight,
+                docHeight,
+                viewportHeight,
+            })
+        } else {
+            target = scrollTopForDrag({
+                startScrollTop: drag.startScrollTop,
+                startPointerY: drag.startY,
+                pointerY: y,
+                railHeight: height,
+                docHeight,
+                viewportHeight,
+                contentTop: lastLayout.top - lastPan,
+                contentHeight: lastLayout.height,
+            })
+        }
+        // 拖到轨道顶/底时严格对齐文档开头/结尾。
+        if (y <= 1) target = 0
+        else if (y >= height - 1) target = maxScrollTop(docHeight, viewportHeight)
         scrollTo(target)
     }
 
@@ -450,6 +512,7 @@ export function createMinimap() {
         lastMeasure = null
         lastLayout = null
         lastPageRect = null
+        lastPan = 0
     }
 
     function setVisible(value) {
@@ -482,6 +545,8 @@ export function createMinimap() {
                 contentTop: 0,
                 contentWidth: 0,
                 contentHeight: 0,
+                panTop: 0,
+                panRange: 0,
                 scale: 0,
                 snapshotCount: 0,
                 redrawCount: 0,
@@ -491,6 +556,7 @@ export function createMinimap() {
         }
         const measured = measure()
         const layout = lastLayout
+        const panTop = measured && layout ? currentPanTop(measured) : 0
         const metrics = measured && layout
             ? viewportMetrics({
                 docHeight: measured.docHeight,
@@ -498,7 +564,7 @@ export function createMinimap() {
                 scrollTop: measured.scrollTop,
                 railHeight: railHeight(),
                 railWidth: railWidth(),
-                contentTop: layout.top,
+                contentTop: layout.top - panTop,
                 contentHeight: layout.height,
                 contentLeft: layout.left,
                 contentWidth: layout.width,
@@ -510,7 +576,7 @@ export function createMinimap() {
             visible,
             surface: state.sourceMode ? 'source' : (state.codeMode ? 'code' : 'markdown'),
             hasSource: !!measured,
-            mode: layout ? 'fit' : 'none',
+            mode: layout?.mode || 'none',
             docHeight: Math.round(measured?.docHeight || 0),
             viewportHeight: Math.round(measured?.viewportHeight || 0),
             scrollTop: Math.round(measured?.scrollTop || 0),
@@ -522,10 +588,12 @@ export function createMinimap() {
             viewportBoxWidth: Math.round(metrics?.boxWidth || 0),
             pageWidth: Math.round(lastPageRect?.width || 0),
             pageHeight: Math.round(lastPageRect?.height || 0),
-            contentLeft: Math.round(layout?.left || 0),
-            contentTop: Math.round(layout?.top || 0),
-            contentWidth: Math.round(layout?.width || 0),
-            contentHeight: Math.round(layout?.height || 0),
+            contentLeft: Math.round(metrics?.contentLeft || 0),
+            contentTop: Math.round(metrics?.contentTop || 0),
+            contentWidth: Math.round(metrics?.contentWidth || 0),
+            contentHeight: Math.round(metrics?.contentHeight || 0),
+            panTop: Math.round(panTop),
+            panRange: Math.round(Math.max(0, (layout?.height || 0) - railHeight())),
             scale: layout ? Number(layout.scale.toFixed(4)) : 0,
             snapshotCount,
             redrawCount,

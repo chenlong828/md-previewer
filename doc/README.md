@@ -64,7 +64,7 @@ doc/
 │   └── 2026-11-04-scenario-inventory/  ← 已实现场景/组件清点（执行中）
 └── history/                            ← 记忆：怎么走到这里的
     ├── decisions/
-    ├── works/                          ← 已归档工序（含 app-icon、code-file-view、code-view-line-numbers、document-minimap）
+    ├── works/                          ← 已归档工序（含 app-icon、code-file-view、code-view-line-numbers、document-minimap、minimap-long-crop）
     └── pitfalls.md
 ```
 
@@ -73,7 +73,7 @@ doc/
 - **组件与场景**：组件规格带 `component: CMP-xxx`，状态 `planned/active/retired`；场景带 `flow` 与 `scenario: SCN-xxxx`，状态 `draft/designed/verified/deprecated`。
 - **内核分层**：`CMP-kernel-transport` / `-contract` / `-semantics` + 七个功能组件（document/editor/code/find/output/media/minimap），依赖单向、由 `web/check-kernel.mjs` 守门；`CMP-image` 收缩为落盘/布局/GC 执行与 NodeView，路径语义移交 `CMP-kernel-semantics`。
 - **需求状态纪律**：新需求卡先 `accepted`；只有影响场景全部 `verified`，才转 `delivered`。当前 8 张 `accepted`、REQ-0009/REQ-0010/REQ-0011 已 `delivered`，验证债见各场景卡 §6。
-- **缩略图已交付**：REQ-0011 / SCN-0017 / `CMP-minimap` 为已交付能力；实现归 `CMP-kernel-minimap`，Markdown/代码只读快照工厂归 `CMP-kernel-editor` / `CMP-kernel-code`，偏好归 `CMP-app-shell`。自动门与用户验收均通过（见 [归档 brief](history/works/2026-11-04-document-minimap/brief.md)）。
+- **缩略图已交付**：REQ-0011 / SCN-0017 / `CMP-minimap` 为已交付能力；实现归 `CMP-kernel-minimap`，Markdown/代码只读快照工厂归 `CMP-kernel-editor` / `CMP-kernel-code`，偏好归 `CMP-app-shell`。自动门与用户验收均通过（见 [归档 brief](history/works/2026-11-04-document-minimap/brief.md)）；2026-11-05 长文 120px 裁切与视口 1:1 跟手补丁已由用户确认并归档（见 [归档 brief](history/works/2026-11-05-minimap-long-crop/brief.md)）。
 
 ## 阅读顺序
 

@@ -10,9 +10,11 @@ import { state } from '../src/kernel/shared/state.js'
 import { shouldShow } from '../src/kernel/components/minimap/visibility.js'
 import { fitThumbnail } from '../src/kernel/components/minimap/thumbnail.js'
 import {
+    cropPanTop,
     isInsideContent,
     scrollTopForDrag,
     scrollTopForPointer,
+    scrollTopForThumbDrag,
     viewportMetrics,
 } from '../src/kernel/components/minimap/viewport.js'
 import { cloneReadonly } from '../src/kernel/shared/readonly-clone.js'
@@ -91,7 +93,7 @@ function fakeSources() {
 test('页面缩放：等比、顶左对齐，不居中', () => {
     assert.deepEqual(
         fitThumbnail({ pageWidth: 800, pageHeight: 2000, railWidth: 120, railHeight: 768 }),
-        { scale: 0.15, width: 120, height: 300, left: 0, top: 0 },
+        { mode: 'fit', scale: 0.15, width: 120, height: 300, left: 0, top: 0 },
     )
     // 高度受限：页面比轨道更“宽”，宽度只占一部分，但仍从左上开始。
     const wide = fitThumbnail({ pageWidth: 1000, pageHeight: 100, railWidth: 120, railHeight: 300 })
@@ -100,6 +102,12 @@ test('页面缩放：等比、顶左对齐，不居中', () => {
         { width: wide.width, height: wide.height, left: wide.left, top: wide.top },
         { width: 120, height: 12, left: 0, top: 0 },
     )
+    // 长文：fit 后宽度 61.44 < 120，改为固定 120 宽、页面高度超出轨道。
+    const crop = fitThumbnail({ pageWidth: 800, pageHeight: 10000, railWidth: 120, railHeight: 768 })
+    assert.equal(crop.mode, 'crop')
+    assert.equal(crop.scale, 0.15)
+    assert.equal(crop.width, 120)
+    assert.equal(crop.height, 1500)
 })
 
 test('视口几何：以内容矩形为基准，空白区不参与', () => {
@@ -127,6 +135,55 @@ test('视口几何：以内容矩形为基准，空白区不参与', () => {
         docHeight: 1000, viewportHeight: 20, scrollTop: 0,
         railHeight: 500, contentHeight: 250,
     }).boxHeight, 12)
+
+    // crop：contentTop 为负的平移量，整页高度可大于轨道。
+    const crop = viewportMetrics({
+        docHeight: 10000, viewportHeight: 1000, scrollTop: 5000,
+        railHeight: 500, railWidth: 120,
+        contentTop: -1400, contentHeight: 3000,
+    })
+    assert.equal(crop.scale, 0.3)
+    assert.equal(crop.railTop, 100)
+    assert.equal(crop.boxHeight, 300)
+    assert.equal(crop.contentTop, -1400)
+    assert.equal(Math.round(cropPanTop({
+        docHeight: 10000, viewportHeight: 1000, scrollTop: 5000,
+        railHeight: 500, contentHeight: 3000,
+    })), 1389)
+    assert.equal(cropPanTop({
+        docHeight: 10000, viewportHeight: 1000, scrollTop: 4500,
+        railHeight: 500, contentHeight: 3000,
+    }), 1250)
+    assert.equal(cropPanTop({
+        docHeight: 10000, viewportHeight: 1000, scrollTop: 9000,
+        railHeight: 500, contentHeight: 3000,
+    }), 2500)
+    assert.equal(cropPanTop({
+        docHeight: 10000, viewportHeight: 1000, scrollTop: 0,
+        railHeight: 500, contentHeight: 3000,
+    }), 0)
+    assert.equal(scrollTopForPointer({
+        pointerY: 100, railHeight: 500, docHeight: 10000, viewportHeight: 1000,
+        contentTop: -1400, contentHeight: 3000,
+    }), 4500)
+    assert.equal(Math.round(scrollTopForDrag({
+        startScrollTop: 100, startPointerY: 100, pointerY: 200,
+        railHeight: 500, docHeight: 10000, viewportHeight: 1000,
+        contentTop: -1400, contentHeight: 3000,
+    })), 433)
+    // crop 拖动：视口框是整篇滚动条滑块，指针移动 1px，框也移动 1px。
+    assert.equal(scrollTopForThumbDrag({
+        startScrollTop: 4500, startPointerY: 250, pointerY: 300,
+        railHeight: 500, boxHeight: 100, docHeight: 10000, viewportHeight: 1000,
+    }), 5625)
+    assert.equal(scrollTopForThumbDrag({
+        startScrollTop: 4500, startPointerY: 250, pointerY: 500,
+        railHeight: 500, boxHeight: 100, docHeight: 10000, viewportHeight: 1000,
+    }), 9000)
+    assert.equal(scrollTopForThumbDrag({
+        startScrollTop: 4500, startPointerY: 250, pointerY: 0,
+        railHeight: 500, boxHeight: 100, docHeight: 10000, viewportHeight: 1000,
+    }), 0)
 
     assert.equal(isInsideContent({
         pointerX: 50, pointerY: 50, contentLeft: 0, contentTop: 0, contentWidth: 100, contentHeight: 200,
@@ -256,4 +313,107 @@ test('缩略图 surface：fit 顶左、空白区不跳转、拖动按内容高�
     minimap.refresh()
     assert.equal(minimap.info().surface, 'source')
     assert.equal(document.body.classList.contains('minimap-shown'), false)
+})
+
+test('缩略图 surface：长文固定 120 宽裁切，拖视口框顶底对齐', (t) => {
+    resetPorts()
+    const dom = defineDom()
+    let pageScroll = 0
+    Object.defineProperty(dom.window, 'scrollY', { get: () => pageScroll, configurable: true })
+    state.codeMode = false
+    state.sourceMode = false
+    state.mode = 'markdown'
+    const long = {
+        scrollTop: 0,
+        snapshots: 0,
+        measure() {
+            return {
+                contentWidth: 800,
+                docHeight: 10000,
+                viewportHeight: 800,
+                scrollTop: pageScroll,
+            }
+        },
+        snapshot() {
+            this.snapshots += 1
+            return makePage(800, 10000)
+        },
+        scrollTo(top) {
+            pageScroll = Math.max(0, Math.min(9200, Number(top) || 0))
+            this.scrollTop = pageScroll
+        },
+    }
+    provide('minimapSources', {
+        markdown: () => long,
+        code: () => long,
+    })
+    const minimap = createMinimap()
+    t.after(() => {
+        minimap.stop()
+        resetPorts()
+        dom.window.close()
+    })
+
+    assert.equal(minimap.start(), true)
+    let info = minimap.info()
+    assert.equal(info.visible, true)
+    assert.equal(info.mode, 'crop')
+    assert.equal(info.snapshotCount, 1)
+    assert.equal(info.pageWidth, 800)
+    assert.equal(info.pageHeight, 10000)
+    assert.equal(info.scale, 0.15)
+    assert.equal(info.contentWidth, 120)
+    assert.equal(info.contentHeight, 1500)
+    assert.equal(info.contentTop, 0)
+    assert.equal(info.panTop, 0)
+    assert.equal(info.panRange, 732)
+
+    const rail = document.getElementById('minimap')
+    const stage = rail.querySelector('.minimap-stage')
+    const box = rail.querySelector('.minimap-viewport')
+    assert.equal(stage.style.top, '0px')
+    assert.equal(box.style.width, '120px')
+    assert.equal(box.style.height, '120px')
+    assert.equal(box.style.top, '0px')
+
+    // 正文滚到中段：页面按整篇进度平移，视口框也按整篇进度落在轨道中段。
+    pageScroll = 5000
+    minimap.refresh()
+    info = minimap.info()
+    assert.equal(info.contentTop, -398)
+    assert.equal(info.panTop, 398)
+    assert.equal(info.viewportTop, 352)
+    assert.equal(Math.round(parseFloat(stage.style.top)), -398)
+
+    // 拖动视口框 100px：框跟着指针移动 100px，内容进度同步。
+    rail.dispatchEvent(new dom.window.MouseEvent('pointerdown', { clientX: 10, clientY: 360, button: 0, bubbles: true }))
+    rail.dispatchEvent(new dom.window.MouseEvent('pointermove', { clientX: 10, clientY: 460, bubbles: true }))
+    rail.dispatchEvent(new dom.window.MouseEvent('pointerup', { clientX: 10, clientY: 460, bubbles: true }))
+    assert.ok(Math.abs(pageScroll - (5000 + (100 / 648) * 9200)) < 1)
+    minimap.refresh()
+    info = minimap.info()
+    assert.equal(info.viewportTop, 452)
+
+    // 回到同一中段，再从视口框向下拖到轨道底：页面底边贴住轨道底。
+    pageScroll = 5000
+    minimap.refresh()
+    rail.dispatchEvent(new dom.window.MouseEvent('pointerdown', { clientX: 10, clientY: 360, button: 0, bubbles: true }))
+    rail.dispatchEvent(new dom.window.MouseEvent('pointermove', { clientX: 10, clientY: 767, bubbles: true }))
+    rail.dispatchEvent(new dom.window.MouseEvent('pointerup', { clientX: 10, clientY: 767, bubbles: true }))
+    assert.equal(pageScroll, 9200)
+    minimap.refresh()
+    info = minimap.info()
+    assert.equal(info.panTop, 732)
+    assert.equal(info.contentTop, -732)
+    assert.equal(info.viewportTop, 648)
+    assert.equal(stage.style.top, '-732px')
+
+    // 从底部往上拖到轨道顶：回到文档开头，页面顶边贴住轨道顶。
+    rail.dispatchEvent(new dom.window.MouseEvent('pointerdown', { clientX: 10, clientY: 650, button: 0, bubbles: true }))
+    rail.dispatchEvent(new dom.window.MouseEvent('pointermove', { clientX: 10, clientY: 0, bubbles: true }))
+    rail.dispatchEvent(new dom.window.MouseEvent('pointerup', { clientX: 10, clientY: 0, bubbles: true }))
+    assert.equal(pageScroll, 0)
+    minimap.refresh()
+    assert.equal(minimap.info().panTop, 0)
+    assert.equal(stage.style.top, '0px')
 })

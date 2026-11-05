@@ -320,7 +320,7 @@ Milkdown 7.7（ProseMirror）及其插件装配归 `components/editor`，明细�
 - **边界**：无扩展名文件（`Dockerfile`/`Makefile`）不识别；不做代码编辑、折叠、
   LSP；Markdown 围栏代码块没有行号；HTML 导出对代码文档不可用。代码视图的
   minimap 由 [REQ-0011](../requirements/REQ-0011-document-minimap.md) 追加，2026-11-04
-  已实现为 `CMP-minimap` / `CMP-kernel-minimap`；2026-11-05 起快照为只读 DOM 克隆 + 顶左等比缩放，缩略图只读，不改变代码只读、
+  已实现为 `CMP-minimap` / `CMP-kernel-minimap`；2026-11-05 起快照为只读 DOM 克隆 + 顶左等比缩放；短文档整页 fit，长文按 120px 宽纵向裁切平移，缩略图只读，不改变代码只读、
   512 KB 上限、行结构与复制/查找语义。
 
 ## 3. 桥协议（v2，2026-11-04 落地）
@@ -378,7 +378,7 @@ Milkdown 7.7（ProseMirror）及其插件装配归 `components/editor`，明细�
 | `components/find` | 查找：查找栏、命中遍历、ProseMirror 装饰 | ~304 | openFindBar/closeFindBar/findNext/findPrev/findInfo |
 | `components/output` | 输出：独立 HTML 导出、打印、内容几何 | ~104 | exportStandaloneHTML/print/getContentSize |
 | `components/media` | 图片媒体：粘贴载荷识别、导入编排（不碰 ProseMirror 事务） | ~75 | （无对外 op；供 diagnostics 的载荷识别） |
-| `components/minimap` | 缩略图：只读 DOM 快照、顶左等比缩放、视口/指针映射、显示策略与诊断 | ~730 | setMinimapVisible/minimapInfo |
+| `components/minimap` | 缩略图：只读 DOM 快照、整页 fit/长文裁切平移、视口/指针映射、显示策略与诊断 | ~820 | setMinimapVisible/minimapInfo |
 
 ### 4.2 组件端口（`shared/ports.js`）
 

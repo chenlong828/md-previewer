@@ -161,17 +161,21 @@ func greet() -> String {
         let miniCh = miniInfo["contentHeight"] as? Int ?? 0
         let miniRw = miniInfo["railWidth"] as? Int ?? 0
         let miniRh = miniInfo["railHeight"] as? Int ?? 0
+        let miniMode = miniInfo["mode"] as? String ?? "?"
+        let miniModeOk = miniMode == "fit" || miniMode == "crop"
+        let miniHeightOk = miniMode == "crop" ? miniCh > miniRh : miniCh <= miniRh
         let miniVisible = (miniInfo["visible"] as? Bool) == true
             && (miniInfo["surface"] as? String) == "markdown"
-            && (miniInfo["mode"] as? String) == "fit"
+            && miniModeOk
             && miniSc > 0
             && ((miniInfo["contentTop"] as? Int) ?? -1) == 0
             && ((miniInfo["contentLeft"] as? Int) ?? -1) == 0
+            && ((miniInfo["panTop"] as? Int) ?? -1) == 0
             && miniCw > 0 && miniCh > 0
-            && miniCw <= miniRw && miniCh <= miniRh
+            && miniCw <= miniRw && miniHeightOk
             && ((miniInfo["docHeight"] as? Int) ?? 0) > ((miniInfo["viewportHeight"] as? Int) ?? 0)
         if miniVisible {
-            pass("缩略图 默认显示(\(miniSc) 快照, \(miniInfo["mode"] ?? "?"), \(miniCw)x\(miniCh))")
+            pass("缩略图 默认显示(\(miniSc) 快照, \(miniMode), \(miniCw)x\(miniCh), 轨道 \(miniRw)x\(miniRh))")
         } else {
             fail("缩略图 默认显示 → \(miniInfo)")
         }

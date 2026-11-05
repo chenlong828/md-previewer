@@ -38,4 +38,4 @@ updated: 2026-11-04
 - Node `core.test.js` 的装载改写/保存口径/基线/统计/资源集合各组；「缩略图：init 应用偏好，
   setMinimapVisible/minimapInfo 经端口工作」；selftest「装载改写」「保存口径」「缩略图 默认显示」。
 - 禁边：`node check-kernel.mjs` 校验「组件只 import 自身 + shared + semantics」。
-- 回归门：Node 85 项 + selftest 全绿，断言数只增不减。
+- 回归门：Node 86 项 + selftest 全绿，断言数只增不减。

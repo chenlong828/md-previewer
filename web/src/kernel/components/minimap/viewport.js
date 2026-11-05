@@ -1,5 +1,5 @@
 // 视口几何：只做滚动位置 ↔ 缩略图内容矩形的换算与夹取，不碰 DOM。
-// 所有指针坐标都相对于页面实际缩略矩形，而不是整条轨道；轨道空白区不参与定位。
+// fit 模式整页在轨道内；crop 模式页面高于轨道，contentTop 为负的平移量。
 
 export function clamp(value, min, max) {
     if (!Number.isFinite(value)) return min
@@ -11,9 +11,30 @@ export function maxScrollTop(docHeight, viewportHeight) {
 }
 
 /**
+ * crop 模式下，页面相对轨道的纵向平移量：直接按整篇滚动进度线性平移。
+ * 这样视口框在轨道里的 Y 位置也与滚动条进度一致，拖到底即页面底。
+ */
+export function cropPanTop({
+    docHeight,
+    viewportHeight,
+    scrollTop,
+    railHeight,
+    contentHeight,
+}) {
+    const rail = Math.max(1, Number(railHeight) || 1)
+    const doc = Math.max(0, Number(docHeight) || 0)
+    const content = Math.max(0, Number(contentHeight) || 0)
+    const maxPan = Math.max(0, content - rail)
+    const max = maxScrollTop(doc, viewportHeight)
+    if (!maxPan || !max) return 0
+    const progress = clamp((Number(scrollTop) || 0) / max, 0, 1)
+    return maxPan * progress
+}
+
+/**
  * 缩略图内实际内容矩形 + 视口框。
- * contentTop/contentHeight/contentLeft/contentWidth 来自 fit 后的页面矩形；
- * 缺省时退化为整条轨道，仅用于没有页面快照的测试。
+ * contentTop 可以为负（crop 平移）；contentHeight 是缩放后的整页高度，
+ * 允许大于轨道高度。缺省 contentHeight 时退化为轨道可用高度。
  */
 export function viewportMetrics({
     docHeight,
@@ -29,9 +50,10 @@ export function viewportMetrics({
     const height = Math.max(1, Number(railHeight) || 1)
     const doc = Math.max(0, Number(docHeight) || 0)
     const viewport = Math.max(0, Number(viewportHeight) || 0)
-    const top = clamp(Number(contentTop) || 0, 0, height)
-    const available = Math.max(0, height - top)
-    const contentH = Math.max(0, Math.min(available, Number.isFinite(contentHeight) ? Number(contentHeight) : available))
+    const top = Number(contentTop) || 0
+    const contentH = Number.isFinite(contentHeight)
+        ? Math.max(0, Number(contentHeight))
+        : Math.max(0, height - top)
     const contentW = Math.max(0, Math.min(
         Math.max(0, Number(railWidth) || 0) || Number.MAX_SAFE_INTEGER,
         Number.isFinite(contentWidth) ? Number(contentWidth) : (Number(railWidth) || 0),
@@ -68,6 +90,29 @@ export function isInsideContent({ pointerX = 0, pointerY, contentLeft = 0, conte
 }
 
 /** 点击页面内容：把目标点居中到视口，返回夹取后的 scrollTop。 */
+/**
+ * crop 模式拖动：视口框就是滚动条滑块，指针位移 1:1 映射整段轨道进度。
+ * 不按页面缩略内容折算，避免长文里指针动了、视口框却停在中部。
+ */
+export function scrollTopForThumbDrag({
+    startScrollTop,
+    startPointerY,
+    pointerY,
+    railHeight,
+    boxHeight,
+    docHeight,
+    viewportHeight,
+}) {
+    const rail = Math.max(1, Number(railHeight) || 1)
+    const max = maxScrollTop(docHeight, viewportHeight)
+    if (max <= 0) return 0
+    const box = clamp(Number(boxHeight) || 0, 0, rail)
+    const track = Math.max(1, rail - box)
+    const start = clamp(Number(startScrollTop) || 0, 0, max)
+    const delta = (Number(pointerY) || 0) - (Number(startPointerY) || 0)
+    return clamp((start / max + delta / track) * max, 0, max)
+}
+
 export function scrollTopForPointer({
     pointerY,
     railHeight,
@@ -79,11 +124,10 @@ export function scrollTopForPointer({
     const height = Math.max(1, Number(railHeight) || 1)
     const doc = Math.max(0, Number(docHeight) || 0)
     const viewport = Math.max(0, Number(viewportHeight) || 0)
-    const top = clamp(Number(contentTop) || 0, 0, height)
-    const contentH = Math.max(0, Math.min(
-        Math.max(0, height - top),
-        Number.isFinite(contentHeight) ? Number(contentHeight) : Math.max(0, height - top),
-    ))
+    const top = Number(contentTop) || 0
+    const contentH = Number.isFinite(contentHeight)
+        ? Math.max(0, Number(contentHeight))
+        : Math.max(0, height - top)
     if (doc <= 0 || contentH <= 0) return 0
     const local = clamp(Number(pointerY) - top, 0, contentH)
     const target = (local / contentH) * doc - viewport / 2
@@ -103,11 +147,10 @@ export function scrollTopForDrag({
 }) {
     const height = Math.max(1, Number(railHeight) || 1)
     const doc = Math.max(0, Number(docHeight) || 0)
-    const top = clamp(Number(contentTop) || 0, 0, height)
-    const contentH = Math.max(0, Math.min(
-        Math.max(0, height - top),
-        Number.isFinite(contentHeight) ? Number(contentHeight) : Math.max(0, height - top),
-    ))
+    const top = Number(contentTop) || 0
+    const contentH = Number.isFinite(contentHeight)
+        ? Math.max(0, Number(contentHeight))
+        : Math.max(0, height - top)
     if (doc <= 0 || contentH <= 0) return clamp(Number(startScrollTop) || 0, 0, maxScrollTop(doc, Number(viewportHeight) || 0))
     const scale = contentH / doc
     const delta = (Number(pointerY) - Number(startPointerY)) / (scale || 1)

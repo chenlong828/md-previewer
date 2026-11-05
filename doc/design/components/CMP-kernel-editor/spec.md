@@ -39,6 +39,6 @@ updated: 2026-11-05
 ## 验证计划
 
 - selftest 编辑/表格/源码模式/统计各组；Node core 组 `requestStats`、`debugFocusTable` 断言。
-- 缩略图：`--selftest`「缩略图 默认显示」验证快照可被消费（`mode=fit`、顶左、内容矩形在轨道内）；Node surface 用例验证 Markdown source 生命周期。
+- 缩略图：`--selftest`「缩略图 默认显示」验证快照可被消费（`mode=fit|crop`、顶左、内容矩形有效）；Node surface 用例验证 Markdown source 生命周期。
 - 禁边：`node check-kernel.mjs` 校验「组件只 import 自身 + shared + semantics」。
-- 回归门：Node 85 项 + selftest 全绿，断言数只增不减。
+- 回归门：Node 86 项 + selftest 全绿，断言数只增不减。
