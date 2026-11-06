@@ -20,7 +20,8 @@ doc/
 │   ├── REQ-0008-appearance.md
 │   ├── REQ-0009-code-view.md
 │   ├── REQ-0010-code-view-line-numbers.md
-│   └── REQ-0011-document-minimap.md
+│   ├── REQ-0011-document-minimap.md
+│   └── REQ-0012-copy-file-path.md
 ├── plan/                               ← 调度：接下来做什么
 │   ├── roadmap.md
 │   ├── risks.md
@@ -48,7 +49,7 @@ doc/
 │   │   ├── CMP-minimap/spec.md            ← 缩略图领域能力
 │   │   └── CMP-diagnostics/spec.md
 │   └── scenarios/
-│       ├── editing/document-lifecycle/   ← 4 个
+│       ├── editing/document-lifecycle/   ← 5 个
 │       ├── editing/rich-editing/         ← 5 个
 │       ├── editing/appearance/           ← 1 个
 │       ├── media/image/                  ← 2 个
@@ -64,7 +65,7 @@ doc/
 │   └── 2026-11-04-scenario-inventory/  ← 已实现场景/组件清点（执行中）
 └── history/                            ← 记忆：怎么走到这里的
     ├── decisions/
-    ├── works/                          ← 已归档工序（含 app-icon、code-file-view、code-view-line-numbers、document-minimap、minimap-long-crop）
+    ├── works/                          ← 已归档工序（含 app-icon、code-file-view、code-view-line-numbers、document-minimap、minimap-long-crop、copy-file-path）
     └── pitfalls.md
 ```
 
@@ -72,16 +73,17 @@ doc/
 - **全局设计文档**：`architecture.md` 用 `status: current`；本地 `doc-layout-spec` 已补「全局设计文档 | draft / current」状态行（2026-11-04 项目内扩展，主本未动）。
 - **组件与场景**：组件规格带 `component: CMP-xxx`，状态 `planned/active/retired`；场景带 `flow` 与 `scenario: SCN-xxxx`，状态 `draft/designed/verified/deprecated`。
 - **内核分层**：`CMP-kernel-transport` / `-contract` / `-semantics` + 七个功能组件（document/editor/code/find/output/media/minimap），依赖单向、由 `web/check-kernel.mjs` 守门；`CMP-image` 收缩为落盘/布局/GC 执行与 NodeView，路径语义移交 `CMP-kernel-semantics`。
-- **需求状态纪律**：新需求卡先 `accepted`；只有影响场景全部 `verified`，才转 `delivered`。当前 8 张 `accepted`、REQ-0009/REQ-0010/REQ-0011 已 `delivered`，验证债见各场景卡 §6。
+- **需求状态纪律**：新需求卡先 `accepted`；只有影响场景全部 `verified`，才转 `delivered`。当前 8 张 `accepted`、REQ-0009～REQ-0012 已 `delivered`，验证债见各场景卡 §6。
 - **缩略图已交付**：REQ-0011 / SCN-0017 / `CMP-minimap` 为已交付能力；实现归 `CMP-kernel-minimap`，Markdown/代码只读快照工厂归 `CMP-kernel-editor` / `CMP-kernel-code`，偏好归 `CMP-app-shell`。自动门与用户验收均通过（见 [归档 brief](history/works/2026-11-04-document-minimap/brief.md)）；2026-11-05 长文 120px 裁切与视口 1:1 跟手补丁已由用户确认并归档（见 [归档 brief](history/works/2026-11-05-minimap-long-crop/brief.md)）。
+- **文档右键拷贝路径已交付**：REQ-0012 / SCN-0018；文档右键菜单「拷贝文件路径到剪贴板」，仅已保存文件出现；自动门见 [归档 brief](history/works/2026-11-05-copy-file-path/brief.md)；2026-11-05 用户手工验收通过。
 
 ## 阅读顺序
 
-1. **要了解“为什么做”** → `requirements/`：11 张需求卡，从 [REQ-0001 文件抽屉](requirements/REQ-0001-file-drawer.md) 到 [REQ-0011 文档缩略图](requirements/REQ-0011-document-minimap.md)；每张写场景、价值、非目标与影响场景。
+1. **要了解“为什么做”** → `requirements/`：12 张需求卡，从 [REQ-0001 文件抽屉](requirements/REQ-0001-file-drawer.md) 到 [REQ-0012 文档右键拷贝路径](requirements/REQ-0012-copy-file-path.md)；每张写场景、价值、非目标与影响场景。
 2. **要了解“接下来修什么”** → [plan/roadmap.md](plan/roadmap.md)：工序总览与状态。
 3. **要了解“哪些风险在悬着”** → [plan/risks.md](plan/risks.md)；跨工序未决问题查 [plan/open-questions.md](plan/open-questions.md)。
 4. **要了解系统现状** → [design/architecture.md](design/architecture.md)（安全/行为取舍、桥协议）；组件契约从 `design/components/` 进入，诊断面见 [CMP-diagnostics](design/components/CMP-diagnostics/spec.md)。
-5. **要看用户旅程** → `design/scenarios/`：17 个场景，按 领域/价值流/场景 分层；每个带入口、运行序、3+1 测试与验证债。
+5. **要看用户旅程** → `design/scenarios/`：18 个场景，按 领域/价值流/场景 分层；每个带入口、运行序、3+1 测试与验证债。
 6. **要领取一个任务** → `works/<工序ID>/brief.md`，从 roadmap 表进入对应工序目录；新工序按 brief/result 模板写，P1/P2 另加 `review.md`。
 7. **要做平台壳或动桥协议** → 先读存档 [history/decisions/2026-10-21-editor-kernel-spec.md](history/decisions/2026-10-21-editor-kernel-spec.md)：内核/壳分界、桥协议 v2 契约与迁移方案（2026-10-21 评审暂缓，恢复时从存档重启工序）。
 8. **要查历史结论或踩过的坑** → `history/decisions/`、`history/works/`、[history/pitfalls.md](history/pitfalls.md)。

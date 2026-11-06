@@ -1,11 +1,12 @@
 import AppKit
 
-/// 编辑器动作的唯一标识:菜单栏与右键菜单共用同一份定义(命令模式)。
+/// 菜单与右键菜单共用的命令定义(命令模式):编辑器动作与文档级动作共用同一份注册表。
 /// 新增命令只需:① 在此声明 case;② 在 EditorCommands.all 登记规格;③ 控制器实现 @objc 动作。
 enum EditorAction: Equatable, CaseIterable {
     case undo, redo
     case cut, copy, paste, selectAll
     case find, findNext, findPrev
+    case copyFilePath
     case toggleSource
     case bold, italic, strikethrough, inlineCode, link
     case heading1, heading2, heading3, bodyText
@@ -53,6 +54,7 @@ enum EditorCommands {
         EditorCommandSpec(action: .find, title: "查找…", selector: #selector(DocumentWindowController.findAction(_:)), key: "f", modifiers: .command, inContextMenu: true, availableInCode: true),
         EditorCommandSpec(action: .findNext, title: "查找下一个", selector: #selector(DocumentWindowController.findNextAction(_:)), key: "g", modifiers: .command, availableInCode: true),
         EditorCommandSpec(action: .findPrev, title: "查找上一个", selector: #selector(DocumentWindowController.findPrevAction(_:)), key: "g", modifiers: [.command, .shift], availableInCode: true),
+        EditorCommandSpec(action: .copyFilePath, title: "拷贝文件路径到剪贴板", selector: #selector(DocumentWindowController.copyFilePathAction(_:)), inContextMenu: true, availableInCode: true),
         EditorCommandSpec(action: .toggleSource, title: "源码模式", selector: #selector(DocumentWindowController.toggleSourceModeAction(_:)), key: "/", modifiers: .command, inContextMenu: true),
         EditorCommandSpec(action: .bold, title: "加粗", selector: #selector(DocumentWindowController.toggleBoldAction(_:)), key: "b", modifiers: .command, inContextMenu: true, jsCommand: "toggleStrongCommand"),
         EditorCommandSpec(action: .italic, title: "斜体", selector: #selector(DocumentWindowController.toggleItalicAction(_:)), key: "i", modifiers: .command, inContextMenu: true, jsCommand: "toggleEmphasisCommand"),

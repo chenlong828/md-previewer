@@ -812,10 +812,11 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
 
     // MARK: - 右键菜单(只保留已实现的功能)
 
-    private func buildContextMenu(inTable: Bool) -> NSMenu {
+    /// 文档右键菜单。internal 供 `--multiwindow-test` 断言菜单项，不向外部模块暴露。
+    func buildContextMenu(inTable: Bool) -> NSMenu {
         let menu = NSMenu()
         // 分组与菜单栏共用同一份命令注册表;表格组仅在光标位于表格内时出现。
-        // 代码文档只保留只读可用的动作(拷贝/全选/查找),格式与表格组整体不出现。
+        // 代码文档只保留只读可用的动作(拷贝/全选/查找/拷贝文件路径),格式与表格组整体不出现。
         let groups: [[EditorAction]] = isCodeDocument
             ? [[.copy, .selectAll], [.find]]
             : [
@@ -827,7 +828,12 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
                 [.rowAbove, .rowBelow, .colLeft, .colRight],
                 [.deleteRow, .deleteColumn, .deleteTable],
             ]
-        for group in groups {
+        // 文件级动作紧跟剪贴板组,避免长表格菜单把它挤到屏幕外;未保存文档没有路径,不显示该项。
+        var menuGroups = groups
+        if fileURL != nil {
+            menuGroups.insert([.copyFilePath], at: isCodeDocument ? 1 : 2)
+        }
+        for group in menuGroups {
             let items = group.compactMap { action -> NSMenuItem? in
                 guard let spec = EditorCommands.spec(for: action), spec.inContextMenu else { return nil }
                 if isCodeDocument && !spec.availableInCode { return nil }
@@ -839,6 +845,18 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
             items.forEach(menu.addItem)
         }
         return menu
+    }
+
+    /// 右键菜单「拷贝文件路径到剪贴板」的执行体;只写剪贴板,不写文件、不产生 changed。
+    @discardableResult
+    func copyFilePath(to pasteboard: NSPasteboard = .general) -> Bool {
+        guard let url = fileURL else { return false }
+        pasteboard.clearContents()
+        return pasteboard.setString(url.standardizedFileURL.path, forType: .string)
+    }
+
+    @objc func copyFilePathAction(_ sender: Any?) {
+        copyFilePath()
     }
 
     // MARK: - 表格行列操作
@@ -1210,12 +1228,13 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
         // 注册表命令统一校验(菜单栏与右键菜单共用)
         if let spec = EditorCommands.all.first(where: { $0.selector == menuItem.action }) {
-            // 代码文档只读:除拷贝/全选/查找外全部不可用(保存/格式/源码模式/表格…)
+            // 代码文档只读:除拷贝/全选/查找/拷贝文件路径外全部不可用(保存/格式/源码模式/表格…)
             if isCodeDocument && !spec.availableInCode { return false }
             if spec.action == .toggleSource {
                 menuItem.state = sourceModeCached ? .on : .off
             }
             if spec.requiresTable && !inTableCached { return false }
+            if spec.action == .copyFilePath { return fileURL != nil }
             return isReady
         }
         switch menuItem.action {

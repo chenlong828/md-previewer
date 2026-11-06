@@ -50,6 +50,42 @@ if isSelftest {
         print("[MULTIWINDOW] info count=\(docs.count) titles=\(titles) dirty=\(dirtyFlags)")
         report(docs.count == 2, "窗口数量为 2(实际 \(docs.count))")
         report(Set(titles).count == 2, "窗口标题不重复")
+        // 文档右键菜单:Markdown 与代码文档都应出现「拷贝文件路径到剪贴板」
+        let menus = docs.map { $0.buildContextMenu(inTable: false) }
+        let copyPathItems = menus.compactMap { menu in
+            menu.items.first { $0.title == "拷贝文件路径到剪贴板" }
+        }
+        let hasCopyPath = copyPathItems.count == docs.count
+            && copyPathItems.allSatisfy { $0.target != nil && $0.action != nil }
+        report(hasCopyPath, "文档右键菜单含拷贝文件路径(\(copyPathItems.count)/\(docs.count))")
+        let longMenu = docs.first?.buildContextMenu(inTable: true) ?? NSMenu()
+        let copyIndex = longMenu.items.firstIndex { $0.title == "拷贝文件路径到剪贴板" }
+        let findIndex = longMenu.items.firstIndex { $0.title == "查找…" }
+        report(copyIndex != nil && findIndex != nil && copyIndex! < findIndex!,
+               "拷贝文件路径位于剪贴板组之后(索引 \(copyIndex ?? -1))")
+        let pasteboard = NSPasteboard(name: NSPasteboard.Name("MDPreviewCopyFilePath-\(getpid())"))
+        pasteboard.clearContents()
+        let expectedPath = fileA.map { URL(fileURLWithPath: $0).standardizedFileURL.path }
+        let copied = docs.first?.copyFilePath(to: pasteboard) ?? false
+        let copiedValue = pasteboard.string(forType: .string)
+        pasteboard.releaseGlobally()
+        report(copied && copiedValue == expectedPath, "右键拷贝文件路径(\(copiedValue ?? "nil"))")
+        // 反例:未保存文档没有文件路径,菜单不出现该项,调用也不得清空剪贴板
+        if let empty = AppDelegate.shared?.makeEmptyDocument() {
+            let emptyMenu = empty.buildContextMenu(inTable: false)
+            let hasEmptyItem = emptyMenu.items.contains { $0.title == "拷贝文件路径到剪贴板" }
+            let sentinelBoard = NSPasteboard(name: NSPasteboard.Name("MDPreviewCopyFilePathEmpty-\(getpid())"))
+            sentinelBoard.clearContents()
+            sentinelBoard.setString("sentinel", forType: .string)
+            let emptyCopied = empty.copyFilePath(to: sentinelBoard)
+            let sentinel = sentinelBoard.string(forType: .string)
+            sentinelBoard.releaseGlobally()
+            report(!hasEmptyItem && !emptyCopied && sentinel == "sentinel",
+                   "未保存文档不显示/不拷贝文件路径")
+            empty.window?.close()
+        } else {
+            report(false, "未保存文档窗口可创建")
+        }
         exit(failures.isEmpty ? 0 : 1)
     }
 
