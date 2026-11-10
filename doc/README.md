@@ -66,7 +66,7 @@ doc/
 │   └── 2026-11-04-scenario-inventory/  ← 已实现场景/组件清点（执行中）
 └── history/                            ← 记忆：怎么走到这里的
     ├── decisions/
-    ├── works/                          ← 已归档工序（含 app-icon、code-file-view、code-view-line-numbers、document-minimap、minimap-long-crop、copy-file-path、reveal-in-finder）
+    ├── works/                          ← 已归档工序（含 app-icon、code-file-view、code-view-line-numbers、document-minimap、minimap-long-crop、copy-file-path、reveal-in-finder、table-row-context-menu）
     └── pitfalls.md
 ```
 

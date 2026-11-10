@@ -1,6 +1,8 @@
 // 表格结构操作:行列几何全部 schema 感知(表头行是专用 table_header_row 节点)。
 // 全部自定义实现的原因:milkdown 7.7 的 addRow*Command 工厂嵌套三层,其 CommandManager
 // 只解两层,调用是静默 no-op;列命令会复制邻列内容。
+import { TextSelection } from '@milkdown/prose/state'
+
 // 表格结构辅助:定位光标所在单元格深度
 export function findTableCellDepth($from) {
     for (let d = $from.depth; d > 0; d--) {
@@ -8,6 +10,13 @@ export function findTableCellDepth($from) {
         if (name === 'table_cell' || name === 'table_header') return d
     }
     return -1
+}
+
+// 把光标移进指定单元格(cellPos = 单元格节点位置):插入后「光标落入新位置」的单一实现。
+// 位置账:单元格内容(+1)= 段落节点,段落内容(+1)= 光标位置。
+function caretIntoCell(tr, cellPos) {
+    const $pos = tr.doc.resolve(cellPos + 2)
+    return tr.setSelection(TextSelection.near($pos, 1))
 }
 
 // 插入行(schema 感知;milkdown 7.7 的 addRow*Command 工厂嵌套三层,其 CommandManager 只解两层,调用是静默 no-op)
@@ -34,7 +43,10 @@ export function insertRowInTable(view, after) {
         // 表头上方不插行(表头必须是首行):落到表头之后
         insertPos = rowPos + row.nodeSize
     }
-    dispatch(state.tr.insert(insertPos, newRow))
+    const tr = state.tr.insert(insertPos, newRow)
+    // 光标随新行移动:连续「在下方插入行」沿同方向累积,用户不用重新找当前行(SCN-0008)
+    caretIntoCell(tr, insertPos + 1)
+    dispatch(tr)
     return true
 }
 
@@ -79,9 +91,11 @@ export function insertColumnInTable(view, after) {
     if (cellD < 0) return false
     const tableD = cellD - 2
     const table = $from.node(tableD)
+    const tablePos = $from.before(tableD)
+    const caretRowIdx = $from.index(tableD)
     const colIdx = $from.index(cellD - 1) + (after ? 1 : 0)
     const tr = state.tr
-    const tableBase = $from.before(tableD) + 1
+    const tableBase = tablePos + 1
     const rows = []
     table.forEach((child, offset) => rows.push({ node: child, pos: tableBase + offset }))
     // 从最后一行往前插,位置不受影响
@@ -96,6 +110,19 @@ export function insertColumnInTable(view, after) {
         let p = rows[i].pos + 1
         for (let k = 0; k < colIdx && k < r.childCount; k++) p += r.child(k).nodeSize
         tr.insert(p, cellNode)
+    }
+    // 光标随新列移动:插入完成后按最终 doc 计算新单元格位置——上方行也插了单元格,
+    // 之前记录的位置会因此偏移(连续「在右侧插入列」必须落在新列里)
+    const newTable = tr.doc.nodeAt(tablePos)
+    if (newTable && caretRowIdx < newTable.childCount) {
+        const caretRow = newTable.child(caretRowIdx)
+        if (colIdx < caretRow.childCount) {
+            let cellPos = tablePos + 1
+            for (let r = 0; r < caretRowIdx; r++) cellPos += newTable.child(r).nodeSize
+            cellPos += 1
+            for (let c = 0; c < colIdx; c++) cellPos += caretRow.child(c).nodeSize
+            caretIntoCell(tr, cellPos)
+        }
     }
     dispatch(tr)
     return true

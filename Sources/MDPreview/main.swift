@@ -151,6 +151,251 @@ if isSelftest {
         finish()
     }
     NSApplication.shared.run()
+} else if args.contains("--context-menu-test") {
+    NSApp.activate(ignoringOtherApps: true)
+    // 真实右键链路的回归门:合成右键事件 → EditorWebView 坐标换算 → focusAt →
+    // 构建右键菜单 → 执行菜单项,按「被点那一行的文本」断言作用行。
+    // 菜单不真正弹出(实现注入 presentContextMenu 捕获),避免进入阻塞式菜单跟踪。
+    var failures: [String] = []
+    func report(_ ok: Bool, _ label: String) {
+        print("[CONTEXTMENU] \(ok ? "PASS" : "FAIL") \(label)")
+        if !ok { failures.append(label) }
+    }
+    func finish() {
+        try? FileManager.default.removeItem(at: dir)
+        exit(failures.isEmpty ? 0 : 1)
+    }
+    func pump(_ interval: TimeInterval = 0.05) {
+        RunLoop.main.run(mode: .default, before: Date().addingTimeInterval(interval))
+    }
+
+    // 受控文档:表头 + 3 行正文,单元格文本唯一,便于按文本定位目标行
+    let markdown = """
+    # 表格右键定位
+
+    | 列一 | 列二 |
+    | --- | --- |
+    | R1C1 | R1C2 |
+    | R2C1 | R2C2 |
+    | R3C1 | R3C2 |
+    """
+    let dir = URL(fileURLWithPath: NSTemporaryDirectory())
+        .appendingPathComponent("mdp-context-menu-\(UUID().uuidString)", isDirectory: true)
+    try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    let docURL = dir.appendingPathComponent("context-menu.md")
+    try? markdown.write(to: docURL, atomically: true, encoding: .utf8)
+
+    var controller: DocumentWindowController?
+    var webView: EditorWebView?
+    var menuCapture: ((NSMenu) -> Void)?
+
+    func js(_ script: String) -> Any? {
+        guard let controller else { return nil }
+        var result: Any?
+        var done = false
+        controller.evaluateForDiagnostics(script) { value in
+            result = value
+            done = true
+        }
+        let deadline = Date().addingTimeInterval(10)
+        while !done && Date() < deadline { pump() }
+        return result
+    }
+
+    /// 单元格几何(视口 CSS 像素)与文本:按文本找右键目标
+    func cellGeometry() -> [[[String: Any]]]? {
+        let script = """
+        (function(){
+            var t = document.querySelector('.ProseMirror table');
+            if (!t) return 'no-table';
+            return JSON.stringify(Array.prototype.map.call(t.rows, function(r){
+                return Array.prototype.map.call(r.cells, function(c){
+                    var b = c.getBoundingClientRect();
+                    return {text: (c.textContent || '').trim(), x: b.left + b.width / 2, y: b.top + b.height / 2,
+                            left: b.left, top: b.top, right: b.right, bottom: b.bottom};
+                });
+            }));
+        })()
+        """
+        guard let json = js(script) as? String,
+              let data = json.data(using: .utf8),
+              let rows = (try? JSONSerialization.jsonObject(with: data)) as? [[[String: Any]]] else { return nil }
+        return rows
+    }
+
+    /// 合成右键并等待菜单被捕获(菜单构建是 focusAt 请求-响应之后的异步回调)。
+    /// atTopLeftPadding = true 时点在单元格左上内边距(贴着边框),验证边缘点击也定位到该单元格。
+    func rightClick(cellText: String, atTopLeftPadding: Bool = false, timeout: TimeInterval = 5) -> NSMenu? {
+        guard let controller, let webView, let window = controller.window,
+              let rows = cellGeometry(),
+              let cell = rows.flatMap({ $0 }).first(where: { ($0["text"] as? String) == cellText }),
+              let x = cell["x"] as? Double, let y = cell["y"] as? Double else { return nil }
+        let clickX = atTopLeftPadding ? ((cell["left"] as? Double ?? x) + 3) : x
+        let clickY = atTopLeftPadding ? ((cell["top"] as? Double ?? y) + 3) : y
+        // 视口 CSS 像素 → 窗口坐标(WKWebView 为 flipped 视图,页面原点在视图左上)
+        let windowPoint = webView.convert(NSPoint(x: clickX, y: clickY), to: nil)
+        func event(_ type: NSEvent.EventType) -> NSEvent? {
+            NSEvent.mouseEvent(with: type, location: windowPoint, modifierFlags: [],
+                               timestamp: ProcessInfo.processInfo.systemUptime,
+                               windowNumber: window.windowNumber, context: nil,
+                               eventNumber: 1, clickCount: 1, pressure: 1)
+        }
+        var captured: NSMenu?
+        menuCapture = { menu in captured = menu }
+        if let down = event(.rightMouseDown) { NSApp.sendEvent(down) }
+        if let up = event(.rightMouseUp) { NSApp.sendEvent(up) }
+        var waited = 0.0
+        while captured == nil && waited < timeout { pump(0.05); waited += 0.05 }
+        menuCapture = nil
+        return captured
+    }
+
+    /// 当前 DOM 光标所在行(0 起算;-1 = 不在表格内)
+    func caretRow() -> Int {
+        let script = """
+        (function(){
+            var sel = document.getSelection();
+            if (!sel || !sel.anchorNode) return -1;
+            var n = sel.anchorNode;
+            if (n.nodeType === 3) n = n.parentNode;
+            var tr = n && n.closest ? n.closest('tr') : null;
+            return tr ? tr.rowIndex : -1;
+        })()
+        """
+        return js(script) as? Int ?? -1
+    }
+
+    func rowTexts() -> [[String]] {
+        let script = """
+        (function(){
+            var t = document.querySelector('.ProseMirror table');
+            return t ? JSON.stringify(Array.prototype.map.call(t.rows, function(r){
+                return Array.prototype.map.call(r.cells, function(c){ return (c.textContent || '').trim(); });
+            })) : '[]';
+        })()
+        """
+        guard let json = js(script) as? String,
+              let data = json.data(using: .utf8),
+              let rows = (try? JSONSerialization.jsonObject(with: data)) as? [[String]] else { return [] }
+        return rows
+    }
+
+    /// 直接执行菜单项(等价点击):走 DocumentWindowController 的同一 action
+    func invokeMenu(_ menu: NSMenu?, _ title: String) -> Bool {
+        guard let item = menu?.items.first(where: { $0.title == title }),
+              let action = item.action else { return false }
+        NSApp.sendAction(action, to: item.target, from: item)
+        return true
+    }
+
+    /// 表格命令经桥异步执行:轮询目标 DOM 结果,不用固定延时赌时序
+    func waitUntil(_ timeout: TimeInterval = 5, _ condition: () -> Bool) -> Bool {
+        var waited = 0.0
+        while !condition() && waited < timeout { pump(0.05); waited += 0.05 }
+        return condition()
+    }
+
+    func containsText(_ rows: [[String]], _ text: String) -> Bool {
+        rows.contains { $0.contains(text) }
+    }
+
+    Timer.scheduledTimer(withTimeInterval: 0.8, repeats: false) { _ in
+        guard let first = AppDelegate.shared?.documents.first, let wv = first.webViewIfNeeded else {
+            report(false, "文档窗口存在")
+            finish()
+            return
+        }
+        controller = first
+        webView = wv
+        wv.presentContextMenu = { menu, _, _ in
+            let capture = menuCapture
+            menuCapture = nil
+            capture?(menu)
+        }
+        first.openDocument(at: docURL)
+        var waited = 0.0
+        while (!first.isReady || first.isLoadingContent) && waited < 15 { pump(0.1); waited += 0.1 }
+        report(first.isReady && !first.isLoadingContent, "受控文档装载")
+        first.window?.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+        pump(0.5)
+
+        guard let geometry = cellGeometry(),
+              geometry.count == 4, geometry[1].contains(where: { ($0["text"] as? String) == "R1C1" }) else {
+            report(false, "受控表格渲染(4 行,含 R1C1)")
+            finish()
+            return
+        }
+        report(true, "受控表格渲染(4 行,含 R1C1)")
+
+        // 1) 右键第 1 行:光标必须落在第 1 行;「在下方插入行」把空行插在它后面
+        if let menu = rightClick(cellText: "R1C1") {
+            let hasRowItems = menu.items.contains { $0.title == "在下方插入行" }
+            let row = caretRow()
+            report(hasRowItems, "右键表格内出现行列菜单")
+            report(row == 1, "右键第 1 行 → 光标在第 1 行(实际 \(row))")
+            let invoked = invokeMenu(menu, "在下方插入行")
+            let grew = waitUntil { rowTexts().count == 5 }
+            let rows = rowTexts()
+            let newRowEmpty = rows.count > 2 && rows[2].allSatisfy { $0.isEmpty }
+            report(invoked && grew
+                    && rows[1].contains("R1C1") && newRowEmpty && rows[3].contains("R2C1"),
+                   "右键第 1 行「在下方插入行」→ 新空行紧随第 1 行(行数 \(rows.count))")
+            let after = caretRow()
+            report(after == 2, "插入行后光标进入新行(实际 \(after))")
+        } else {
+            report(false, "右键第 1 行弹出菜单")
+        }
+
+        // 2) 右键第 2 行(插入空行后为第 3 行):删除只作用于该行
+        if let menu = rightClick(cellText: "R2C1") {
+            let row = caretRow()
+            report(row == 3, "右键第 2 行 → 光标在该行(实际 \(row))")
+            let invoked = invokeMenu(menu, "删除所在行")
+            let gone = waitUntil { !containsText(rowTexts(), "R2C1") }
+            let rows = rowTexts()
+            report(invoked && gone && containsText(rows, "R1C1") && containsText(rows, "R3C1"),
+                   "右键第 2 行「删除所在行」→ 只删除第 2 行(行数 \(rows.count))")
+        } else {
+            report(false, "右键第 2 行弹出菜单")
+        }
+
+        // 3) 右键第 3 行:删除后第 1 行仍在
+        if let menu = rightClick(cellText: "R3C1") {
+            let row = caretRow()
+            report(row == 3, "右键第 3 行 → 光标在该行(实际 \(row))")
+            let invoked = invokeMenu(menu, "删除所在行")
+            let gone = waitUntil { !containsText(rowTexts(), "R3C1") }
+            let rows = rowTexts()
+            report(invoked && gone && containsText(rows, "R1C1"),
+                   "右键第 3 行「删除所在行」→ 只删除第 3 行(行数 \(rows.count))")
+        } else {
+            report(false, "右键第 3 行弹出菜单")
+        }
+
+        // 3b) 边缘点击:点在单元格左上内边距(贴边框)也必须定位到该行,不能落到相邻行
+        if let menu = rightClick(cellText: "R1C1", atTopLeftPadding: true) {
+            let row = caretRow()
+            report(row == 1, "右键第 1 行左上内边距 → 光标仍在该行(实际 \(row))")
+            _ = menu // 菜单已构建即可;不执行删除,保留表格供列用例
+        } else {
+            report(false, "右键第 1 行左上内边距弹出菜单")
+        }
+
+        // 4) 列定位共用同一坐标入口:右键第 2 列删除列,只移除该列
+        if let menu = rightClick(cellText: "R1C2") {
+            let invoked = invokeMenu(menu, "删除所在列")
+            let shrunk = waitUntil { rowTexts().first.map { $0.count == 1 } ?? false }
+            let rows = rowTexts()
+            report(invoked && shrunk && rows[1] == ["R1C1"],
+                   "右键第 2 列「删除所在列」→ 只移除第 2 列(第 1 行 \(rows.count > 1 ? rows[1] : []))")
+        } else {
+            report(false, "右键第 2 列弹出菜单")
+        }
+
+        finish()
+    }
+    NSApplication.shared.run()
 } else if args.contains("--drawer-test") {
     NSApp.activate(ignoringOtherApps: true)
     // 文件抽屉/目录模式集成自检。参数与 multiwindow-test 同款 flag 形式:

@@ -146,3 +146,22 @@ updated: 2026-10-24
     实测色值/背景/阴影,浅/深各一条;
   - 机制与失效条件见 `design/architecture.md` §2.6;实证见
     [works/2026-10-24-code-token-palette](works/2026-10-24-code-token-palette/result.md)。
+
+## P9 WKWebView 是 flipped 视图：右键坐标不能再翻转，原生菜单也不会替你放 caret
+
+- **现象**：表格里右键某行 → 「删除所在行」作用在别的行，甚至菜单不出现行列项；顶部菜单栏
+  发起同一命令却准确（用户 2026-11-10 实证）。两处平台行为叠加：
+  1) `WKWebView.isFlipped == true`，`convert(_:from:)` 返回的 y 已是「从视口顶部起算」；
+     再算 `bounds.height - p.y` 会把点击点镜像到视口中线（视口正中点恰好正确，掩盖了问题）。
+  2) 原生右键菜单吞掉 rightMouseDown/Up，WebKit 不会像左键那样把 caret 放进 contenteditable；
+     只有 state 选区而没有 DOM 焦点时，菜单弹出前看不到「当前行」。
+- **存续条件**：仍在（平台行为）。凡在 WKWebView 上做「右键/屏幕坐标 → 文档位置」都必须
+  走同一坐标口径；将来改用 `WKWebView.pageZoom` 或非 1:1 页面缩放时，点与 CSS 像素不再等值，
+  需按 pageZoom 折算。
+- **对策落点**：
+  - `EditorWebView.pagePoint(forWindowPoint:)` 唯一换算点（flipped 不翻转），
+    `focusAt` 设置选区后 `view.focus()` 让 DOM caret 落在点击处；
+  - `--context-menu-test` 合成真实右键事件（含单元格内边距）断言「点击行 = 作用行」；
+  - 机制写明于 `design/architecture.md` §2.8；场景断言见 SCN-0008 TC-TBL-005/006；
+  - 同类判据：原生控件接管输入事件后，不要假设 Web 内容侧会收到同一交互带来的副作用
+    （焦点/选区/滚动），需要壳显式重建。

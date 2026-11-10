@@ -3,7 +3,7 @@ layer: design
 module: kernel
 component: CMP-kernel-editor
 status: active
-updated: 2026-11-05
+updated: 2026-11-10
 ---
 
 # CMP-kernel-editor 组件规格
@@ -20,10 +20,11 @@ updated: 2026-11-05
 - 拥有的数据：编辑器实例与 ProseMirror 文档（经 state.editor）；命令表与表格实现；序列化钩子 state.serialize。
 - 变化轴：op 集合增删（须同步 `contract/ops.js`）、编辑面内的交互细节、引擎版本升级。
 - 公开契约（含能力 ID）：
-  - `CMP-kernel-editor#commands`：formatCommand/tableCommand/insertTable/insertMarkdown/insertImage：编辑命令与插入
+  - `CMP-kernel-editor#commands`：formatCommand/tableCommand/insertTable/insertMarkdown/insertImage：编辑命令与插入；表格行/列插入后选区进入新单元格（连续插入沿同方向累积）
+  - `CMP-kernel-editor#focus-at`：focusAt：右键定位——把选区放到点击处并聚焦编辑器（DOM caret 与 state 选区一致），返回 `{ok, inTable}`
   - `CMP-kernel-editor#source-mode`：toggleSource：源码/渲染切换（代码文档 no-op）
   - `CMP-kernel-editor#node-views`：image/mermaid NodeView 注册与主题重绘
-  - `CMP-kernel-editor#diagnostics`：debugFocusTable/tableInfo/hasCommands/testImagePayload：诊断档
+  - `CMP-kernel-editor#diagnostics`：debugFocusTable/tableInfo/hasCommands/testImagePayload：诊断档；`tableInfo` 额外返回光标所在行列的 0 起算 `row`/`col`
   - `CMP-kernel-editor#minimap-source`（实现内部）：`createMarkdownMinimapSource` 返回 `{root, measure(), scrollTo(), snapshot()}`；`snapshot()` 把 `#app` 的页面宽度/内边距/缩放/背景/颜色内联到页面容器，并挂载 `.ProseMirror` 的只读 DOM 副本（由 `shared/readonly-clone` 脱敏）；经 `assemble.js` 的 `minimapSources.markdown` 注入，不是 host op、不是跨组件公开面。
 - 入口：
   - `components/editor/editor.js#createEditor`
@@ -38,7 +39,8 @@ updated: 2026-11-05
 
 ## 验证计划
 
-- selftest 编辑/表格/源码模式/统计各组；Node core 组 `requestStats`、`debugFocusTable` 断言。
+- selftest 编辑/表格/源码模式/统计各组；新增「右键定位 窗口坐标=页面坐标」「右键定位 换算点命中同一单元格」「右键定位 光标在点击行」「表格-插入行后光标进入新行」「表格-删除的是新行（原行保留）」「表格外 no-op」。
+- Node core 组 `requestStats`、`debugFocusTable`、`tableInfo.row/col` 与「插入后光标进入新行/新列」断言（`web/test/core.test.js`）。
 - 缩略图：`--selftest`「缩略图 默认显示」验证快照可被消费（`mode=fit|crop`、顶左、内容矩形有效）；Node surface 用例验证 Markdown source 生命周期。
 - 禁边：`node check-kernel.mjs` 校验「组件只 import 自身 + shared + semantics」。
-- 回归门：Node 86 项 + selftest 全绿，断言数只增不减。
+- 回归门：Node 87 项 + selftest 129 项 + `--context-menu-test` 全绿，断言数只增不减。

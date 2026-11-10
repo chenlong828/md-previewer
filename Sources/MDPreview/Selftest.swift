@@ -768,6 +768,119 @@ func greet() -> String {
         }
         evaluate("window.mdbridge.undo()") { _ in }
 
+        // ── 右键定位坐标口径(2026-11-10 修复):窗口坐标 → 页面视口坐标必须落在点击处。
+        // WKWebView 是 flipped 视图,页面上原点在视图左上;若再按 bounds.height 翻转,
+        // y 会被镜像到视口中线,右键行列命令就作用在另一行。
+        var cellGeo: [String: Any]?
+        evaluate("""
+        (function(){
+            var t = document.querySelector('.ProseMirror table');
+            if (!t || t.rows.length < 2) return null;
+            var c = t.rows[1].cells[0];
+            c.scrollIntoView({block: 'center'});
+            var r = c.getBoundingClientRect();
+            return JSON.stringify({x: r.left + r.width / 2, y: r.top + r.height / 2, text: (c.textContent || '').trim()});
+        })()
+        """) { r in
+            if let json = r as? String, let data = json.data(using: .utf8) {
+                cellGeo = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
+            }
+        }
+        if let geo = cellGeo, let x = geo["x"] as? Double, let y = geo["y"] as? Double {
+            let windowPoint = webview.convert(NSPoint(x: x, y: y), to: nil)
+            let page = webview.pagePoint(forWindowPoint: windowPoint)
+            let dx = abs(page.x - x), dy = abs(page.y - y)
+            if dx < 1 && dy < 1 {
+                pass("右键定位 窗口坐标=页面坐标(Δ\(String(format: "%.1f", dx)),\(String(format: "%.1f", dy)))")
+            } else {
+                fail("右键定位 窗口坐标=页面坐标(点击 \(x),\(y) → 换算 \(page.x),\(page.y))")
+            }
+            // 换算后的点必须在同一个单元格内(真实命中,而非数学恒等)
+            evaluate("""
+            (function(){
+                var el = document.elementFromPoint(\(page.x), \(page.y));
+                var cell = el && el.closest ? el.closest('td, th') : null;
+                return JSON.stringify({hit: !!cell && (cell.textContent || '').trim()});
+            })()
+            """) { hit in
+                if let json = hit as? String,
+                   let d = (try? JSONSerialization.jsonObject(with: json.data(using: .utf8)!)) as? [String: Any],
+                   (d["hit"] as? String) == (geo["text"] as? String) {
+                    self.pass("右键定位 换算点命中同一单元格")
+                } else {
+                    self.fail("右键定位 换算点命中同一单元格 → \(String(describing: hit))")
+                }
+            }
+            // 光标落在点击单元格;插入行后光标进入新行,连续删除作用于新行而不是原行
+            evaluate("window.mdbridge.focusAt(\(x), \(y))") { r in
+                if let d = r as? [String: Any], (d["inTable"] as? Bool) == true {
+                    self.pass("右键定位 光标进入表格")
+                } else {
+                    self.fail("右键定位 光标进入表格 → \(String(describing: r))")
+                }
+            }
+            func caretRow() -> Int? {
+                var row: Int?
+                evaluate("""
+                (function(){
+                    var s = document.getSelection();
+                    if (!s || !s.anchorNode) return -1;
+                    var n = s.anchorNode;
+                    if (n.nodeType === 3) n = n.parentNode;
+                    var tr = n && n.closest ? n.closest('tr') : null;
+                    return tr ? tr.rowIndex : -1;
+                })()
+                """) { r in row = r as? Int }
+                return row
+            }
+            if caretRow() == 1 { pass("右键定位 光标在点击行") } else { fail("右键定位 光标在点击行(实际 \(String(describing: caretRow())))") }
+            evaluate("window.mdbridge.tableCommand('insertRowBelow')") { r in
+                if (r as? Bool) == true { self.pass("表格-插入行（光标跟随）") } else { self.fail("表格-插入行（光标跟随）→ \(String(describing: r))") }
+            }
+            if caretRow() == 2 { pass("表格-插入行后光标进入新行") } else { fail("表格-插入行后光标进入新行(实际 \(String(describing: caretRow())))") }
+            evaluate("window.mdbridge.tableCommand('deleteRow')") { r in
+                if (r as? Bool) == true { self.pass("表格-删除新行") } else { self.fail("表格-删除新行 → \(String(describing: r))") }
+            }
+            evaluate("window.mdbridge.getMarkdown()") { r in
+                if let md = r as? String, md.contains("GFM 表格") {
+                    self.pass("表格-删除的是新行（原行保留）")
+                } else {
+                    self.fail("表格-删除的是新行（原行保留）")
+                }
+            }
+            // 反例(TC-TBL-004):表格外执行行列命令 no-op,文档不变
+            var tableMarkdown = ""
+            evaluate("window.mdbridge.getMarkdown()") { r in tableMarkdown = (r as? String) ?? "" }
+            evaluate("""
+            (function(){
+                var p = document.querySelector('.ProseMirror p');
+                if (!p) return null;
+                p.scrollIntoView({block: 'center'});
+                var r = p.getBoundingClientRect();
+                return JSON.stringify(window.mdbridge.focusAt(r.left + 4, r.top + 4));
+            })()
+            """) { r in
+                guard let json = r as? String,
+                      let d = (try? JSONSerialization.jsonObject(with: json.data(using: .utf8)!)) as? [String: Any],
+                      (d["inTable"] as? Bool) == false else {
+                    self.fail("表格外 no-op（定位段外）→ \(String(describing: r))")
+                    return
+                }
+                self.evaluate("window.mdbridge.tableCommand('deleteRow')") { applied in
+                    self.evaluate("window.mdbridge.getMarkdown()") { after in
+                        let unchanged = ((after as? String) ?? "") == tableMarkdown
+                        if (applied as? Bool) == false && unchanged {
+                            self.pass("表格外 no-op（删除行无效、文档不变）")
+                        } else {
+                            self.fail("表格外 no-op（applied=\(String(describing: applied)) 不变=\(unchanged))")
+                        }
+                    }
+                }
+            }
+        } else {
+            fail("右键定位 取不到表格单元格几何")
+        }
+
         // ── 命令注册表完整性(菜单栏与右键菜单共用同一份定义)
         let actionSet = Set(EditorAction.allCases)
         var registryOK = true

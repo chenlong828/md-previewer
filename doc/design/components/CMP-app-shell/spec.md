@@ -3,7 +3,7 @@ layer: design
 module: shell
 component: CMP-app-shell
 status: active
-updated: 2026-11-05
+updated: 2026-11-10
 ---
 
 # CMP-app-shell 组件规格
@@ -25,6 +25,7 @@ updated: 2026-11-05
   - `CMP-app-shell#multi-window`：单进程、单 Dock、每文档独立窗口。
   - `CMP-app-shell#recent-files`：最近文件列表与清除。
   - `CMP-app-shell#menu-commands`：`EditorCommands` 为菜单与右键的唯一命令真源；`availableInCode` 标记只读代码文档下仍可用的命令（拷贝/全选/查找/拷贝文件路径/Finder 定位）。
+  - `CMP-app-shell#context-menu-position`：右键先由 `EditorWebView` 把事件窗口坐标换算为页面视口坐标（flipped WKWebView 不二次翻转），再经 `focusAt` 定位光标与 DOM 焦点，最后构建菜单；行列命令作用于点击行/列。菜单呈现可被自检注入（`presentContextMenu`），默认 `NSMenu.popUpContextMenu`。
   - `CMP-app-shell#copy-file-path`：文档右键菜单「拷贝文件路径到剪贴板」，位于剪贴板组之后；Finder 定位紧随其后；仅已保存文件出现（Markdown/代码均可），未保存/目录模式不出现；写入 `fileURL.standardizedFileURL.path`；不写文件、不产生 `changed`。
   - `CMP-app-shell#reveal-in-finder`：文档右键菜单「用 Finder 打开到指定位置」，紧跟拷贝路径下方；仅已保存文件出现；文件模式选中当前文件，目录模式仍走文件菜单既有入口定位抽屉根目录；`NSWorkspace.activateFileViewerSelecting` 只定位，不写文件、不产生 `changed`。
   - `CMP-app-shell#highlight-language-menu`：视图 → 高亮语言子菜单；仅代码文档可用，勾选「自动/纯文本/语言 id」由窗口的当前选择同步。
@@ -53,10 +54,12 @@ updated: 2026-11-05
   - `CMP-app-shell/Sources/MDPreview/DocumentWindowController.swift#resolveResources`（内核 `resolveResources` 请求的应答方）
   - `CMP-app-shell/Sources/MDPreview/DocumentWindowController.swift#performImport`（内核 `importImage` 请求的应答方）
   - `CMP-app-shell/Sources/MDPreview/EditorWebView.swift#makeConfiguration`（注入 channel；`testFacade` 才装 `__MDP_TEST__` 门面）
+  - `CMP-app-shell/Sources/MDPreview/EditorWebView.swift#pagePoint`（右键窗口坐标 → 页面视口坐标）
+  - `CMP-app-shell/Sources/MDPreview/EditorWebView.swift#presentContextMenu`（菜单呈现注入点）
 - 依赖：`CMP-document-io`（打开/保存）、`CMP-editor`（内容面）、`CMP-drawer`（目录导航）、`CMP-export`（导出）、`CMP-diagnostics`（测试入口）、`CMP-kernel-contract`（帧格式/op 清单/错误码）、`CMP-kernel-transport`（channel 契约）、`CMP-kernel-semantics`（保存口径经 `getSaveMarkdown` 取用）；`CMP-minimap` / `CMP-kernel-minimap` 仅通过 `setMinimapVisible` 与 `init.opts.minimapVisible` 联动，不直接 import。
 - 冷热属性：冷路径；不进入编辑输入热路径。缩略图开关是低频菜单动作，广播只调用桥，不重绘正文。
-- 尺寸预算：目标 ≤120k token；当前约 2.3k 行（main 362 + AppDelegate 523 + KernelClient 171 + 窗口编排 1527 + EditorCommands 104），缩略图菜单/偏好另计，实测待脚本。
-- 单独运行：`./.build/debug/MDPreview --multiwindow-test --fileA=a.md --fileB=b.md`；菜单/缩放用 `--selftest`。
+- 尺寸预算：目标 ≤120k token；当前约 3.1k 行（main 661 + AppDelegate 538 + KernelClient 171 + 窗口编排 1587 + EditorCommands 110），缩略图菜单/偏好另计，实测待脚本。
+- 单独运行：`./.build/debug/MDPreview --multiwindow-test --fileA=a.md --fileB=b.md`；右键定位用 `--context-menu-test`；菜单/缩放用 `--selftest`。
 - 验证计划：多窗口数量/标题、菜单命令注册表完整、缩放应用、深色主题切换、退出脏确认（人工）；v2 握手/op 往返/内核请求应答与装载保存端到端由 selftest 断言。
 - 删除测试：删掉后没有窗口与打开路由，复杂度不会消失只会散落到每个文件 → 真边界。
 
@@ -66,6 +69,7 @@ updated: 2026-11-05
 - `multi-window` 的不变量：同一文档不在两个窗口同时打开；目录模式只占一个窗口；⌘O 与最近文件替换当前窗口。
 - `quit` 的错误模式：用户取消则 `applicationShouldTerminate` 返回 `.terminateCancel`，不丢未保存内容。
 - `menu-commands` 的不变量：`EditorCommands.all` 的动作集合与菜单/右键实际动作一致；新增命令只改一处；`availableInCode` 默认 false，代码文档只放行拷贝/全选/查找/拷贝文件路径/Finder 定位。
+- `context-menu-position` 的不变量：页面坐标 = `convert(窗口坐标)`（flipped 视图不再减高度）；换算点必须命中点击的单元格（含内边距）；`focusAt` 后 DOM 焦点在编辑器，caret 可见；行列菜单项只在定位结果为表格内时出现；菜单弹出不得改变随后的命令目标。
 - `copy-file-path` 的不变量：仅 `fileURL != nil` 生成菜单项；写入 `standardizedFileURL.path`；未保存/目录模式不生成，直接调用返回 false 且不清空剪贴板；不写文件、不产生 `changed`。
 - `reveal-in-finder` 的不变量：右键项仅 `fileURL != nil` 生成；动作目标由 `revealTargetURL` 单点决定（文件模式 `fileURL`、目录模式 `drawerRootURL`）；`validateMenuItem` 不得误禁用文件菜单的目录模式入口；只定位、不写文件、不产生 `changed`。
 - `highlight-language-menu` 的不变量：菜单项 representedObject = auto/plaintext/语言 id；勾选与窗口 `highlightMenuSelection` 同步；非代码文档整组置灰；点击只重绘不写文件。
@@ -83,6 +87,7 @@ updated: 2026-11-05
 |---|---|
 | `#multi-window` | `--multiwindow-test`：窗口数为 2、标题不重复 |
 | `#menu-commands` | `--selftest`：「命令注册表完整」「桥命令名双端一致」 |
+| `#context-menu-position` | `--context-menu-test`：「右键表格内出现行列菜单」「右键第 N 行 → 光标在第 N 行」「删除/插入只作用于点击行」「左上内边距点击仍定位该行」；`--selftest`：「右键定位 窗口坐标=页面坐标」「换算点命中同一单元格」；真机右键手感人工（R8） |
 | `#zoom` | `--selftest`：「缩放应用」 |
 | `#appearance` | `--selftest`：「深色主题切换」 |
 | `#highlight-language-menu` | `--selftest`：「代码视图 语言表覆盖扩展名」「代码视图 双端语言清单一致」；勾选/置灰人工 |

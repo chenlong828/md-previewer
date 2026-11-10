@@ -6,7 +6,7 @@ import { isInTable } from '@milkdown/prose/tables'
 import { state, currentMarkdown } from '../../shared/state.js'
 import { hostCall } from '../../shared/bus.js'
 import { commandRegistry } from './commands.js'
-import { tableCommandImpls } from './tables.js'
+import { tableCommandImpls, findTableCellDepth } from './tables.js'
 import { use } from '../../shared/ports.js'
 import { collectImageRefs, collectResourceRefs } from '../../semantics/markdown.js'
 
@@ -62,7 +62,15 @@ export function createDiagnosticsOps(_table) {
                     for (let d = $from.depth; d > 0; d--) {
                         if ($from.node(d).type.name === 'table') {
                             const header = $from.node(d).firstChild
-                            return { inTable: true, rows: $from.node(d).childCount, cols: header ? header.childCount : 0 }
+                            const cellD = findTableCellDepth($from)
+                            // row/col 为光标所在行列的 0 起算下标(诊断/自检断言用)
+                            return {
+                                inTable: true,
+                                rows: $from.node(d).childCount,
+                                cols: header ? header.childCount : 0,
+                                row: $from.index(d),
+                                col: cellD > 0 ? $from.index(cellD - 1) : 0,
+                            }
                         }
                     }
                     return { inTable: true }

@@ -88,6 +88,30 @@ test('core 组：jsdom 内核（无 WebView）', async (t) => {
         assert.equal(info.rows, 2)
     })
 
+    await t.test('表格行列：插入后光标进入新行/新列（连续操作沿同向累积）', async () => {
+        await ops.setMarkdown({ md: '| H1 | H2 |\n| --- | --- |\n| A1 | A2 |\n' })
+        const geo = () => {
+            const info = ops.tableInfo()
+            return { rows: info.rows, cols: info.cols, row: info.row, col: info.col }
+        }
+        assert.equal(ops.debugFocusTable().ok, true)
+        assert.deepEqual(geo(), { rows: 2, cols: 2, row: 0, col: 0 })
+
+        assert.equal(ops.tableCommand({ name: 'insertRowBelow' }).applied, true)
+        assert.deepEqual(geo(), { rows: 3, cols: 2, row: 1, col: 0 })
+        // 第二次插入必须相对新行(而非原行)发生,否则两次“下方插入”会反向堆叠
+        assert.equal(ops.tableCommand({ name: 'insertRowBelow' }).applied, true)
+        assert.deepEqual(geo(), { rows: 4, cols: 2, row: 2, col: 0 })
+        // 删除的是刚插入的新行,原数据行保留
+        assert.equal(ops.tableCommand({ name: 'deleteRow' }).applied, true)
+        assert.deepEqual(geo(), { rows: 3, cols: 2, row: 2, col: 0 })
+
+        assert.equal(ops.tableCommand({ name: 'insertColRight' }).applied, true)
+        assert.deepEqual(geo(), { rows: 3, cols: 3, row: 2, col: 1 })
+        assert.equal(ops.tableCommand({ name: 'insertColRight' }).applied, true)
+        assert.deepEqual(geo(), { rows: 3, cols: 4, row: 2, col: 2 })
+    })
+
     await t.test('代码视图信息与语言表', () => {
         ops.setCode({ text: 'x\n', language: 'javascript' })
         const info = ops.codeInfo()

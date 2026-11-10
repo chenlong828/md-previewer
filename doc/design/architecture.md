@@ -2,7 +2,7 @@
 layer: design
 module: global
 status: current
-updated: 2026-11-04
+updated: 2026-11-10
 ---
 
 # 系统架构与设计取舍
@@ -322,6 +322,26 @@ Milkdown 7.7（ProseMirror）及其插件装配归 `components/editor`，明细�
   minimap 由 [REQ-0011](../requirements/REQ-0011-document-minimap.md) 追加，2026-11-04
   已实现为 `CMP-minimap` / `CMP-kernel-minimap`；2026-11-05 起快照为只读 DOM 克隆 + 顶左等比缩放；短文档整页 fit，长文按 120px 宽纵向裁切平移，缩略图只读，不改变代码只读、
   512 KB 上限、行结构与复制/查找语义。
+
+### 2.8 右键菜单定位：坐标口径（2026-11-10）
+
+- **决策**：右键的「当前光标」由壳侧 `EditorWebView.pagePoint(forWindowPoint:)` 把
+  事件窗口坐标换算成**页面视口坐标（CSS 像素，左上原点）**，再经 `focusAt` 把
+  选区与 DOM 焦点一起落到点击处；行列命令只认 ProseMirror 选区。`WKWebView` 是
+  flipped 视图，`convert(_:from:)` 的结果已是页面口径，**不再按 bounds.height
+  二次翻转**。
+- **理由**：原生菜单吞掉了 rightMouseDown/Up，WebKit 不会像左键那样把 caret 放到
+  点击处；若换算把 y 镜像到视口中线，菜单会按另一行判定 `inTable`、命令也作用在
+  另一行（用户 2026-11-10 实证：菜单栏路径准确，右键路径错位）。`focusAt` 后显式
+  `view.focus()`，用户才能在菜单弹出前看到当前行。
+- **实现单点**：`EditorWebView.pagePoint`（唯一坐标换算）+ `web/src/kernel/components/editor/ops.js#focusAt`
+  （唯一右键定位 op）；菜单呈现走可替换的 `presentContextMenu`（默认
+  `NSMenu.popUpContextMenu`，自检只替换呈现方式，不换产品路径）。
+- **失效条件**：若改用 `WKWebView.pageZoom` 或非 1:1 的页面缩放，点↔CSS 像素不再
+  等值，需按 pageZoom 折算——`--context-menu-test` 的几何断言会先红；若把坐标
+  换算写回 `bounds.height - p.y`，y 再次镜像，右键第 1 行会落到下方行/表格外。
+- **边界**：单元格内边距点击已覆盖；共享 1px 分隔线恰好压线的归属仍由
+  `posAtCoords` 就近决定，未新增启发式重定位。
 
 ## 3. 桥协议（v2，2026-11-04 落地）
 

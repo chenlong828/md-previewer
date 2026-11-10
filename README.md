@@ -52,6 +52,7 @@ open dist/MDPreview.app --args /path/to/folder
 ```bash
 ./build.sh debug
 ./.build/debug/MDPreview --selftest
+./.build/debug/MDPreview --context-menu-test   # 右键行列定位回归
 ```
 
 ## 快捷键

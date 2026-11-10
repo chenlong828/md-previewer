@@ -15,6 +15,8 @@ final class EditorWebView: WKWebView, WKScriptMessageHandler, WKNavigationDelega
     var onImageFileDropped: ((URL) -> Void)?
     /// 由控制器异步提供右键菜单(先定位光标再构建);返回 nil 时本次不弹菜单
     var contextMenuHandler: ((_ x: CGFloat, _ y: CGFloat, _ done: @escaping (NSMenu?) -> Void) -> Void)?
+    /// 菜单呈现方式(默认系统弹出);自检替换为捕获器,避免进入阻塞式菜单跟踪
+    var presentContextMenu: ((NSMenu, NSEvent, NSView) -> Void)?
     // 全局/局部事件监视器句柄集中管理:窗口关闭或实例释放时统一移除,
     // 避免多窗口下事件穿越 N 个已废弃监视器(审计 #20)。
     private var eventMonitors: [Any] = []
@@ -67,14 +69,26 @@ final class EditorWebView: WKWebView, WKScriptMessageHandler, WKNavigationDelega
                   event.window === self.window,
                   self.hitTest(event.locationInWindow) != nil,
                   let handler = self.contextMenuHandler else { return event }
-            let p = self.convert(event.locationInWindow, from: nil)
-            let pageY = self.bounds.height - p.y
-            handler(p.x, pageY) { [weak self] menu in
+            let page = self.pagePoint(forWindowPoint: event.locationInWindow)
+            handler(page.x, page.y) { [weak self] menu in
                 guard let self, let menu else { return }
-                NSMenu.popUpContextMenu(menu, with: event, for: self)
+                if let present = self.presentContextMenu {
+                    present(menu, event, self)
+                } else {
+                    NSMenu.popUpContextMenu(menu, with: event, for: self)
+                }
             }
             return nil
         }
+    }
+
+    /// 事件窗口坐标 → 网页视口坐标(CSS 像素,左上原点)。
+    /// WKWebView 是 flipped 视图:convert 已把窗口的左下原点换成视口左上原点,
+    /// 再按 bounds.height 翻转一次会把 y 镜像到视口中线——右键点第 1 行却定位到
+    /// 倒数行/表格外,行列命令因此作用在错误行(2026-11-10 修复)。
+    func pagePoint(forWindowPoint point: NSPoint) -> NSPoint {
+        let p = convert(point, from: nil)
+        return NSPoint(x: p.x, y: isFlipped ? p.y : bounds.height - p.y)
     }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }

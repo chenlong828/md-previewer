@@ -3,7 +3,7 @@ layer: design
 module: editing
 component: CMP-editor
 status: active
-updated: 2026-11-04
+updated: 2026-11-10
 ---
 
 # CMP-editor 组件规格
@@ -24,7 +24,7 @@ updated: 2026-11-04
   - `CMP-editor#format-command`：`formatCommand{name, payload?}`，按 `EditorCommands` 的动作名执行。
   - `CMP-editor#source-mode`：`toggleSource{force?}` → `{sourceMode}`；保存取一致内容。
   - `CMP-editor#find`：`openFindBar`/`closeFindBar`/`findNext`/`findPrev`/`findInfo`（Markdown 与源码模式；代码文档的查找归 `CMP-code-view#code-find`，复用同一查找栏 UI）。
-  - `CMP-editor#table`：`tableCommand{name}` 与 `insertTable{row,col}`（插入/删除行列与整表）。
+  - `CMP-editor#table`：`tableCommand{name}` 与 `insertTable{row,col}`（插入/删除行列与整表；插入后选区进入新单元格，连续插入沿同方向累积）。
   - `CMP-editor#render`：KaTeX 数学、Mermaid 图表、Prism 代码高亮；可插入 `insertMarkdown`/`insertImage`。
   - `CMP-editor#theme-zoom`：`setTheme{theme}`/`setZoom{scale}` → `{zoom}`，正文宽度策略。
   - `CMP-editor#selection-info`：`selinfo{inTable}` 通知上报光标/表格状态；`requestStats` 触发 `stats{words,chars}`。
@@ -49,7 +49,7 @@ updated: 2026-11-04
 - `#get-markdown` 的不变量：`getMarkdown` 返回渲染态序列化（诊断口径），`getSaveMarkdown` 返回写盘口径（图片路径已还原为相对路径）；两者都保持列表每级 4 空格、首行标记紧凑，都不含临时 UI 状态。
 - `#source-mode` 的不变量：切换不改变文档语义；源码模式保存与渲染模式保存取一致内容。
 - `#find` 的错误模式：无命中时计数为 0 且不抛错；源码模式同样可用。
-- `#table` 的错误模式：光标不在表格内时命令 no-op，不插入孤立行列。
+- `#table` 的错误模式：光标不在表格内（含右键落在表格外）时命令 no-op，不插入孤立行列；插入后光标必须在新行/新列内，删除作用于光标当前行/列。
 - `#render` 的不变量：代码围栏内的图片/链接不被路径改写；Mermaid 源码编辑失焦重绘。
 
 ## 验证计划
@@ -59,7 +59,7 @@ updated: 2026-11-04
 | `#format-command` | `--selftest`：「桥命令行为」标题/正文 |
 | `#source-mode` | `--selftest`：「源码模式显示原文」「源码模式编辑回写」「D1 源码模式保存取一致内容」 |
 | `#find` | `--selftest`：「查找命中计数」「查找下一处」「查找高亮与定位」「查找栏关闭」 |
-| `#table` | `--selftest`：「表格-插入/删除…」「表格-定位首表」；`--multiwindow-test` 表格内状态 |
+| `#table` | `--selftest`：「表格-插入/删除…」「表格-定位首表」「表格-插入行后光标进入新行」「表格-删除的是新行（原行保留）」「表格外 no-op」；`--multiwindow-test` 表格内状态；`--context-menu-test` 右键点击行=作用行；`web npm test` 连续插入 row/col 累积 |
 | `#theme-zoom` | `--selftest`：「深色主题切换」「缩放应用」「宽度策略」 |
 | `#render` | 截图/人工：KaTeX、Mermaid、Prism |
 

@@ -38,6 +38,9 @@ export function createEditorOps(table) {
                         if (!info || info.pos == null) return { ok: false, inTable: false }
                         const $pos = view.state.doc.resolve(info.pos)
                         view.dispatch(view.state.tr.setSelection(TextSelection.near($pos)))
+                        // 原生菜单不经 ProseMirror 的 mousedown,选区只写在 state 里;
+                        // 聚焦编辑器把 DOM 光标同步到点击处,用户才能在菜单弹出前看到当前行。
+                        view.focus()
                         let inTable = false
                         try { inTable = isInTable(view.state) } catch (e) { inTable = false }
                         return { ok: true, inTable }
