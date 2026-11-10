@@ -24,8 +24,9 @@ updated: 2026-11-05
   - `CMP-app-shell#new-window`：⌘N 创建空白文档窗口。
   - `CMP-app-shell#multi-window`：单进程、单 Dock、每文档独立窗口。
   - `CMP-app-shell#recent-files`：最近文件列表与清除。
-  - `CMP-app-shell#menu-commands`：`EditorCommands` 为菜单与右键的唯一命令真源；`availableInCode` 标记只读代码文档下仍可用的命令（拷贝/全选/查找/拷贝文件路径）。
-  - `CMP-app-shell#copy-file-path`：文档右键菜单「拷贝文件路径到剪贴板」，位于剪贴板组之后、查找组之前；仅已保存文件出现（Markdown/代码均可），未保存/目录模式不出现；写入 `fileURL.standardizedFileURL.path`；不写文件、不产生 `changed`。
+  - `CMP-app-shell#menu-commands`：`EditorCommands` 为菜单与右键的唯一命令真源；`availableInCode` 标记只读代码文档下仍可用的命令（拷贝/全选/查找/拷贝文件路径/Finder 定位）。
+  - `CMP-app-shell#copy-file-path`：文档右键菜单「拷贝文件路径到剪贴板」，位于剪贴板组之后；Finder 定位紧随其后；仅已保存文件出现（Markdown/代码均可），未保存/目录模式不出现；写入 `fileURL.standardizedFileURL.path`；不写文件、不产生 `changed`。
+  - `CMP-app-shell#reveal-in-finder`：文档右键菜单「用 Finder 打开到指定位置」，紧跟拷贝路径下方；仅已保存文件出现；文件模式选中当前文件，目录模式仍走文件菜单既有入口定位抽屉根目录；`NSWorkspace.activateFileViewerSelecting` 只定位，不写文件、不产生 `changed`。
   - `CMP-app-shell#highlight-language-menu`：视图 → 高亮语言子菜单；仅代码文档可用，勾选「自动/纯文本/语言 id」由窗口的当前选择同步。
   - `CMP-app-shell#code-line-numbers-menu`：视图 →「显示行号」；仅代码文档可用，勾选反映全局偏好；点击写入偏好并广播所有代码窗口，Markdown 窗口不受影响。
   - `CMP-app-shell#minimap-menu`：视图 →「显示文档缩略图」；Markdown 渲染面/代码面可用，源码模式置灰；勾选反映 `UserDefaults["minimapVisible"]`（默认 true）；点击写入偏好并广播所有窗口；不写文件、不产生 `changed`。
@@ -42,6 +43,8 @@ updated: 2026-11-05
   - `CMP-app-shell/Sources/MDPreview/DocumentWindowController.swift#toggleMinimapAction`
   - `CMP-app-shell/Sources/MDPreview/DocumentWindowController.swift#buildContextMenu`（文档右键菜单挂载点）
   - `CMP-app-shell/Sources/MDPreview/DocumentWindowController.swift#copyFilePath`（右键菜单执行体）
+  - `CMP-app-shell/Sources/MDPreview/DocumentWindowController.swift#revealTargetURL`（文件/目录模式的目标 URL）
+  - `CMP-app-shell/Sources/MDPreview/DocumentWindowController.swift#revealInFinder`（Finder 定位执行体）
   - `CMP-app-shell/Sources/MDPreview/EditorCommands.swift#EditorCommands`
   - `CMP-app-shell/Sources/MDPreview/AppDelegate.swift#buildMenus`
   - `CMP-app-shell/Sources/MDPreview/AppDelegate.swift#applyCodeLineNumbersToAllDocuments`
@@ -62,8 +65,9 @@ updated: 2026-11-05
 - `open-document` 的 `reanchor` 语义：外部打开（CLI/拖放/Finder/最近）重锚到文件所在目录；抽屉内双击不重锚。
 - `multi-window` 的不变量：同一文档不在两个窗口同时打开；目录模式只占一个窗口；⌘O 与最近文件替换当前窗口。
 - `quit` 的错误模式：用户取消则 `applicationShouldTerminate` 返回 `.terminateCancel`，不丢未保存内容。
-- `menu-commands` 的不变量：`EditorCommands.all` 的动作集合与菜单/右键实际动作一致；新增命令只改一处；`availableInCode` 默认 false，代码文档只放行拷贝/全选/查找/拷贝文件路径。
+- `menu-commands` 的不变量：`EditorCommands.all` 的动作集合与菜单/右键实际动作一致；新增命令只改一处；`availableInCode` 默认 false，代码文档只放行拷贝/全选/查找/拷贝文件路径/Finder 定位。
 - `copy-file-path` 的不变量：仅 `fileURL != nil` 生成菜单项；写入 `standardizedFileURL.path`；未保存/目录模式不生成，直接调用返回 false 且不清空剪贴板；不写文件、不产生 `changed`。
+- `reveal-in-finder` 的不变量：右键项仅 `fileURL != nil` 生成；动作目标由 `revealTargetURL` 单点决定（文件模式 `fileURL`、目录模式 `drawerRootURL`）；`validateMenuItem` 不得误禁用文件菜单的目录模式入口；只定位、不写文件、不产生 `changed`。
 - `highlight-language-menu` 的不变量：菜单项 representedObject = auto/plaintext/语言 id；勾选与窗口 `highlightMenuSelection` 同步；非代码文档整组置灰；点击只重绘不写文件。
 - `code-line-numbers-menu` 的不变量：菜单项 state 由 `DocumentWindowController.codeLineNumbersVisible` 单向派生；非代码文档置灰；切换写入 `UserDefaults["codeLineNumbersVisible"]` 并广播所有代码窗口；不写文件、不产生 `changed`；Markdown 窗口无效果。
 - `minimap-menu` 的不变量：菜单项 state 由 `UserDefaults["minimapVisible"]` 单向派生；**key 不存在时按 true**（用 `object(forKey:) == nil` 判空或 `register(defaults:)`，不能直接用 `bool(forKey:)` 得到 false）；Markdown 渲染面/代码面可用，源码模式置灰；切换只写偏好并广播所有窗口，不重建编辑器、不写文件、不产生 `changed`；源码模式返回渲染面后按偏好恢复；窗口初始化通过 `init` opts 传入偏好，代码文档切换沿用同一值。
@@ -84,7 +88,8 @@ updated: 2026-11-05
 | `#highlight-language-menu` | `--selftest`：「代码视图 语言表覆盖扩展名」「代码视图 双端语言清单一致」；勾选/置灰人工 |
 | `#code-line-numbers-menu` | `--selftest`：「代码视图 行号开关与复制文本」；勾选/跨窗口广播人工（R8，2026-11-04 用户确认） |
 | `#minimap-menu` | `--selftest`：「缩略图 默认显示」「缩略图 开关隐藏/恢复」（经 `setMinimapVisible`）；菜单勾选/跨窗口继承人工（R8） |
-| `#copy-file-path` | `--multiwindow-test`：「文档右键菜单含拷贝文件路径(2/2)」「拷贝文件路径位于剪贴板组之后」「右键拷贝文件路径」「未保存文档不显示/不拷贝文件路径」；`--selftest`：「命令注册表完整」；用户 2026-11-05 手工验收通过 |
+| `#copy-file-path` | `--multiwindow-test`：「文档右键菜单含拷贝文件路径(2/2)」「Finder 定位位于拷贝路径之后」「右键拷贝文件路径」「未保存文档不显示/不拷贝文件路径」；`--selftest`：「命令注册表完整」；用户 2026-11-05 手工验收通过 |
+| `#reveal-in-finder` | `--multiwindow-test`：「文档右键菜单含 Finder 定位(2/2)」「Finder 定位位于拷贝路径之后」「右键在 Finder 中定位文件」「未保存文档不显示/不拷贝/不定位」；`--selftest`：「命令注册表完整」；实际 Finder 弹窗复用文件菜单既有命令 |
 | `#open-document` / `#quit` | 人工：CLI/拖放/⌘O/最近 + 脏文档退出 |
 | `#protocol-client` | `--selftest`：「v2 握手响应」「v2 握手(protocolVersion=2, ops=41)」「v2 op 往返(getState)」「缩略图诊断(minimapInfo)」「装载改写(内核改写+壳作答)」「保存口径(内核还原相对路径)」；协议层本身由 `web/test/contract.test.js` 19 项覆盖（不依赖 WebView） |
 
@@ -98,6 +103,7 @@ updated: 2026-11-05
 | 代码行号显示偏好 | `CMP-code-view`（控制器静态入口） | 本组件菜单勾选 | 单一来源，本组件不另存 |
 | 缩略图显示偏好 | 本组件（`UserDefaults["minimapVisible"]`，默认 true） | 本组件菜单勾选、各窗口 `setMinimapVisible` | 单一来源；`CMP-minimap` 只读快照 |
 | 剪贴板文本（文件路径） | 本组件 `DocumentWindowController.copyFilePath` | 系统剪贴板、其他应用 | 一次性写入，不缓存；不改文档状态 |
+| Finder 选中项（一次性命令参数） | 本组件 `DocumentWindowController.revealInFinder` | 系统 Finder | 不缓存、不持久化；不改文档状态 |
 | 待决请求（id → completion + 超时句柄） | 本组件 `KernelClient.send` | 响应到达时结算 | 单实例；超时与响应二者先到者结算 |
 | 握手结果（kernelVersion/protocolVersion/ops） | 本组件 `recordHandshake` | 自检断言、错误上报 | 单次握手，不重试 |
 

@@ -48,7 +48,7 @@ tests:
 
 1. 打开已保存文件 → `fileURL` 非空。
 2. 在正文上右键 → web 端 `contextMenuHandler` 先 `focusAt` 定位光标，再调用 `buildContextMenu(inTable:)`。
-3. `buildContextMenu` 按注册表生成编辑命令组；`fileURL != nil` 时在剪贴板组之后、查找组之前插入「拷贝文件路径到剪贴板」。
+3. `buildContextMenu` 按注册表生成编辑命令组；`fileURL != nil` 时在剪贴板组之后插入「拷贝文件路径到剪贴板」，Finder 定位紧随其后（SCN-0019）。
 4. 点击菜单项 → `copyFilePathAction` → `copyFilePath` → 清空并写入 `fileURL.standardizedFileURL.path`。
 5. 菜单校验：`validateMenuItem` 命中注册表分支，`copyFilePath` 只判断 `fileURL != nil`，不要求编辑器就绪。
 
@@ -68,7 +68,7 @@ tests:
 
 | ID | 角色 | 类型 | 执行 | 断言 | 证据 |
 |---|---|---|---|---|---|
-| TC-COPY-001 | R1 | 自动 | `--multiwindow-test` | `PASS 文档右键菜单含拷贝文件路径(2/2)`、`PASS 拷贝文件路径位于剪贴板组之后(索引 8)`；Markdown 文档菜单有该项且 action/target 已接好 | present |
+| TC-COPY-001 | R1 | 自动 | `--multiwindow-test` | `PASS 文档右键菜单含拷贝文件路径(2/2)`、`PASS Finder 定位位于拷贝路径之后(索引 8/9)`；Markdown 文档菜单有该项且 action/target 已接好 | present |
 | TC-COPY-002 | R2 | 自动 | `--multiwindow-test` | 代码文档（`.py`）同样出现该项（`availableInCode`） | present |
 | TC-COPY-003 | R3 | 自动 | `--multiwindow-test` | `PASS 右键拷贝文件路径(/tmp/mdp-a.md)`：写入值等于 `fileURL.standardizedFileURL.path`，无 `file://` 前缀 | present |
 | TC-COPY-004 | N1 | 自动 | `--multiwindow-test` | `PASS 未保存文档不显示/不拷贝文件路径`：菜单无该项、`copyFilePath` 返回 false、剪贴板哨兵值不变 | present |

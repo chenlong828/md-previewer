@@ -6,7 +6,7 @@ enum EditorAction: Equatable, CaseIterable {
     case undo, redo
     case cut, copy, paste, selectAll
     case find, findNext, findPrev
-    case copyFilePath
+    case copyFilePath, revealInFinder
     case toggleSource
     case bold, italic, strikethrough, inlineCode, link
     case heading1, heading2, heading3, bodyText
@@ -55,6 +55,7 @@ enum EditorCommands {
         EditorCommandSpec(action: .findNext, title: "查找下一个", selector: #selector(DocumentWindowController.findNextAction(_:)), key: "g", modifiers: .command, availableInCode: true),
         EditorCommandSpec(action: .findPrev, title: "查找上一个", selector: #selector(DocumentWindowController.findPrevAction(_:)), key: "g", modifiers: [.command, .shift], availableInCode: true),
         EditorCommandSpec(action: .copyFilePath, title: "拷贝文件路径到剪贴板", selector: #selector(DocumentWindowController.copyFilePathAction(_:)), inContextMenu: true, availableInCode: true),
+        EditorCommandSpec(action: .revealInFinder, title: "用 Finder 打开到指定位置", selector: #selector(DocumentWindowController.revealInFinderAction(_:)), inContextMenu: true, availableInCode: true),
         EditorCommandSpec(action: .toggleSource, title: "源码模式", selector: #selector(DocumentWindowController.toggleSourceModeAction(_:)), key: "/", modifiers: .command, inContextMenu: true),
         EditorCommandSpec(action: .bold, title: "加粗", selector: #selector(DocumentWindowController.toggleBoldAction(_:)), key: "b", modifiers: .command, inContextMenu: true, jsCommand: "toggleStrongCommand"),
         EditorCommandSpec(action: .italic, title: "斜体", selector: #selector(DocumentWindowController.toggleItalicAction(_:)), key: "i", modifiers: .command, inContextMenu: true, jsCommand: "toggleEmphasisCommand"),

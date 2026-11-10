@@ -816,7 +816,7 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
     func buildContextMenu(inTable: Bool) -> NSMenu {
         let menu = NSMenu()
         // 分组与菜单栏共用同一份命令注册表;表格组仅在光标位于表格内时出现。
-        // 代码文档只保留只读可用的动作(拷贝/全选/查找/拷贝文件路径),格式与表格组整体不出现。
+        // 代码文档只保留只读可用的动作(拷贝/全选/查找/拷贝文件路径/Finder 定位),格式与表格组整体不出现。
         let groups: [[EditorAction]] = isCodeDocument
             ? [[.copy, .selectAll], [.find]]
             : [
@@ -828,10 +828,10 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
                 [.rowAbove, .rowBelow, .colLeft, .colRight],
                 [.deleteRow, .deleteColumn, .deleteTable],
             ]
-        // 文件级动作紧跟剪贴板组,避免长表格菜单把它挤到屏幕外;未保存文档没有路径,不显示该项。
+        // 文件级动作紧跟剪贴板组,避免长表格菜单把它挤到屏幕外;未保存文档没有路径,不显示这两项。
         var menuGroups = groups
         if fileURL != nil {
-            menuGroups.insert([.copyFilePath], at: isCodeDocument ? 1 : 2)
+            menuGroups.insert([.copyFilePath, .revealInFinder], at: isCodeDocument ? 1 : 2)
         }
         for group in menuGroups {
             let items = group.compactMap { action -> NSMenuItem? in
@@ -1228,13 +1228,14 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
         // 注册表命令统一校验(菜单栏与右键菜单共用)
         if let spec = EditorCommands.all.first(where: { $0.selector == menuItem.action }) {
-            // 代码文档只读:除拷贝/全选/查找/拷贝文件路径外全部不可用(保存/格式/源码模式/表格…)
+            // 代码文档只读:除拷贝/全选/查找/拷贝文件路径/Finder 定位外全部不可用(保存/格式/源码模式/表格…)
             if isCodeDocument && !spec.availableInCode { return false }
             if spec.action == .toggleSource {
                 menuItem.state = sourceModeCached ? .on : .off
             }
             if spec.requiresTable && !inTableCached { return false }
             if spec.action == .copyFilePath { return fileURL != nil }
+            if spec.action == .revealInFinder { return revealTargetURL != nil }
             return isReady
         }
         switch menuItem.action {
@@ -1327,9 +1328,20 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
         }
     }
 
+    /// 在 Finder 中选中当前文件;目录模式选中抽屉根目录。只定位,不写文件、不产生 changed。
+    private var revealTargetURL: URL? {
+        directoryMode ? drawerRootURL : fileURL
+    }
+
+    @discardableResult
+    func revealInFinder(using reveal: ([URL]) -> Void = { NSWorkspace.shared.activateFileViewerSelecting($0) }) -> Bool {
+        guard let url = revealTargetURL else { return false }
+        reveal([url.standardizedFileURL])
+        return true
+    }
+
     @objc func revealInFinderAction(_ sender: Any?) {
-        guard let url = directoryMode ? drawerRootURL : fileURL else { return }
-        NSWorkspace.shared.activateFileViewerSelecting([url])
+        revealInFinder()
     }
 
     @objc func exportPDFAction(_ sender: Any?) { exportPDF() }
