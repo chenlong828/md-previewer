@@ -213,6 +213,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
     }
 
+    /// 文件抽屉「显示隐藏文件/目录」偏好变更后广播所有窗口(偏好本身由抽屉写入)。
+    func applyDrawerShowHiddenToAllDocuments() {
+        for controller in documents {
+            controller.applyDrawerShowHiddenPreference()
+        }
+    }
+
     /// 缩略图偏好变更后广播所有窗口;源码模式下的窗口由控制器/内核自行隐藏。
     func applyMinimapVisibilityToAllDocuments() {
         for controller in documents {

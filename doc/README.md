@@ -22,7 +22,8 @@ doc/
 │   ├── REQ-0010-code-view-line-numbers.md
 │   ├── REQ-0011-document-minimap.md
 │   ├── REQ-0012-copy-file-path.md
-│   └── REQ-0013-reveal-in-finder.md
+│   ├── REQ-0013-reveal-in-finder.md
+│   └── REQ-0014-file-drawer-hidden-toggle.md
 ├── plan/                               ← 调度：接下来做什么
 │   ├── roadmap.md
 │   ├── risks.md
@@ -54,7 +55,7 @@ doc/
 │       ├── editing/rich-editing/         ← 5 个
 │       ├── editing/appearance/           ← 1 个
 │       ├── media/image/                  ← 2 个
-│       ├── navigation/file-drawer/       ← 1 个
+│       ├── navigation/file-drawer/       ← 2 个
 │       ├── navigation/windows/           ← 1 个
 │       ├── navigation/in-document/       ← 1 个
 │       ├── output/export/                ← 1 个
@@ -66,7 +67,7 @@ doc/
 │   └── 2026-11-04-scenario-inventory/  ← 已实现场景/组件清点（执行中）
 └── history/                            ← 记忆：怎么走到这里的
     ├── decisions/
-    ├── works/                          ← 已归档工序（含 app-icon、code-file-view、code-view-line-numbers、document-minimap、minimap-long-crop、copy-file-path、reveal-in-finder、table-row-context-menu）
+    ├── works/                          ← 已归档工序（含 app-icon、code-file-view、code-view-line-numbers、document-minimap、minimap-long-crop、copy-file-path、reveal-in-finder、table-row-context-menu、drawer-hidden-toggle）
     └── pitfalls.md
 ```
 
@@ -80,11 +81,11 @@ doc/
 
 ## 阅读顺序
 
-1. **要了解“为什么做”** → `requirements/`：13 张需求卡，从 [REQ-0001 文件抽屉](requirements/REQ-0001-file-drawer.md) 到 [REQ-0013 文档右键 Finder 定位](requirements/REQ-0013-reveal-in-finder.md)；每张写场景、价值、非目标与影响场景。
+1. **要了解“为什么做”** → `requirements/`：14 张需求卡，从 [REQ-0001 文件抽屉](requirements/REQ-0001-file-drawer.md) 到 [REQ-0014 文件抽屉显示隐藏条目](requirements/REQ-0014-file-drawer-hidden-toggle.md)；每张写场景、价值、非目标与影响场景。
 2. **要了解“接下来修什么”** → [plan/roadmap.md](plan/roadmap.md)：工序总览与状态。
 3. **要了解“哪些风险在悬着”** → [plan/risks.md](plan/risks.md)；跨工序未决问题查 [plan/open-questions.md](plan/open-questions.md)。
 4. **要了解系统现状** → [design/architecture.md](design/architecture.md)（安全/行为取舍、桥协议）；组件契约从 `design/components/` 进入，诊断面见 [CMP-diagnostics](design/components/CMP-diagnostics/spec.md)。
-5. **要看用户旅程** → `design/scenarios/`：19 个场景，按 领域/价值流/场景 分层；每个带入口、运行序、3+1 测试与验证债。
+5. **要看用户旅程** → `design/scenarios/`：20 个场景，按 领域/价值流/场景 分层；每个带入口、运行序、3+1 测试与验证债。
 6. **要领取一个任务** → `works/<工序ID>/brief.md`，从 roadmap 表进入对应工序目录；新工序按 brief/result 模板写，P1/P2 另加 `review.md`。
 7. **要做平台壳或动桥协议** → 先读存档 [history/decisions/2026-10-21-editor-kernel-spec.md](history/decisions/2026-10-21-editor-kernel-spec.md)：内核/壳分界、桥协议 v2 契约与迁移方案（2026-10-21 评审暂缓，恢复时从存档重启工序）。
 8. **要查历史结论或踩过的坑** → `history/decisions/`、`history/works/`、[history/pitfalls.md](history/pitfalls.md)。

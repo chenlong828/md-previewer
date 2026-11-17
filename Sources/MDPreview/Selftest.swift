@@ -1032,9 +1032,11 @@ func greet() -> String {
                             } else if case .failure(let error) = result {
                                 print("SELFTEST big pdf error:", error.localizedDescription)
                             }
-                            // 恢复标准样例,后续检查不受影响
+                            // 恢复标准样例与帧驱动布局:自检里的 webview 用 frame+autoresizing,
+                            // 若置 translates=false 又无约束,后续任何 Auto Layout 通过都会把它压成 0 宽
                             self.evaluate("window.mdbridge.setMarkdown(\(JSArgs.string(SelftestRunner.sampleMarkdown)))") { _ in
-                                self.webview.translatesAutoresizingMaskIntoConstraints = false
+                                self.webview.translatesAutoresizingMaskIntoConstraints = true
+                                self.webview.frame = self.window?.contentView?.bounds ?? self.webview.frame
                                 self.window?.contentView?.layoutSubtreeIfNeeded()
                                 done()
                             }
@@ -1049,8 +1051,9 @@ func greet() -> String {
         testImageStore()
         testImageCleanup()
 
-        // ── 文件抽屉目录扫描(过滤/剪枝/防环/防深)
+        // ── 文件抽屉目录扫描(过滤/剪枝/防环/防深)与显示隐藏开关
         testDirectoryTree()
+        testDrawerHiddenToggle()
 
         // ── 图片节点渲染/编辑框/插入桥(点击编辑与 Esc 还原的 web 行为往返)
         testImageNodeView()
@@ -1459,7 +1462,12 @@ func greet() -> String {
             put("a.md")
             put("main.py") // 代码文件 → 进树(REQ-0009:抽屉也列出可读代码)
             put("b.txt") // 非 md/非代码 → 排除
-            put(".hidden.md") // 隐藏 → 排除
+            put(".hidden.md") // 点号前缀隐藏 → 默认排除
+            try mkdir(".hidden-dir") // 点号前缀隐藏目录 → 默认排除
+            put(".hidden-dir/inside.md")
+            put("flagged.md") // Finder 隐藏标记(非点号前缀)→ 默认排除
+            try? (root.appendingPathComponent("flagged.md") as NSURL)
+                .setResourceValue(true, forKey: .isHiddenKey)
             put("sub/c.md")
             put("sub/e.txt")
             put("sub/deep/d.markdown")
@@ -1500,6 +1508,30 @@ func greet() -> String {
             } else {
                 fail("目录扫描-子层装载 → sub=\(subLevel.children.map(\.name)) deep=\(deepLevel?.children.map(\.name) ?? [])")
             }
+            // 隐藏口径(Finder 同款):includeHidden 时 . 前缀与 chflags hidden 都显示,
+            // 但 node_modules/包目录/符号链接/非可打开文件仍跳过
+            let shownLevel = try DirectoryTree.scanLevel(of: root, includeHidden: true)
+            let shownNames = shownLevel.children.map(\.name)
+            let shownSet = Set(shownNames)
+            let hiddenShown = [".hidden-dir", ".hidden.md", "flagged.md"].allSatisfy(shownSet.contains)
+            let noiseStillHidden = !shownSet.contains("b.txt") && !shownSet.contains("loop")
+                && !shownSet.contains("node_modules") && !shownSet.contains("MyApp.app")
+            let folderFirst = shownNames.prefix { !$0.hasSuffix(".md") && !$0.hasSuffix(".py") }
+            if hiddenShown, noiseStillHidden,
+               folderFirst.contains(".hidden-dir"),
+               shownNames.lastIndex(of: ".hidden.md")! > shownNames.firstIndex(of: "empty")! {
+                pass("目录扫描-显示隐藏(Finder 标记也识别,噪音仍跳过)")
+            } else {
+                fail("目录扫描-显示隐藏口径不符 → \(shownNames)")
+            }
+            // 隐藏目录可展开:内部普通文件按可打开类型进入子层
+            let hiddenDirLevel = try? DirectoryTree.scanLevel(
+                of: root.appendingPathComponent(".hidden-dir"), includeHidden: true)
+            if hiddenDirLevel?.children.map(\.name) == ["inside.md"] {
+                pass("目录扫描-隐藏目录可展开读子层")
+            } else {
+                fail("目录扫描-隐藏目录子层 → \(hiddenDirLevel?.children.map(\.name) ?? [])")
+            }
             // 父链回填 + descendant 只及已装载层(模拟 attachChildren 的回填)
             if let subNode {
                 subNode.children = subLevel.children
@@ -1538,6 +1570,90 @@ func greet() -> String {
             fail("目录扫描-根不可读应抛错")
         } catch {
             pass("目录扫描-根不可读抛错")
+        }
+    }
+
+    /// 抽屉「显示隐藏文件」开关:视图级端到端(真实扫描 + 真实 outline 数据源 + 偏好)。
+    /// 断言行数、按钮提示、偏好三者随开关同步;收尾清偏好,避免污染后续用例与用户设置。
+    private func testDrawerHiddenToggle() {
+        let fm = FileManager.default
+        let root = URL(fileURLWithPath: "/tmp/selftest-drawer-hidden-\(getpid())")
+        try? fm.removeItem(at: root)
+        defer {
+            try? fm.removeItem(at: root)
+            UserDefaults.standard.removeObject(forKey: FileDrawerView.showsHiddenDefaultsKey)
+        }
+        func put(_ rel: String) {
+            fm.createFile(atPath: root.appendingPathComponent(rel).path, contents: Data("# t\n".utf8))
+        }
+        do { try fm.createDirectory(at: root.appendingPathComponent(".hidden-dir"),
+                                    withIntermediateDirectories: true) } catch {
+            fail("抽屉-显示隐藏 建树失败 \(error)")
+            return
+        }
+        put("visible.md")
+        put(".secret.md") // 点号前缀隐藏
+        put("flagged.md") // Finder 隐藏标记
+        try? (root.appendingPathComponent("flagged.md") as NSURL)
+            .setResourceValue(true, forKey: .isHiddenKey)
+        put(".hidden-dir/inside.md")
+
+        UserDefaults.standard.removeObject(forKey: FileDrawerView.showsHiddenDefaultsKey)
+        let drawer = FileDrawerView(frame: NSRect(x: 0, y: 0, width: 260, height: 400))
+        window.contentView?.addSubview(drawer)
+        defer { drawer.removeFromSuperview() }
+
+        func waitRows(_ expected: Int, timeout: TimeInterval = 5) -> Bool {
+            var waited = 0.0
+            while drawer.rowCountForDiagnostics != expected && waited < timeout {
+                pumpRunLoop(for: 0.05)
+                waited += 0.05
+            }
+            return drawer.rowCountForDiagnostics == expected
+        }
+
+        drawer.load(root: root)
+        if waitRows(1), !drawer.showsHiddenForDiagnostics,
+           drawer.hiddenToggleTooltipForDiagnostics.contains("显示") {
+            pass("抽屉-显示隐藏 默认只显示可见条目(1 行)")
+        } else {
+            fail("抽屉-显示隐藏 默认行数/状态 → \(drawer.rowCountForDiagnostics) 行,"
+                 + "showsHidden=\(drawer.showsHiddenForDiagnostics)")
+        }
+        drawer.debugToggleShowHidden()
+        let shownOK = waitRows(4)
+        if shownOK, drawer.showsHiddenForDiagnostics,
+           UserDefaults.standard.bool(forKey: FileDrawerView.showsHiddenDefaultsKey),
+           drawer.hiddenToggleTooltipForDiagnostics.contains("隐藏") {
+            pass("抽屉-显示隐藏 开:隐藏文件/隐藏目录出现且偏好落盘(4 行)")
+        } else {
+            fail("抽屉-显示隐藏 开 → \(drawer.rowCountForDiagnostics) 行,"
+                 + "showsHidden=\(drawer.showsHiddenForDiagnostics),"
+                 + "tip=\(drawer.hiddenToggleTooltipForDiagnostics)")
+        }
+        drawer.debugToggleShowHidden()
+        if waitRows(1), !drawer.showsHiddenForDiagnostics,
+           !UserDefaults.standard.bool(forKey: FileDrawerView.showsHiddenDefaultsKey) {
+            pass("抽屉-显示隐藏 关:回到 1 行且偏好复位")
+        } else {
+            fail("抽屉-显示隐藏 关 → \(drawer.rowCountForDiagnostics) 行,"
+                 + "showsHidden=\(drawer.showsHiddenForDiagnostics)")
+        }
+        // 偏好先于视图创建生效(新窗口读取记忆)
+        UserDefaults.standard.set(true, forKey: FileDrawerView.showsHiddenDefaultsKey)
+        let restored = FileDrawerView(frame: NSRect(x: 0, y: 0, width: 260, height: 400))
+        window.contentView?.addSubview(restored)
+        defer { restored.removeFromSuperview() }
+        restored.load(root: root)
+        var waited = 0.0
+        while restored.rowCountForDiagnostics != 4 && waited < 5 {
+            pumpRunLoop(for: 0.05)
+            waited += 0.05
+        }
+        if restored.showsHiddenForDiagnostics, restored.rowCountForDiagnostics == 4 {
+            pass("抽屉-显示隐藏 偏好记忆对新窗口生效(4 行)")
+        } else {
+            fail("抽屉-显示隐藏 记忆恢复 → \(restored.rowCountForDiagnostics) 行")
         }
     }
 
@@ -1806,7 +1922,11 @@ func greet() -> String {
         let longName = "narrow-" + String(repeating: "long-image-file-name-", count: 5) + "img.png"
         evaluate("window.mdbridge.setMarkdown(\(JSArgs.string("![窄窗](file:///tmp/\(longName))")))") { _ in }
         window.setContentSize(NSSize(width: 480, height: 600))
-        defer { window.setContentSize(NSSize(width: 1000, height: 800)) }
+        webview.frame = window.contentView?.bounds ?? webview.frame
+        defer {
+            window.setContentSize(NSSize(width: 1000, height: 800))
+            webview.frame = window.contentView?.bounds ?? webview.frame
+        }
         // 条件等待(非纯睡):视口真实收窄且编辑块已打开,再测几何
         waitForValue("窄窗-窗口收窄且编辑块可打开", timeout: 5,
             script: #"(function(){var d=document.querySelector('.md-image');if(!d)return 'no-node';d.dispatchEvent(new MouseEvent('mousedown',{bubbles:true}));var s=d.querySelector('.md-image-src');return JSON.stringify({open:!!s&&s.style.display!=='none',vw:window.innerWidth})})()"#,

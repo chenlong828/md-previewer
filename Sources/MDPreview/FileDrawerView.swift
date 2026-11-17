@@ -1,6 +1,6 @@
 import AppKit
 
-/// 左侧文件抽屉:头部(锚点控件 + 刷新)+ 大纲视图树形目录。
+/// 左侧文件抽屉:头部(锚点控件 + 显示隐藏开关 + Home + 刷新)+ 大纲视图树形目录。
 /// 契约:load(root:) 装入扫描根;onOpenFile(URL) 双击 md 文件回调;
 /// onAnchorSelected(URL) 锚点控件重锚回调;select(url:) 高亮定位当前文档;reload() 重扫。
 /// 树数据是 DirectoryTree 的展示投影(权威在磁盘),lazy 按层装载:
@@ -17,6 +17,13 @@ final class FileDrawerView: NSView, NSOutlineViewDataSource, NSOutlineViewDelega
     static let maxWidth: CGFloat = 480
     /// 宽度记忆键(全局,与 fileDrawerVisible 同口径;非法值由读取侧回落默认)
     static let widthDefaultsKey = "fileDrawerWidth"
+    /// 显示隐藏条目偏好键(全局,默认 false;与缩略图/行号偏好同口径)
+    static let showsHiddenDefaultsKey = "fileDrawerShowsHidden"
+
+    /// 记忆的显示隐藏条目偏好(缺失按 false:默认不显示隐藏条目)
+    static var rememberedShowsHidden: Bool {
+        UserDefaults.standard.bool(forKey: showsHiddenDefaultsKey)
+    }
 
     /// 记忆宽度:缺失/越界一律回落默认宽度(抽屉开合动画与窗口宽度收敛以它为准)
     static var rememberedWidth: CGFloat {
@@ -28,6 +35,8 @@ final class FileDrawerView: NSView, NSOutlineViewDataSource, NSOutlineViewDelega
     var onOpenFile: ((URL) -> Void)?
     /// 锚点控件选择回调:用户把某父级目录选为新抽屉根
     var onAnchorSelected: ((URL) -> Void)?
+    /// 显示隐藏条目开关变更回调(控制器据此广播所有窗口;偏好已由本视图先行写入)
+    var onShowHiddenChanged: ((Bool) -> Void)?
 
     /// 当前锚定目录(抽屉扫描根)
     private(set) var rootURL: URL?
@@ -38,16 +47,18 @@ final class FileDrawerView: NSView, NSOutlineViewDataSource, NSOutlineViewDelega
     private var expandedPaths = Set<String>()
     /// 根层扫描代际:后台扫描完成回主线程时只应用最新一代,过期结果丢弃
     private var scanGeneration = 0
+    /// 是否显示隐藏文件/隐藏目录(单点状态,按钮与扫描共用)
+    private(set) var showsHidden = FileDrawerView.rememberedShowsHidden
 
-    /// 头部尺寸:锚点控件与两个按钮共用同一组量,避免两处数字各自演化。
-    /// 自检(drawer-test)按同一常量断言「控件宽度 = 抽屉宽 - 两个按钮 - 间距」,不复制数字
+    /// 头部尺寸:锚点控件与三个按钮共用同一组量,避免两处数字各自演化。
+    /// 自检(drawer-test)按同一常量断言「控件宽度 = 抽屉宽 - 三个按钮 - 间距」,不复制数字
     enum HeaderMetrics {
         static let height: CGFloat = 32
         /// 刷新按钮与抽屉右缘的间距
         static let trailingInset: CGFloat = 6
         /// 锚点控件与按钮之间、按钮彼此之间的间距
-        /// (控件宽度 = 抽屉宽 - Home 按钮 - 刷新按钮 - 两处间距);
-        /// 两个图标按钮间留 4pt:Home 换根是有观感代价的动作,不和刷新挤到一起
+        /// (控件宽度 = 抽屉宽 - 显示隐藏/Home/刷新三个按钮 - 三处间距);
+        /// 图标按钮间留 4pt:每个都是低频动作,靠图标区分,不挤在一起
         static let spacing: CGFloat = 4
         /// 图标按钮热区宽度:符号本身 16pt,补到 22pt 才好点(不小于系统侧栏按钮)
         static let buttonWidth: CGFloat = 22
@@ -57,6 +68,7 @@ final class FileDrawerView: NSView, NSOutlineViewDataSource, NSOutlineViewDelega
     /// 锚点控件:显示当前锚点(文件夹图标 + 目录名 + 展开箭头),点击弹出父级链菜单
     /// 供重新锚定;宽度铺满头部扣除 Home/刷新按钮后的剩余空间,选中项恒为当前锚点
     private let anchorControl = DrawerAnchorControl()
+    private let hiddenToggleButton: NSButton
     private let homeButton: NSButton
     private let refreshButton: NSButton
     private let scrollView = NSScrollView()
@@ -64,12 +76,16 @@ final class FileDrawerView: NSView, NSOutlineViewDataSource, NSOutlineViewDelega
     private let emptyLabel = NSTextField(labelWithString: "")
 
     override init(frame frameRect: NSRect) {
+        hiddenToggleButton = NSButton(
+            image: NSImage(systemSymbolName: "eye.slash", accessibilityDescription: "显示隐藏文件与隐藏目录")!,
+            target: nil, action: nil)
         homeButton = NSButton(image: NSImage(systemSymbolName: "house", accessibilityDescription: "Home 目录")!,
                               target: nil, action: nil)
         refreshButton = NSButton(image: NSImage(systemSymbolName: "arrow.clockwise", accessibilityDescription: "刷新")!,
                                  target: nil, action: nil)
         super.init(frame: frameRect)
         setupUI()
+        refreshHiddenToggle()
     }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
@@ -89,6 +105,12 @@ final class FileDrawerView: NSView, NSOutlineViewDataSource, NSOutlineViewDelega
         anchorControl.translatesAutoresizingMaskIntoConstraints = false
         anchorControl.setAccessibilityIdentifier("drawerAnchorPopup")
         headerBackground.addSubview(anchorControl)
+
+        hiddenToggleButton.target = self
+        hiddenToggleButton.action = #selector(toggleHiddenAction)
+        hiddenToggleButton.isBordered = false
+        hiddenToggleButton.translatesAutoresizingMaskIntoConstraints = false
+        headerBackground.addSubview(hiddenToggleButton)
 
         homeButton.target = self
         homeButton.action = #selector(homeAction)
@@ -144,12 +166,17 @@ final class FileDrawerView: NSView, NSOutlineViewDataSource, NSOutlineViewDelega
             headerBackground.trailingAnchor.constraint(equalTo: trailingAnchor),
             headerBackground.heightAnchor.constraint(equalToConstant: HeaderMetrics.height),
 
-            // 锚点控件铺满头部扣除 Home/刷新按钮后的剩余宽度(不做固有宽度,不吃成「文字那么长」)
+            // 锚点控件铺满头部扣除三个按钮后的剩余宽度(不做固有宽度,不吃成「文字那么长」)
             anchorControl.leadingAnchor.constraint(equalTo: headerBackground.leadingAnchor),
             anchorControl.trailingAnchor.constraint(
-                equalTo: homeButton.leadingAnchor, constant: -HeaderMetrics.spacing),
+                equalTo: hiddenToggleButton.leadingAnchor, constant: -HeaderMetrics.spacing),
             anchorControl.topAnchor.constraint(equalTo: headerBackground.topAnchor),
             anchorControl.bottomAnchor.constraint(equalTo: headerBackground.bottomAnchor),
+
+            hiddenToggleButton.trailingAnchor.constraint(
+                equalTo: homeButton.leadingAnchor, constant: -HeaderMetrics.spacing),
+            hiddenToggleButton.centerYAnchor.constraint(equalTo: headerBackground.centerYAnchor),
+            hiddenToggleButton.widthAnchor.constraint(equalToConstant: HeaderMetrics.buttonWidth),
 
             homeButton.trailingAnchor.constraint(
                 equalTo: refreshButton.leadingAnchor, constant: -HeaderMetrics.spacing),
@@ -196,8 +223,9 @@ final class FileDrawerView: NSView, NSOutlineViewDataSource, NSOutlineViewDelega
         scanGeneration += 1
         let generation = scanGeneration
         let url = rootURL
+        let includeHidden = showsHidden
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            let node = try? DirectoryTree.scanLevel(of: url)
+            let node = try? DirectoryTree.scanLevel(of: url, includeHidden: includeHidden)
             DispatchQueue.main.async {
                 guard let self, self.scanGeneration == generation else { return } // 过期扫描丢弃
                 self.apply(node: node, rootURL: url)
@@ -246,7 +274,7 @@ final class FileDrawerView: NSView, NSOutlineViewDataSource, NSOutlineViewDelega
     /// 也置为已装载且子层为空——与 Finder 空目录语义一致,避免无限重试。
     private func ensureLoaded(_ node: DirectoryTree.Node) {
         guard node.isFolder, !node.childrenLoaded else { return }
-        guard let level = try? DirectoryTree.scanLevel(of: node.url) else {
+        guard let level = try? DirectoryTree.scanLevel(of: node.url, includeHidden: showsHidden) else {
             node.childrenLoaded = true
             return
         }
@@ -371,12 +399,24 @@ final class FileDrawerView: NSView, NSOutlineViewDataSource, NSOutlineViewDelega
     /// 锚点菜单的缩进层级(自检断言「根 → 当前逐级递进」)
     var anchorMenuIndentationLevelsForDiagnostics: [Int] { anchorControl.menuIndentationLevels }
 
-    /// 头部三块的对齐矩形(约束求解所用的几何;按钮 frame 含 alignmentRectInsets,
+    /// 头部四块的对齐矩形(约束求解所用的几何;按钮 frame 含 alignmentRectInsets,
     /// 按 frame 断言会差半像素,按对齐矩形才是约束算出来的真几何)
-    var headerFramesForDiagnostics: (control: NSRect, home: NSRect, refresh: NSRect) {
+    var headerFramesForDiagnostics: (control: NSRect, hidden: NSRect, home: NSRect, refresh: NSRect) {
         (anchorControl.alignmentRect(forFrame: anchorControl.frame),
+         hiddenToggleButton.alignmentRect(forFrame: hiddenToggleButton.frame),
          homeButton.alignmentRect(forFrame: homeButton.frame),
          refreshButton.alignmentRect(forFrame: refreshButton.frame))
+    }
+
+    /// 当前是否显示隐藏条目(自检断言偏好与状态的单一来源)
+    var showsHiddenForDiagnostics: Bool { showsHidden }
+
+    /// 显示隐藏条目按钮的当前提示(自检断言按钮外观随状态变化)
+    var hiddenToggleTooltipForDiagnostics: String { hiddenToggleButton.toolTip ?? "" }
+
+    /// 模拟点击显示隐藏条目按钮(走 toggleHiddenAction 同一路径)
+    func debugToggleShowHidden() {
+        toggleHiddenAction()
     }
 
     /// 模拟在锚点菜单中选择某父级目录(走 onAnchorSelected 同一回调路径)
@@ -435,6 +475,34 @@ final class FileDrawerView: NSView, NSOutlineViewDataSource, NSOutlineViewDelega
 
     @objc private func refreshAction() {
         rescan()
+    }
+
+    /// 显示隐藏条目开关:写偏好 → 应用状态并重扫 → 回调控制器广播其它窗口。
+    /// 偏好由本视图写入(单一写入口),控制器的广播路径只应用状态不再写盘。
+    @objc private func toggleHiddenAction() {
+        let visible = !showsHidden
+        UserDefaults.standard.set(visible, forKey: Self.showsHiddenDefaultsKey)
+        setShowsHidden(visible)
+        onShowHiddenChanged?(visible)
+    }
+
+    /// 应用显示隐藏条目状态(广播路径与用户点击共用):状态变化才重扫根层,
+    /// 可见展开态由 rescan 的 capture/restore 保持。
+    func setShowsHidden(_ visible: Bool) {
+        guard showsHidden != visible else { return }
+        showsHidden = visible
+        refreshHiddenToggle()
+        if rootURL != nil { rescan() }
+    }
+
+    /// 按钮外观与提示随状态更新:eye.slash=隐藏中(点击显示),eye=已显示(点击隐藏)
+    private func refreshHiddenToggle() {
+        let symbol = showsHidden ? "eye" : "eye.slash"
+        let label = showsHidden ? "隐藏隐藏文件与隐藏目录" : "显示隐藏文件与隐藏目录"
+        hiddenToggleButton.image = NSImage(systemSymbolName: symbol, accessibilityDescription: label)
+        hiddenToggleButton.contentTintColor = showsHidden ? .controlAccentColor : .secondaryLabelColor
+        hiddenToggleButton.toolTip = label
+        hiddenToggleButton.setAccessibilityLabel(label)
     }
 
     /// 双击行:md 文件 → 回调打开(同窗口覆盖);文件夹 → 切换展开

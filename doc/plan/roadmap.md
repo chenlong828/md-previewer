@@ -2,7 +2,7 @@
 layer: plan
 module: global
 status: current
-updated: 2026-11-10
+updated: 2026-11-17
 ---
 
 # 技术债修复路线图
@@ -41,6 +41,7 @@ updated: 2026-11-10
 | [2026-11-05-minimap-long-crop](../history/works/2026-11-05-minimap-long-crop/brief.md) | 长文缩略图固定 120px 宽裁切（fit 宽度不足时裁切；视口框按整篇进度 1:1 跟手、顶底对齐） | 缺陷/P2 | S | 2026-11-04-document-minimap | ✅ 已完成（已归档；86 项 + 用户确认手感） |
 | [2026-11-05-copy-file-path](../history/works/2026-11-05-copy-file-path/brief.md) | 文档右键菜单「拷贝文件路径到剪贴板」（复用 EditorCommands 注册表；未保存/目录模式隐藏） | 功能/P3 | S | 无 | ✅ 已完成（已归档；selftest 注册表 + multiwindow 4 项 + dist 构建 + 用户验收通过） |
 | [2026-11-06-reveal-in-finder](../history/works/2026-11-06-reveal-in-finder/brief.md) | 文档右键菜单「用 Finder 打开到指定位置」（复用文件菜单既有 revealInFinderAction；不写文件） | 功能/P3 | S | 2026-11-05-copy-file-path | ✅ 已完成（已归档；selftest + multiwindow 5 项 + 复用既有命令） |
+| [2026-11-13-drawer-hidden-toggle](../history/works/2026-11-13-drawer-hidden-toggle/brief.md) | 文件抽屉显示隐藏文件/隐藏目录开关（Finder 口径隐藏判定、全局偏好、跨窗口同步；抽屉头部第三个图标按钮） | 功能/P2 | S | 无 | ✅ 已完成（已归档；selftest 135 / drawer 40 / ctx 12 / multi 15；用户 2026-11-17 验收） |
 | [2026-11-04-kernel-v2](../history/works/2026-11-04-kernel-v2/brief.md) | 可移植内核与桥协议 v2 落地（transport/contract/semantics/core 四层 + macOS 壳 v1→v2 一次切换；Windows 参照物） | 功能/架构 P1 | L | 存档规格 + 本次增量 | ✅ 完成并归档（2026-11-04；Node 78 项 + selftest 115 PASS；R9 关闭） |
 | [2026-11-10-table-row-context-menu](../history/works/2026-11-10-table-row-context-menu/brief.md) | 表格行列操作右键定位（flipped WKWebView 页面坐标修正、caret 跟随插入；新增 `--context-menu-test`） | 缺陷/P2 | S | 无 | ✅ 已完成（已归档；`--context-menu-test` 12 项 + selftest 129 + 用户 2026-11-10 真机验收） |
 

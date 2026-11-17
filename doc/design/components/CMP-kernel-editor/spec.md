@@ -43,4 +43,4 @@ updated: 2026-11-10
 - Node core 组 `requestStats`、`debugFocusTable`、`tableInfo.row/col` 与「插入后光标进入新行/新列」断言（`web/test/core.test.js`）。
 - 缩略图：`--selftest`「缩略图 默认显示」验证快照可被消费（`mode=fit|crop`、顶左、内容矩形有效）；Node surface 用例验证 Markdown source 生命周期。
 - 禁边：`node check-kernel.mjs` 校验「组件只 import 自身 + shared + semantics」。
-- 回归门：Node 87 项 + selftest 129 项 + `--context-menu-test` 全绿，断言数只增不减。
+- 回归门：Node 87 项 + selftest 135 项 + `--context-menu-test` 全绿，断言数只增不减。

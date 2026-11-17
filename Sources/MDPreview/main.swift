@@ -64,6 +64,23 @@ if isSelftest {
             && revealItems.allSatisfy { $0.target != nil && $0.action != nil }
         report(hasCopyPath, "文档右键菜单含拷贝文件路径(\(copyPathItems.count)/\(docs.count))")
         report(hasReveal, "文档右键菜单含 Finder 定位(\(revealItems.count)/\(docs.count))")
+        // 抽屉显示隐藏开关是全局偏好:一个窗口切换后,其它窗口的抽屉同步
+        if docs.count >= 2,
+           let d1 = docs.first?.drawerForDiagnostics,
+           let d2 = docs.last?.drawerForDiagnostics {
+            UserDefaults.standard.set(false, forKey: FileDrawerView.showsHiddenDefaultsKey)
+            d1.setShowsHidden(false)
+            d2.setShowsHidden(false)
+            d1.debugToggleShowHidden()
+            report(d1.showsHiddenForDiagnostics && d2.showsHiddenForDiagnostics,
+                   "抽屉显示隐藏开关跨窗口同步(开)")
+            d1.debugToggleShowHidden()
+            report(!d1.showsHiddenForDiagnostics && !d2.showsHiddenForDiagnostics,
+                   "抽屉显示隐藏开关跨窗口同步(关)")
+            UserDefaults.standard.removeObject(forKey: FileDrawerView.showsHiddenDefaultsKey)
+        } else {
+            report(false, "抽屉显示隐藏开关跨窗口同步(窗口/抽屉缺失)")
+        }
         let longMenu = docs.first?.buildContextMenu(inTable: true) ?? NSMenu()
         let copyIndex = longMenu.items.firstIndex { $0.title == "拷贝文件路径到剪贴板" }
         let revealIndex = longMenu.items.firstIndex { $0.title == "用 Finder 打开到指定位置" }
@@ -427,6 +444,7 @@ if isSelftest {
     UserDefaults.standard.removeObject(forKey: "MDPreviewMainWindow")
     UserDefaults.standard.removeObject(forKey: "fileDrawerVisible")
     UserDefaults.standard.removeObject(forKey: FileDrawerView.widthDefaultsKey) // 宽度记忆:断言从默认宽度起算
+    UserDefaults.standard.removeObject(forKey: FileDrawerView.showsHiddenDefaultsKey) // 隐藏开关:从默认(隐藏)起算
 
     // 0.8s:默认窗口就绪后切入目录模式再断言(等待树装载用轮询,非盲等)
     Timer.scheduledTimer(withTimeInterval: 0.8, repeats: false) { _ in
@@ -437,9 +455,24 @@ if isSelftest {
             finish()
             return
         }
+        // 固定 0.8s 在 release/打包环境可能早于编辑器 ready:此时 openDirectory 会走
+        // 暂存分支,锚点/树断言随即落空。等 ready 信号再切目录(与产品路径同一条)。
+        var waitedReady = 0.0
+        while (!doc.isReady || doc.isLoadingContent) && waitedReady < 15 {
+            RunLoop.main.run(mode: .default, before: Date().addingTimeInterval(0.05))
+            waitedReady += 0.05
+        }
+        report(doc.isReady && !doc.isLoadingContent, "编辑器就绪且首屏装载完成后切目录模式")
         // 与「文件 → 打开文件夹…」同一路径:当前窗口切入目录模式
         doc.openDirectory(at: dirURL)
-        RunLoop.main.run(mode: .default, before: Date().addingTimeInterval(0.5))
+        // 锚点菜单在后台扫描完成后回填:等信号(条目数=父级链)而非固定 0.5s——
+        // 打包环境下首屏装载与扫描更慢,固定窗会让断言跑在回填之前。
+        let chainCount = DirectoryTree.ancestorChain(of: dirURL).count
+        var waitedChain = 0.0
+        while doc.drawerForDiagnostics?.anchorItemCountForDiagnostics != chainCount && waitedChain < 5 {
+            RunLoop.main.run(mode: .default, before: Date().addingTimeInterval(0.05))
+            waitedChain += 0.05
+        }
         report(AppDelegate.shared?.documents.count == 1, "目录模式仅 1 个窗口")
         // 锚点下拉框:父级链条目数与 DirectoryTree.ancestorChain 一致
         let expectedChain = DirectoryTree.ancestorChain(of: dirURL).count
@@ -455,16 +488,33 @@ if isSelftest {
             let spacing = FileDrawerView.HeaderMetrics.spacing
             let drawerWidth = drawer.frame.width
             report(abs(frames.control.minX) < 0.5, "锚点控件贴抽屉左缘(实际 \(frames.control.minX))")
-            report(abs(frames.control.maxX - (frames.home.minX - spacing)) < 0.5,
-                   "锚点控件右缘=Home 按钮左缘-\(spacing)(实际 \(frames.control.maxX))")
+            report(abs(frames.control.maxX - (frames.hidden.minX - spacing)) < 0.5,
+                   "锚点控件右缘=显示隐藏按钮左缘-\(spacing)(实际 \(frames.control.maxX))")
+            report(abs(frames.hidden.maxX - (frames.home.minX - spacing)) < 0.5,
+                   "显示隐藏按钮右缘=Home 按钮左缘-\(spacing)(实际 \(frames.hidden.maxX))")
             report(abs(frames.home.maxX - (frames.refresh.minX - spacing)) < 0.5,
                    "Home 按钮右缘=刷新按钮左缘-\(spacing)(实际 \(frames.home.maxX))")
             report(abs(frames.refresh.maxX - (drawerWidth - FileDrawerView.HeaderMetrics.trailingInset)) < 0.5,
                    "刷新按钮贴抽屉右缘(实际 \(frames.refresh.maxX)/\(drawerWidth))")
-            let expectedControlWidth = drawerWidth - frames.home.width - frames.refresh.width
-                - 2 * spacing - FileDrawerView.HeaderMetrics.trailingInset
+            let expectedControlWidth = drawerWidth - frames.hidden.width - frames.home.width - frames.refresh.width
+                - 3 * spacing - FileDrawerView.HeaderMetrics.trailingInset
             report(abs(frames.control.width - expectedControlWidth) < 0.5,
-                   "锚点控件宽度=抽屉宽-两个按钮-间距(期望 \(expectedControlWidth) 实际 \(frames.control.width))")
+                   "锚点控件宽度=抽屉宽-三个按钮-间距(期望 \(expectedControlWidth) 实际 \(frames.control.width))")
+            // 显示隐藏开关:默认关 → 点击开(偏好落盘、按钮提示切换)→ 再点关
+            report(!drawer.showsHiddenForDiagnostics
+                    && drawer.hiddenToggleTooltipForDiagnostics.contains("显示"),
+                   "显示隐藏开关默认关(提示 \(drawer.hiddenToggleTooltipForDiagnostics))")
+            drawer.debugToggleShowHidden()
+            RunLoop.main.run(mode: .default, before: Date().addingTimeInterval(0.5))
+            report(drawer.showsHiddenForDiagnostics
+                    && UserDefaults.standard.bool(forKey: FileDrawerView.showsHiddenDefaultsKey)
+                    && drawer.hiddenToggleTooltipForDiagnostics.contains("隐藏"),
+                   "显示隐藏开关打开并落盘(提示 \(drawer.hiddenToggleTooltipForDiagnostics))")
+            drawer.debugToggleShowHidden()
+            RunLoop.main.run(mode: .default, before: Date().addingTimeInterval(0.5))
+            report(!drawer.showsHiddenForDiagnostics
+                    && !UserDefaults.standard.bool(forKey: FileDrawerView.showsHiddenDefaultsKey),
+                   "显示隐藏开关关闭并复位偏好")
         }
         // lazy 点击展开链路回归(用户实测曾失效):点三角→取数同步装载→子行出现
         if let clickURL = flagValue("--clickExpand").map({ URL(fileURLWithPath: $0) }) {
@@ -570,20 +620,28 @@ if isSelftest {
         }
 
         // Home 按钮:一键回到当前用户 Home 目录(与锚点菜单选择同一重锚路径;
-        // 已在 Home 时置灰)。菜单条目在后台重扫回填,轮询等信号而非盲等
+        // 已在 Home 时置灰)。按钮状态在后台重扫回填后更新——按**目标状态**等待,
+        // 不用「条目数变化」当信号:新旧链条目数相同时它会立即退出,与异步 rescan 竞态。
+        func waitUntil(_ timeout: TimeInterval, _ condition: () -> Bool) -> Bool {
+            var waited = 0.0
+            while !condition() && waited < timeout {
+                RunLoop.main.run(mode: .default, before: Date().addingTimeInterval(0.05))
+                waited += 0.05
+            }
+            return condition()
+        }
         if let drawer = doc.drawerForDiagnostics {
             let homeTarget = drawer.homeTargetForDiagnostics
             let homeChain = DirectoryTree.ancestorChain(of: homeTarget).count
             drawer.debugHomePress()
-            var waitedHome = 0.0
-            while drawer.anchorItemCountForDiagnostics != homeChain && waitedHome < 3.0 {
-                RunLoop.main.run(mode: .default, before: Date().addingTimeInterval(0.1))
-                waitedHome += 0.1
+            let settled = waitUntil(3.0) {
+                drawer.anchorItemCountForDiagnostics == homeChain
+                    && !drawer.homeButtonEnabledForDiagnostics
             }
             report(doc.anchorRootForDiagnostics == homeTarget, "Home 按钮重锚到 Home 目录")
             report(drawer.anchorItemCountForDiagnostics == homeChain,
                    "Home 锚点菜单=Home 父级链(\(drawer.anchorItemCountForDiagnostics)/\(homeChain))")
-            report(!drawer.homeButtonEnabledForDiagnostics, "已在 Home 时 Home 按钮置灰")
+            report(settled && !drawer.homeButtonEnabledForDiagnostics, "已在 Home 时 Home 按钮置灰")
         }
 
         // 边界拖拽调宽:宽度随位移变化、窗口宽度不动、收起按当前宽度缩回

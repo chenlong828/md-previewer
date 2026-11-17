@@ -192,8 +192,13 @@ Milkdown 7.7（ProseMirror）及其插件装配归 `components/editor`，明细�
   无大目录单层阻塞风险。(曾用 shouldExpand 拦截 + 后台装载 + 续展的
   异步三段式,真实交互下受 AppKit 未展开条目子层缓存时序影响出现
   「目录打不开」,已废弃。)rescan = 重读根层,已展开子层在恢复展开时
-  按需重读(刷新天然回到磁盘现状)。跳过规则:隐藏条目/符号链接(防环)/
-  `node_modules`/包目录(.app/.bundle,Finder 同款不透明语义)。
+  按需重读(刷新天然回到磁盘现状)。跳过规则:隐藏条目(可开关,见下)、符号链接
+  (防环)/`node_modules`/包目录(.app/.bundle,Finder 同款不透明语义)。
+  **隐藏条目开关**(2026-11-13):抽屉头部按钮切换是否显示隐藏文件/隐藏目录;
+  隐藏口径与 Finder 一致(`isHidden` 资源键,含 `.` 前缀与 `chflags hidden`),
+  偏好单值 `UserDefaults["fileDrawerShowsHidden"]`(默认 false),切换即重扫
+  当前根并广播所有窗口;可打开文件过滤、符号链接/node_modules/包目录跳过
+  规则不随开关变化。
   语义取舍:lazy 下不做「无 md 后代目录剪枝」——暂无 md 的目录也显示
   (展开为空),文件仍只列可展示 md。
 - **锚定契约**:抽屉头部是锚点路径控件(`DrawerAnchorControl`):铺满「抽屉宽

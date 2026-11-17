@@ -6,9 +6,9 @@ import Foundation
 /// 与打开面板/文档链接拦截/Info.plist「Markdown 关联」同一处定义,不复制第二份扩展名清单。
 ///
 /// lazy 的语义取舍:不读到子层就无法知道后代有没有 md,因此**不做**
-/// 「无 md 后代目录剪枝」——所有非隐藏目录都显示(含暂无 md 的目录,
-/// 展开为空),与 Finder/Typora 文件树一致;换来的是任意规模目录树的
-/// 恒定开销(单层 readdir),从结构上消灭截断问题。
+/// 「无 md 后代目录剪枝」——所有目录都显示(含暂无 md 的目录,展开为空),
+/// 隐藏条目由抽屉开关控制(默认跳过,`includeHidden` 打开后按 Finder 同款口径显示);
+/// 换来的是任意规模目录树的恒定开销(单层 readdir),从结构上消灭截断问题。
 enum DirectoryTree {
     /// 大纲视图条目:文件夹与文件统一为节点,身份即对象身份(NSOutlineView 直用)。
     final class Node {
@@ -66,15 +66,17 @@ enum DirectoryTree {
 
     /// 装载一个目录的**单层**:立即子级 = 全部目录(未装载态)+ 可展示 md 文件。
     /// 单层 readdir,无递归——任意规模目录树开销恒定,无预算无深度限制。
-    /// 跳过:隐藏条目;符号链接(防环);node_modules;包目录(.app/.bundle 等,
-    /// Finder 同款不透明语义)。排序恒定:文件夹在前文件在后,各自本地化自然序。
-    static func scanLevel(of url: URL) throws -> Node {
+    /// 跳过:隐藏条目(`includeHidden == false` 时;隐藏口径 = Finder 同款:`isHidden`
+    /// 资源键,含 `.` 前缀与 `chflags hidden` 标记);符号链接(防环);node_modules;
+    /// 包目录(.app/.bundle 等,Finder 同款不透明语义)。排序恒定:文件夹在前文件在后,
+    /// 各自本地化自然序。
+    static func scanLevel(of url: URL, includeHidden: Bool = false) throws -> Node {
         let contents: [URL]
         do {
             contents = try FileManager.default.contentsOfDirectory(
                 at: url,
                 includingPropertiesForKeys: [.isDirectoryKey, .isSymbolicLinkKey,
-                                              .isRegularFileKey, .isPackageKey],
+                                              .isRegularFileKey, .isPackageKey, .isHiddenKey],
                 options: [])
         } catch {
             throw ScanError.inaccessible
@@ -83,9 +85,10 @@ enum DirectoryTree {
         var folders: [Node] = []
         var files: [Node] = []
         for child in contents {
-            if child.lastPathComponent.hasPrefix(".") { continue } // 隐藏条目(.DS_Store/.git 等)
             let values = try? child.resourceValues(
-                forKeys: [.isDirectoryKey, .isSymbolicLinkKey, .isRegularFileKey, .isPackageKey])
+                forKeys: [.isDirectoryKey, .isSymbolicLinkKey, .isRegularFileKey, .isPackageKey, .isHiddenKey])
+            // 隐藏判定单点:与 Finder ⌘⇧. 同口径(. 前缀与 chflags hidden 都是 isHidden)
+            if !includeHidden, values?.isHidden == true { continue }
             if values?.isSymbolicLink == true { continue } // 不跟随符号链接,杜绝环
             if values?.isDirectory == true {
                 // 依赖目录与包整棵跳过(单层装载下是纯噪音过滤,不再是预算问题)

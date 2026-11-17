@@ -26,6 +26,7 @@ updated: 2026-11-10
   - `CMP-app-shell#recent-files`：最近文件列表与清除。
   - `CMP-app-shell#menu-commands`：`EditorCommands` 为菜单与右键的唯一命令真源；`availableInCode` 标记只读代码文档下仍可用的命令（拷贝/全选/查找/拷贝文件路径/Finder 定位）。
   - `CMP-app-shell#context-menu-position`：右键先由 `EditorWebView` 把事件窗口坐标换算为页面视口坐标（flipped WKWebView 不二次翻转），再经 `focusAt` 定位光标与 DOM 焦点，最后构建菜单；行列命令作用于点击行/列。菜单呈现可被自检注入（`presentContextMenu`），默认 `NSMenu.popUpContextMenu`。
+  - `CMP-app-shell#drawer-hidden-toggle`：抽屉「显示隐藏文件与隐藏目录」偏好变更后广播所有窗口（`applyDrawerShowHiddenToAllDocuments`）；偏好写入与扫描归 `CMP-drawer`，本组件只做窗口级分发。
   - `CMP-app-shell#copy-file-path`：文档右键菜单「拷贝文件路径到剪贴板」，位于剪贴板组之后；Finder 定位紧随其后；仅已保存文件出现（Markdown/代码均可），未保存/目录模式不出现；写入 `fileURL.standardizedFileURL.path`；不写文件、不产生 `changed`。
   - `CMP-app-shell#reveal-in-finder`：文档右键菜单「用 Finder 打开到指定位置」，紧跟拷贝路径下方；仅已保存文件出现；文件模式选中当前文件，目录模式仍走文件菜单既有入口定位抽屉根目录；`NSWorkspace.activateFileViewerSelecting` 只定位，不写文件、不产生 `changed`。
   - `CMP-app-shell#highlight-language-menu`：视图 → 高亮语言子菜单；仅代码文档可用，勾选「自动/纯文本/语言 id」由窗口的当前选择同步。
@@ -50,6 +51,7 @@ updated: 2026-11-10
   - `CMP-app-shell/Sources/MDPreview/AppDelegate.swift#buildMenus`
   - `CMP-app-shell/Sources/MDPreview/AppDelegate.swift#applyCodeLineNumbersToAllDocuments`
   - `CMP-app-shell/Sources/MDPreview/AppDelegate.swift#applyMinimapVisibilityToAllDocuments`
+  - `CMP-app-shell/Sources/MDPreview/AppDelegate.swift#applyDrawerShowHiddenToAllDocuments`
   - `CMP-app-shell/Sources/MDPreview/KernelClient.swift#KernelClient`（`installScript`/`send`/`receive`/`respond`/`info`）
   - `CMP-app-shell/Sources/MDPreview/DocumentWindowController.swift#resolveResources`（内核 `resolveResources` 请求的应答方）
   - `CMP-app-shell/Sources/MDPreview/DocumentWindowController.swift#performImport`（内核 `importImage` 请求的应答方）
@@ -94,6 +96,7 @@ updated: 2026-11-10
 | `#code-line-numbers-menu` | `--selftest`：「代码视图 行号开关与复制文本」；勾选/跨窗口广播人工（R8，2026-11-04 用户确认） |
 | `#minimap-menu` | `--selftest`：「缩略图 默认显示」「缩略图 开关隐藏/恢复」（经 `setMinimapVisible`）；菜单勾选/跨窗口继承人工（R8） |
 | `#copy-file-path` | `--multiwindow-test`：「文档右键菜单含拷贝文件路径(2/2)」「Finder 定位位于拷贝路径之后」「右键拷贝文件路径」「未保存文档不显示/不拷贝文件路径」；`--selftest`：「命令注册表完整」；用户 2026-11-05 手工验收通过 |
+| `#drawer-hidden-toggle` | `--multiwindow-test`：「抽屉显示隐藏开关跨窗口同步(开)」「…(关)」；偏好落盘与按钮状态归 `CMP-drawer` 的 selftest/drawer-test |
 | `#reveal-in-finder` | `--multiwindow-test`：「文档右键菜单含 Finder 定位(2/2)」「Finder 定位位于拷贝路径之后」「右键在 Finder 中定位文件」「未保存文档不显示/不拷贝/不定位」；`--selftest`：「命令注册表完整」；实际 Finder 弹窗复用文件菜单既有命令 |
 | `#open-document` / `#quit` | 人工：CLI/拖放/⌘O/最近 + 脏文档退出 |
 | `#protocol-client` | `--selftest`：「v2 握手响应」「v2 握手(protocolVersion=2, ops=41)」「v2 op 往返(getState)」「缩略图诊断(minimapInfo)」「装载改写(内核改写+壳作答)」「保存口径(内核还原相对路径)」；协议层本身由 `web/test/contract.test.js` 19 项覆盖（不依赖 WebView） |

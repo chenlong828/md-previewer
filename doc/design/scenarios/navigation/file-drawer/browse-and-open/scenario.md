@@ -66,7 +66,7 @@ tests:
 
 - `architecture.md` §2.4 的锚点/重锚契约与窗口宽度收敛。
 - 抽屉双击“同窗覆盖”语义；外部打开“新窗/重锚”语义。
-- 目录树过滤：隐藏条目、符号链接、`node_modules`、包目录整棵跳过。
+- 目录树过滤：隐藏条目（由 `CMP-drawer#hidden-toggle` 开关控制，默认跳过；开启后按 Finder 口径显示）、符号链接、`node_modules`、包目录整棵跳过。
 - Finder 图标来源：`FinderIcon` 单点，树与锚点菜单共用。
 
 ## 5. 测试
@@ -88,3 +88,4 @@ tests:
 ## 7. 变更记录
 
 - 2026-11-04 五态补录，来源：`architecture.md` §2.4、drawer-test、file-drawer/drawer-anchor 工序 result。
+- 2026-11-13 过滤口径联动 SCN-0020：隐藏条目可开关（默认行为不变），本场景不新增断言。

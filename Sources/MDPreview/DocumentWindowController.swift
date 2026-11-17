@@ -163,6 +163,10 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
         drawerView.onAnchorSelected = { [weak self] url in
             self?.anchorDrawer(at: url)
         }
+        // 显示隐藏条目是全局偏好:本窗口已应用,再广播其它窗口(与缩略图/行号同款)
+        drawerView.onShowHiddenChanged = { _ in
+            AppDelegate.shared?.applyDrawerShowHiddenToAllDocuments()
+        }
         container.addSubview(drawerView)
         drawerWidthConstraint = drawerView.widthAnchor.constraint(equalToConstant: 0)
         drawerView.isHidden = true
@@ -1517,6 +1521,11 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
         guard let root = currentDrawerRoot() else { return }
         drawerView.load(root: root)
         if let fileURL { drawerView.select(url: fileURL) }
+    }
+
+    /// 显示隐藏条目偏好变更后应用到本窗口抽屉(广播入口;偏好由抽屉写入)
+    func applyDrawerShowHiddenPreference() {
+        drawerView?.setShowsHidden(FileDrawerView.rememberedShowsHidden)
     }
 
     /// 诊断/自检用:抽屉视图访问(与 webViewIfNeeded 同一口径的受控暴露)
