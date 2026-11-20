@@ -2,7 +2,7 @@
 layer: plan
 module: global
 status: current
-updated: 2026-11-17
+updated: 2026-11-20
 ---
 
 # 技术债修复路线图
@@ -44,6 +44,7 @@ updated: 2026-11-17
 | [2026-11-13-drawer-hidden-toggle](../history/works/2026-11-13-drawer-hidden-toggle/brief.md) | 文件抽屉显示隐藏文件/隐藏目录开关（Finder 口径隐藏判定、全局偏好、跨窗口同步；抽屉头部第三个图标按钮） | 功能/P2 | S | 无 | ✅ 已完成（已归档；selftest 135 / drawer 40 / ctx 12 / multi 15；用户 2026-11-17 验收） |
 | [2026-11-04-kernel-v2](../history/works/2026-11-04-kernel-v2/brief.md) | 可移植内核与桥协议 v2 落地（transport/contract/semantics/core 四层 + macOS 壳 v1→v2 一次切换；Windows 参照物） | 功能/架构 P1 | L | 存档规格 + 本次增量 | ✅ 完成并归档（2026-11-04；Node 78 项 + selftest 115 PASS；R9 关闭） |
 | [2026-11-10-table-row-context-menu](../history/works/2026-11-10-table-row-context-menu/brief.md) | 表格行列操作右键定位（flipped WKWebView 页面坐标修正、caret 跟随插入；新增 `--context-menu-test`） | 缺陷/P2 | S | 无 | ✅ 已完成（已归档；`--context-menu-test` 12 项 + selftest 129 + 用户 2026-11-10 真机验收） |
+| [2026-11-20-dock-window-menu](../works/2026-11-20-dock-window-menu/brief.md) | Dock 右键菜单切换已打开窗口（按窗口创建序列出、当前窗口勾选、点击前置/恢复最小化；新增 `--dockmenu-test`） | 功能/P3 | S | 无 | 🔄 执行中（`--dockmenu-test` 8 项 + selftest/multiwindow/context-menu 回归全绿；待用户真机右键点验） |
 
 ## 批次与依赖链
 

@@ -1333,7 +1333,7 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
     }
 
     /// 在 Finder 中选中当前文件;目录模式选中抽屉根目录。只定位,不写文件、不产生 changed。
-    private var revealTargetURL: URL? {
+    var revealTargetURL: URL? {
         directoryMode ? drawerRootURL : fileURL
     }
 

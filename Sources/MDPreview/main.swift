@@ -168,6 +168,119 @@ if isSelftest {
         finish()
     }
     NSApplication.shared.run()
+} else if args.contains("--dockmenu-test") {
+    NSApp.activate(ignoringOtherApps: true)
+    // Dock 右键菜单条目与切换语义(REQ-0015 / SCN-0021):真实调用 applicationDockMenu
+    // 构建菜单,按条目身份/勾选/动作断言,不依赖真实弹出菜单(弹出由系统跟踪,会阻塞)。
+    var failures: [String] = []
+    func report(_ ok: Bool, _ label: String) {
+        print("[DOCKMENU] \(ok ? "PASS" : "FAIL") \(label)")
+        if !ok { failures.append(label) }
+    }
+    func pump(_ interval: TimeInterval = 0.2) {
+        RunLoop.main.run(mode: .default, before: Date().addingTimeInterval(interval))
+    }
+    func docs() -> [DocumentWindowController] { AppDelegate.shared?.documents ?? [] }
+    func dockItems() -> [NSMenuItem] {
+        AppDelegate.shared?.applicationDockMenu(NSApp)?.items ?? []
+    }
+    func controller(of item: NSMenuItem) -> DocumentWindowController? {
+        item.representedObject as? DocumentWindowController
+    }
+    /// 应用内最前面的文档窗口(不依赖 keyWindow:自检进程未必被系统激活)
+    func frontDocument() -> DocumentWindowController? {
+        NSApp.orderedWindows.lazy.compactMap { $0.windowController as? DocumentWindowController }.first
+    }
+    // 自备两个受控文档:测试不依赖调用方传参,单独运行也能复现
+    let dir = URL(fileURLWithPath: NSTemporaryDirectory())
+        .appendingPathComponent("mdp-dock-menu-\(UUID().uuidString)", isDirectory: true)
+    try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    let fileA = dir.appendingPathComponent("dock-a.md")
+    let fileB = dir.appendingPathComponent("dock-b.md")
+    try? "# Dock A\n".write(to: fileA, atomically: true, encoding: .utf8)
+    try? "# Dock B\n".write(to: fileB, atomically: true, encoding: .utf8)
+    func finish() {
+        try? FileManager.default.removeItem(at: dir)
+        exit(failures.isEmpty ? 0 : 1)
+    }
+
+    // 0.8s 打开 A(复用启动空白窗口);1.6s 新窗口打开 B;2.4s 再开一个未命名窗口
+    Timer.scheduledTimer(withTimeInterval: 0.8, repeats: false) { _ in
+        AppDelegate.shared?.documents.first?.openDocument(at: fileA)
+    }
+    Timer.scheduledTimer(withTimeInterval: 1.6, repeats: false) { _ in
+        AppDelegate.shared?.openInNewWindow(at: fileB)
+    }
+    Timer.scheduledTimer(withTimeInterval: 2.4, repeats: false) { _ in
+        AppDelegate.shared?.makeEmptyDocument()
+    }
+
+    Timer.scheduledTimer(withTimeInterval: 3.4, repeats: false) { _ in
+        NSApp.activate(ignoringOtherApps: true)
+        let all = docs()
+        let items = dockItems()
+        print("[DOCKMENU] info active=\(NSApp.isActive) count=\(all.count) titles=\(all.compactMap { $0.window?.title })")
+
+        // R1:条目与窗口一一对应(数量/身份/顺序/标题)
+        let mapped = items.map { controller(of: $0) }
+        let identityOK = mapped.count == all.count && zip(mapped, all).allSatisfy { pair in pair.0 === pair.1 }
+        let titleOK = items.count == all.count && zip(items, all).allSatisfy { pair in pair.0.title == pair.1.window?.title }
+        report(items.count == all.count, "条目数与窗口数一致(\(items.count)/\(all.count))")
+        report(identityOK && titleOK, "条目按创建顺序指向各窗口且标题一致(\(items.map(\.title)))")
+
+        // R2:当前(最前)窗口单条勾选;把另一窗口置前后重建,勾选跟随
+        let onItems = items.filter { $0.state == .on }
+        report(onItems.count == 1 && controller(of: onItems[0]) === frontDocument(),
+               "当前窗口单条勾选(\(onItems.count) 条)")
+        guard let docA = all.first else { report(false, "至少存在一个文档窗口"); finish(); return }
+        docA.window?.makeKeyAndOrderFront(nil)
+        pump()
+        let afterSwitch = dockItems()
+        let aOn = afterSwitch.first { controller(of: $0) === docA }
+        report(aOn?.state == .on && afterSwitch.filter { $0.state == .on }.count == 1,
+               "勾选跟随当前窗口切换")
+
+        // R3:点击条目 → 应用置前、恢复最小化、窗口排到最前
+        guard all.count >= 2 else { report(false, "至少存在两个文档窗口"); finish(); return }
+        let docB = all[1]
+        docB.window?.miniaturize(nil)
+        pump(0.4)
+        var clickedB = false
+        if let bItem = dockItems().first(where: { controller(of: $0) === docB }),
+           let action = bItem.action {
+            NSApp.sendAction(action, to: bItem.target, from: bItem)
+            clickedB = true
+        }
+        pump(0.3)
+        report(clickedB && docB.window?.isMiniaturized == false && frontDocument() === docB,
+               "点击条目前置并恢复最小化窗口")
+
+        // N1:关闭的窗口不留条目;同名「未命名」按 representedObject 各自定位
+        guard all.count == 3 else { report(false, "窗口数为 3(实际 \(all.count))"); finish(); return }
+        let empty = all[2]
+        empty.window?.close()
+        pump(0.4)
+        let afterClose = dockItems()
+        report(afterClose.count == all.count - 1 && !afterClose.contains { controller(of: $0) === empty },
+               "关闭的窗口从菜单消失(\(afterClose.count) 条)")
+        let untitledA = AppDelegate.shared?.makeEmptyDocument()
+        _ = AppDelegate.shared?.makeEmptyDocument()
+        pump()
+        let untitled = dockItems().filter { $0.title == "未命名" }
+        let identities = Set(untitled.compactMap { controller(of: $0).map { ObjectIdentifier($0) } })
+        report(untitled.count == 2 && identities.count == 2, "同名「未命名」窗口各自成条")
+        var clickedUntitled = false
+        if let item = untitled.first(where: { controller(of: $0) === untitledA }), let action = item.action {
+            NSApp.sendAction(action, to: item.target, from: item)
+            clickedUntitled = true
+        }
+        pump()
+        report(clickedUntitled && frontDocument() === untitledA,
+               "同名条目按 representedObject 定位到各自窗口")
+
+        finish()
+    }
+    NSApplication.shared.run()
 } else if args.contains("--context-menu-test") {
     NSApp.activate(ignoringOtherApps: true)
     // 真实右键链路的回归门:合成右键事件 → EditorWebView 坐标换算 → focusAt →

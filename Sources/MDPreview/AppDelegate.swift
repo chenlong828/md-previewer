@@ -24,6 +24,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// 所有打开的文档窗口(Typora 模型:单进程多窗口,Dock 图标只有一个)
     private(set) var documents: [DocumentWindowController] = []
     private var recentsMenu: NSMenu?
+    /// Dock 右键菜单:条目按窗口集合动态重建(每次展开重新取 key/main 窗口判勾选)
+    private var dockMenu: NSMenu?
     private var appearanceObservation: NSKeyValueObservation?
     private var pinnedAppearance: NSAppearance.Name? // nil = 跟随系统
     // 不变量(启动矩阵):CLI 参数路径只由 openFromCommandLineIfNeeded 走一次;
@@ -182,6 +184,64 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if let key = NSApp.keyWindow?.windowController as? DocumentWindowController { return key }
         if let main = NSApp.mainWindow?.windowController as? DocumentWindowController { return main }
         return documents.last
+    }
+
+    // MARK: - Dock 菜单
+
+    /// Dock 图标右键菜单:顶部列出所有已打开窗口,当前窗口带勾选(REQ-0015 / SCN-0021)。
+    /// 条目在每次展开时按当时窗口集合重建,不复用过期状态;标准项(选项/显示所有窗口/
+    /// 隐藏/退出)由 macOS 在自定义条目之后附加。
+    func applicationDockMenu(_ sender: NSApplication) -> NSMenu? {
+        // 复用同一个 NSMenu 实例:系统每次展开 Dock 菜单都会再次调用本方法
+        // (menuWillOpen/menuNeedsUpdate 对 Dock 菜单不触发),条目与勾选因此总是新的。
+        let menu = dockMenu ?? {
+            let created = NSMenu(title: "MDPreview")
+            dockMenu = created
+            return created
+        }()
+        rebuildDockMenu(menu)
+        return menu
+    }
+
+    /// 按 documents 创建顺序重建条目:标题取窗口标题,representedObject 指向窗口控制器,
+    /// 当前窗口置勾选。展开期间不重算,条目与点击目标不会错位。
+    func rebuildDockMenu(_ menu: NSMenu? = nil) {
+        guard let target = menu ?? dockMenu else { return }
+        target.removeAllItems()
+        let current = dockCurrentDocument
+        for controller in documents {
+            let item = NSMenuItem(
+                title: controller.window?.title ?? "未命名",
+                action: #selector(focusDocumentWindow(_:)),
+                keyEquivalent: "")
+            item.target = self
+            item.representedObject = controller
+            item.state = controller === current ? .on : .off
+            item.toolTip = controller.revealTargetURL?.path
+            target.addItem(item)
+        }
+    }
+
+    /// Dock 菜单的「当前窗口」:优先 key/main,其次应用窗口的前后顺序。
+    /// 右键 Dock 时应用可能未激活(keyWindow/mainWindow 为 nil),此时按 orderedWindows
+    /// 取最前面的文档窗口,与用户看到的置前窗口一致。
+    private var dockCurrentDocument: DocumentWindowController? {
+        if let key = NSApp.keyWindow?.windowController as? DocumentWindowController { return key }
+        if let main = NSApp.mainWindow?.windowController as? DocumentWindowController { return main }
+        if let front = NSApp.orderedWindows.lazy.compactMap({
+            $0.windowController as? DocumentWindowController
+        }).first { return front }
+        return documents.last
+    }
+
+    /// Dock 条目动作:激活应用、恢复最小化,把目标窗口置前并设为 key。
+    /// 菜单展开期间窗口已被关闭时 window 为 nil,按 no-op 处理,不误激活其它窗口。
+    @objc private func focusDocumentWindow(_ sender: NSMenuItem) {
+        guard let controller = sender.representedObject as? DocumentWindowController,
+              let window = controller.window else { return }
+        NSApp.activate(ignoringOtherApps: true)
+        if window.isMiniaturized { window.deminiaturize(nil) }
+        window.makeKeyAndOrderFront(nil)
     }
 
     // MARK: - 外观 / 主题

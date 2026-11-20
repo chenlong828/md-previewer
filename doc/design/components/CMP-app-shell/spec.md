@@ -3,7 +3,7 @@ layer: design
 module: shell
 component: CMP-app-shell
 status: active
-updated: 2026-11-10
+updated: 2026-11-20
 ---
 
 # CMP-app-shell 组件规格
@@ -14,7 +14,7 @@ updated: 2026-11-10
 - 单元：组件
 - 层 / 类型：L2 整合；技术边界 + 应用编排
 - 业务价值：为使用者提供「一个进程、一个 Dock 图标、多个文档窗口」的 macOS 应用外壳；没有它，文件无法被打开到正确的窗口，菜单/快捷键/最近文件也没有统一入口。
-- 负责：应用启动与参数路由、窗口创建/替换/关闭、菜单与快捷键、最近文件、缩放与外观的应用、退出前的脏文档确认；**壳侧 v2 协议客户端 `KernelClient`**（帧编解码、id→completion 表、超时、内核请求应答）；「视图 → 高亮语言」菜单只做入口与勾选同步，语言判定归 `CMP-code-view`；「视图 → 显示行号」菜单只做入口/勾选与全局广播，偏好判定归 `CMP-code-view`；「视图 → 显示文档缩略图」菜单只做入口/勾选、偏好存储与全局广播，快照/交互归 `CMP-minimap`。
+- 负责：应用启动与参数路由、窗口创建/替换/关闭、菜单与快捷键、最近文件、缩放与外观的应用、退出前的脏文档确认；**壳侧 v2 协议客户端 `KernelClient`**（帧编解码、id→completion 表、超时、内核请求应答）；「视图 → 高亮语言」菜单只做入口与勾选同步，语言判定归 `CMP-code-view`；「视图 → 显示行号」菜单只做入口/勾选与全局广播，偏好判定归 `CMP-code-view`；「视图 → 显示文档缩略图」菜单只做入口/勾选、偏好存储与全局广播，快照/交互归 `CMP-minimap`；Dock 右键菜单只列已打开窗口并负责切换，不提供关闭/批量管理动作。
 - 不负责：文件内容读写（`CMP-document-io`）、编辑器内部行为（`CMP-editor`）、抽屉树（`CMP-drawer`）、导出实现（`CMP-export`）、缩略图快照/内容投影/滚动定位（`CMP-minimap` / `CMP-kernel-minimap`）、帧格式与 op 校验（`CMP-kernel-contract`）、编辑与导出能力实现（`CMP-kernel-editor` / `CMP-kernel-output` 等七组件）、注入脚本（v2 起产品路径为零）。
 - 内部逻辑：`AppDelegate` 维护文档窗口集合与打开路由；`DocumentWindowController` 承载单文档窗口并把菜单动作翻成 op（`kernel.send`）；`EditorCommands` 是菜单/右键共用的命令表；`KernelClient` 是协议客户端（`installScript` 注入 channel → `attach` → `send`/`receive`/`respond`，`info` 存握手结果）。
 - 拥有的数据：窗口 frame、最近文件列表、缩放比例、外观锁定；不拥有文档正文。
@@ -24,6 +24,7 @@ updated: 2026-11-10
   - `CMP-app-shell#new-window`：⌘N 创建空白文档窗口。
   - `CMP-app-shell#multi-window`：单进程、单 Dock、每文档独立窗口。
   - `CMP-app-shell#recent-files`：最近文件列表与清除。
+  - `CMP-app-shell#dock-menu`：Dock 图标右键菜单顶部按窗口创建顺序列出所有已打开窗口，标题 = 窗口标题，当前窗口勾选；点击激活应用、恢复最小化并把目标窗口置前；窗口关闭后条目立即消失。
   - `CMP-app-shell#menu-commands`：`EditorCommands` 为菜单与右键的唯一命令真源；`availableInCode` 标记只读代码文档下仍可用的命令（拷贝/全选/查找/拷贝文件路径/Finder 定位）。
   - `CMP-app-shell#context-menu-position`：右键先由 `EditorWebView` 把事件窗口坐标换算为页面视口坐标（flipped WKWebView 不二次翻转），再经 `focusAt` 定位光标与 DOM 焦点，最后构建菜单；行列命令作用于点击行/列。菜单呈现可被自检注入（`presentContextMenu`），默认 `NSMenu.popUpContextMenu`。
   - `CMP-app-shell#drawer-hidden-toggle`：抽屉「显示隐藏文件与隐藏目录」偏好变更后广播所有窗口（`applyDrawerShowHiddenToAllDocuments`）；偏好写入与扫描归 `CMP-drawer`，本组件只做窗口级分发。
@@ -48,6 +49,9 @@ updated: 2026-11-10
   - `CMP-app-shell/Sources/MDPreview/DocumentWindowController.swift#revealTargetURL`（文件/目录模式的目标 URL）
   - `CMP-app-shell/Sources/MDPreview/DocumentWindowController.swift#revealInFinder`（Finder 定位执行体）
   - `CMP-app-shell/Sources/MDPreview/EditorCommands.swift#EditorCommands`
+  - `CMP-app-shell/Sources/MDPreview/AppDelegate.swift#applicationDockMenu`（Dock 菜单挂载点）
+  - `CMP-app-shell/Sources/MDPreview/AppDelegate.swift#rebuildDockMenu`（条目与勾选重建）
+  - `CMP-app-shell/Sources/MDPreview/AppDelegate.swift#focusDocumentWindow`（Dock 条目动作）
   - `CMP-app-shell/Sources/MDPreview/AppDelegate.swift#buildMenus`
   - `CMP-app-shell/Sources/MDPreview/AppDelegate.swift#applyCodeLineNumbersToAllDocuments`
   - `CMP-app-shell/Sources/MDPreview/AppDelegate.swift#applyMinimapVisibilityToAllDocuments`
@@ -60,8 +64,8 @@ updated: 2026-11-10
   - `CMP-app-shell/Sources/MDPreview/EditorWebView.swift#presentContextMenu`（菜单呈现注入点）
 - 依赖：`CMP-document-io`（打开/保存）、`CMP-editor`（内容面）、`CMP-drawer`（目录导航）、`CMP-export`（导出）、`CMP-diagnostics`（测试入口）、`CMP-kernel-contract`（帧格式/op 清单/错误码）、`CMP-kernel-transport`（channel 契约）、`CMP-kernel-semantics`（保存口径经 `getSaveMarkdown` 取用）；`CMP-minimap` / `CMP-kernel-minimap` 仅通过 `setMinimapVisible` 与 `init.opts.minimapVisible` 联动，不直接 import。
 - 冷热属性：冷路径；不进入编辑输入热路径。缩略图开关是低频菜单动作，广播只调用桥，不重绘正文。
-- 尺寸预算：目标 ≤120k token；当前约 3.1k 行（main 661 + AppDelegate 538 + KernelClient 171 + 窗口编排 1587 + EditorCommands 110），缩略图菜单/偏好另计，实测待脚本。
-- 单独运行：`./.build/debug/MDPreview --multiwindow-test --fileA=a.md --fileB=b.md`；右键定位用 `--context-menu-test`；菜单/缩放用 `--selftest`。
+- 尺寸预算：目标 ≤120k token；当前约 3.3k 行（main 832 + AppDelegate 605 + KernelClient 171 + 窗口编排 1596 + EditorCommands 110），缩略图菜单/偏好另计，实测待脚本。
+- 单独运行：`./.build/debug/MDPreview --multiwindow-test --fileA=a.md --fileB=b.md`；右键定位用 `--context-menu-test`；Dock 菜单用 `--dockmenu-test`（自备临时文档，无需夹具）；菜单/缩放用 `--selftest`。
 - 验证计划：多窗口数量/标题、菜单命令注册表完整、缩放应用、深色主题切换、退出脏确认（人工）；v2 握手/op 往返/内核请求应答与装载保存端到端由 selftest 断言。
 - 删除测试：删掉后没有窗口与打开路由，复杂度不会消失只会散落到每个文件 → 真边界。
 
@@ -88,6 +92,7 @@ updated: 2026-11-10
 | 契约 | 测试 |
 |---|---|
 | `#multi-window` | `--multiwindow-test`：窗口数为 2、标题不重复 |
+| `#dock-menu` | `--dockmenu-test`：条目数与窗口数一致、条目按创建顺序指向各窗口且标题一致、当前窗口单条勾选、勾选跟随切换、点击前置并恢复最小化、关闭的窗口从菜单消失、同名「未命名」各自成条并定位到各自窗口；真实 Dock 弹出/勾选视觉人工（R8） |
 | `#menu-commands` | `--selftest`：「命令注册表完整」「桥命令名双端一致」 |
 | `#context-menu-position` | `--context-menu-test`：「右键表格内出现行列菜单」「右键第 N 行 → 光标在第 N 行」「删除/插入只作用于点击行」「左上内边距点击仍定位该行」；`--selftest`：「右键定位 窗口坐标=页面坐标」「换算点命中同一单元格」；真机右键手感人工（R8） |
 | `#zoom` | `--selftest`：「缩放应用」 |
