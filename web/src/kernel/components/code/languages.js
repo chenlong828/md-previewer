@@ -20,10 +20,12 @@ import jsx from 'refractor/jsx'
 import tsx from 'refractor/tsx'
 import cmake from 'refractor/cmake'
 import vim from 'refractor/vim'
+// Lean 4 不在 refractor 的 common/all 里，语法由本仓库自带（见 lean-grammar.js）。
+import lean from './lean-grammar.js'
 
 const extraLanguages = [
     dart, docker, graphql, scala, toml, powershell, haskell, groovy,
-    protobuf, elixir, jsx, tsx, cmake, vim,
+    protobuf, elixir, jsx, tsx, cmake, vim, lean,
 ]
 
 let ensured = false

@@ -9,8 +9,8 @@ enum DocumentKind: Equatable {
     case code(language: String)
 }
 
-/// 一个可高亮的代码语言。`id` 与 web 侧语法表（`web/src/languages.js`）是同一标识，
-/// 由 selftest 的「双端语言清单一致」断言守门。
+/// 一个可高亮的代码语言。`id` 与 web 侧语法表（`web/src/kernel/components/code/languages.js`）
+/// 是同一标识，由 selftest 的「双端语言清单一致」断言守门。
 struct CodeLanguage: Equatable {
     let id: String
     let displayName: String
@@ -51,6 +51,7 @@ enum FileSupport {
         CodeLanguage(id: "dart", displayName: "Dart", extensions: ["dart"]),
         CodeLanguage(id: "scala", displayName: "Scala", extensions: ["scala", "sc"]),
         CodeLanguage(id: "haskell", displayName: "Haskell", extensions: ["hs"]),
+        CodeLanguage(id: "lean", displayName: "Lean 4", extensions: ["lean"]),
         CodeLanguage(id: "elixir", displayName: "Elixir", extensions: ["ex", "exs"]),
         CodeLanguage(id: "lua", displayName: "Lua", extensions: ["lua"]),
         CodeLanguage(id: "perl", displayName: "Perl", extensions: ["pl", "pm"]),

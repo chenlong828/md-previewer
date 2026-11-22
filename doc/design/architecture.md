@@ -283,10 +283,11 @@ Milkdown 7.7（ProseMirror）及其插件装配归 `components/editor`，明细�
   但不进 ProseMirror：页面多出第三个面 `#code-view`，`body.code-mode` 下隐藏
   `#app` 与 `#source-editor`。代码文档恒为「纯源码」，没有 WYSIWYG ⇄ 源码切换。
 - **种类判定单一来源**：`Sources/MDPreview/FileSupport.swift` 的 `DocumentKind`
-  与 `codeLanguages`（44 种语言/扩展名映射 + `plaintext` 伪语言）。打开面板、
+  与 `codeLanguages`（45 种语言/扩展名映射 + `plaintext` 伪语言）。打开面板、
   抽屉过滤、文档内链接拦截、打开分派、高亮语言菜单、Info.plist 断言全部派生自
-  这里；web 侧 `web/src/kernel/components/code/languages.js` 注册 refractor 语法，selftest「双端语言
-  清单一致」守门。
+  这里；web 侧 `web/src/kernel/components/code/languages.js` 注册 refractor 语法
+  （Lean 4 是仓库自带语法 `components/code/lean-grammar.js`，refractor 未收录），
+  selftest「双端语言清单一致」守门。
 - **理由**：把代码塞进 Markdown 围栏块虽省事，但会让只读文件进入可编辑数据模型——
   一次 ⌘S 就把代码写成 md；且 ProseMirror 解析大文件成本高、围栏转义会改字符。
   独立只读面让「不写盘」成为结构约束，而不是靠禁菜单。
@@ -399,7 +400,7 @@ Milkdown 7.7（ProseMirror）及其插件装配归 `components/editor`，明细�
 |---|---|---|---|
 | `components/document` | 会话与文档：建编辑器、装载/取回、基线、主题、缩放、状态、GC 引用收集 | ~139 | init/setMarkdown/getMarkdown/getSaveMarkdown/markClean/setBaseDir/setTitle/setTheme/setZoom/getState/toggleSource/getResourceRefs |
 | `components/editor` | 编辑面：Milkdown 装配、命令与表格、统计、选区、NodeView、焦点、撤销重做；Markdown 缩略投影 | ~1117 | focus/focusAt/undo/redo/requestStats/formatCommand/tableCommand/insertTable/insertMarkdown/insertImage + 诊断 4 个 |
-| `components/code` | 代码面：只读源码视图、语言与行号、代码内查找；代码行缩略投影 | ~622 | setCode/setCodeLanguage/setCodeLineNumbers/codeInfo/hasLanguages |
+| `components/code` | 代码面：只读源码视图、语言与行号、代码内查找；代码行缩略投影 | ~672 | setCode/setCodeLanguage/setCodeLineNumbers/codeInfo/hasLanguages |
 | `components/find` | 查找：查找栏、命中遍历、ProseMirror 装饰 | ~304 | openFindBar/closeFindBar/findNext/findPrev/findInfo |
 | `components/output` | 输出：独立 HTML 导出、打印、内容几何 | ~104 | exportStandaloneHTML/print/getContentSize |
 | `components/media` | 图片媒体：粘贴载荷识别、导入编排（不碰 ProseMirror 事务） | ~75 | （无对外 op；供 diagnostics 的载荷识别） |

@@ -1,5 +1,6 @@
 import AppKit
 import WebKit
+import UniformTypeIdentifiers
 import os.log
 
 /// 无头自检:`MDPreview --selftest`
@@ -409,9 +410,11 @@ func greet() -> String {
         checkTokenPalette("浅色", colors: SelftestRunner.lightTokenColors)
 
         // ── 代码文档视图(REQ-0009 / SCN-0016):只读高亮面,与 #app 互斥
-        //    自动语言 → 切换语言 → 纯文本 → 未知语法回落 → 查找 → 大文件降级 → 退出。
+        //    自动语言 → 切换语言 → 纯文本 → 未知语法回落 → 查找 → Lean 4 自带语法 → 大文件降级 → 退出。
         //    断言按「DOM 形态 + token 数 + 文本原样」三重口径,不依赖具体语法树。
         let codeSample = "func greet(name: String) -> String {\n    let value = 1\n    return \"hi \\(name) \\(value)\"\n}\n"
+        // Lean 4 样本:注释/属性/关键字/类型构造子/策略各出 token,守门仓库自带语法的注册与产出。
+        let leanSample = "/- 示例:前 n 个奇数 -/\n@[simp] theorem add_zero (n : Nat) : n + 0 = n := by\n  rfl\n"
         // 行号样本:含空行、长行(软换行)、末尾换行(最后空行);行数按 split 口径。
         let longCodeLine = "    let message = \"" + String(repeating: "x", count: 240) + "\""
         // 多行块注释用来守门「跨行 token 按行克隆」；空行/末尾空行用来守门复制保真。
@@ -527,6 +530,19 @@ func greet() -> String {
             }
         }
         if codeFind { pass("代码视图 查找命中与只读退出") } else { fail("代码视图 查找命中与只读退出") }
+
+        var codeLean = false
+        waitForCollect("代码视图 Lean 4 语法高亮", timeout: 10) { done in
+            self.evaluate("window.mdbridge.setCode(\(JSArgs.string(leanSample)), {\"language\":\"lean\",\"allowHighlight\":true})") { _ in
+                codeSnapshot { d in
+                    codeLean = (d["tokens"] as? Int ?? 0) >= 3
+                        && (d["lang"] as? String ?? "").contains("language-lean")
+                        && (d["text"] as? String) == leanSample
+                    done()
+                }
+            }
+        }
+        if codeLean { pass("代码视图 Lean 4 语法高亮") } else { fail("代码视图 Lean 4 语法高亮") }
 
         var codeLarge = false
         waitForCollect("代码视图 大文件降级纯文本", timeout: 10) { done in
@@ -1291,6 +1307,7 @@ func greet() -> String {
             ("a.xml", .code(language: "xml")),
             ("a.plist", .code(language: "xml")),
             ("a.rs", .code(language: "rust")),
+            ("a.lean", .code(language: "lean")),
             ("app.dockerfile", .code(language: "docker")),
             ("a.mk", .code(language: "makefile")),
         ]
@@ -1322,7 +1339,14 @@ func greet() -> String {
         let ids = FileSupport.codeLanguages.map(\.id)
         let idsUnique = Set(ids).count == ids.count
         let allHaveExtensions = FileSupport.codeLanguages.allSatisfy { !$0.extensions.isEmpty }
-        if idsUnique, allHaveExtensions, !FileSupport.openableUTTypes.isEmpty {
+        // 每个扩展名都要能构造 conformingTo: .sourceCode 的类型，否则 ⌘O 打开面板会把它滤掉
+        // （openableUTTypes 对构造失败是静默跳过，这里把静默变成断言）。
+        let allExtensionsMatchable = FileSupport.codeLanguages.allSatisfy { language in
+            language.extensions.allSatisfy {
+                UTType(filenameExtension: $0, conformingTo: .sourceCode) != nil
+            }
+        }
+        if idsUnique, allHaveExtensions, allExtensionsMatchable, !FileSupport.openableUTTypes.isEmpty {
             pass("代码视图 语言 id 唯一且类型可构造(\(FileSupport.openableUTTypes.count) 个 UTType)")
         } else {
             fail("代码视图 语言 id 唯一且类型可构造")

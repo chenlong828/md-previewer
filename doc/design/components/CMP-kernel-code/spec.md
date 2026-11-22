@@ -3,7 +3,7 @@ layer: design
 module: kernel
 component: CMP-kernel-code
 status: active
-updated: 2026-11-05
+updated: 2026-11-23
 ---
 
 # CMP-kernel-code 组件规格
@@ -16,7 +16,7 @@ updated: 2026-11-05
 - 业务价值：代码文件只读可读：高亮、行号、语言切换、代码内查找，不与 Markdown 面互相污染。
 - 负责：showCode/hideCode、语言注册与按需加载、行号、代码内查找、codeInfo；提供代码行缩略投影的**内部工厂**（不新增 host op）。
 - 不负责：文档种类判定（壳的 FileSupport）、编辑（代码恒只读）、查找栏 UI（find）、缩略图挂载/缩放/定位（minimap）。
-- 内部逻辑：`code-view.js` DOM 与高亮 + `createCodeMinimapSource`；`languages.js` 语法注册表；`ops.js` 5 个 op + 端口实现（codeSurface/codeLanguages/searchSurface）。
+- 内部逻辑：`code-view.js` DOM 与高亮 + `createCodeMinimapSource`；`languages.js` 语法注册表（refractor 未收录的 Lean 4 语法在 `lean-grammar.js`，由它注册）；`ops.js` 5 个 op + 端口实现（codeSurface/codeLanguages/searchSurface）。
 - 拥有的数据：代码面 DOM 与语言表；不改文档内容、不发 changed。
 - 变化轴：op 集合增删（须同步 `contract/ops.js`）、代码面内的交互细节、引擎版本升级。
 - 公开契约（含能力 ID）：

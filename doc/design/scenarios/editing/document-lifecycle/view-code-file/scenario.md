@@ -2,7 +2,7 @@
 layer: design
 module: editing
 status: verified
-updated: 2026-11-04
+updated: 2026-11-23
 flow: FLOW-EDIT-001
 scenario: SCN-0016
 domain: 编辑
@@ -105,7 +105,7 @@ tests:
 | TC-CODE-007 | R3 | 自动 | `--selftest` | `PASS 代码视图 行号开关与复制文本` | present（2026-11-04 全绿） |
 | TC-CODE-008 | N1 | 自动 | `--selftest` | `PASS 代码视图 空文件行号边界` | present（2026-11-04 全绿） |
 
-配套断言：`PASS 代码视图 双端语言清单一致`、`PASS 代码视图 大文件降级纯文本`、`PASS 代码视图 未知语法回落纯文本`。
+配套断言：`PASS 代码视图 双端语言清单一致`、`PASS 代码视图 Lean 4 语法高亮`、`PASS 代码视图 大文件降级纯文本`、`PASS 代码视图 未知语法回落纯文本`。
 
 ## 6. 验证债
 
@@ -117,3 +117,4 @@ tests:
 - 2026-11-04 3+1 自动化断言全绿（`--selftest` 117 项中的 11 条），转 `verified`；真实 GUI 走查经用户 2026-11-04 人工核对通过，记录在 `result.md`。
 - 2026-11-04 增补行号/软换行/当前行/开关断言（REQ-0010，P2 工序 `2026-11-04-code-view-line-numbers`）；转回 `active`。
 - 2026-11-04 行号 4 条自动化断言全绿（`SELFTEST PASSED`），既有代码视图/抽屉/双窗口零回归；真实菜单勾选、鼠标点击、深色主题、PDF/打印行号经用户确认完成，转 `verified`；工序归档至 `history/works/2026-11-04-code-view-line-numbers/`。
+- 2026-11-23 语言表增补 Lean 4（`.lean`，显示名「Lean 4」）：refractor 未收录该语法，由 `web/src/kernel/components/code/lean-grammar.js` 自带并在 `languages.js` 注册；新增「代码视图 Lean 4 语法高亮」断言与 `web/test/languages.test.js`，`--selftest` 全绿（45 种语言），场景仍为 `verified`。
