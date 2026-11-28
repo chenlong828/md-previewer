@@ -46,15 +46,18 @@ final class ScreenshotRunner: NSObject {
                     // e2e 钩子(MDP_IMPORT_IMAGE=<图片路径>):验证 导入→落盘→插入
                     // 全链路再截图(拖放/菜单同一入口)。
                     // MDP_EDIT_IMAGE=1:打开第一张图片的源码编辑块再截图(编辑框视觉/几何验证)。
+                    // MDP_HOVER_LINK=1 / MDP_EDIT_LINK=1:链接悬停弹层 / 行内源码编辑的视觉验证。
                     let importPath = ProcessInfo.processInfo.environment["MDP_IMPORT_IMAGE"]
                     let editMode = ProcessInfo.processInfo.environment["MDP_EDIT_IMAGE"] == "1"
+                    let hoverLink = ProcessInfo.processInfo.environment["MDP_HOVER_LINK"] == "1"
+                    let editLink = ProcessInfo.processInfo.environment["MDP_EDIT_LINK"] == "1"
                     // MDP_PASTE_IMAGE=<图片路径>:走剪贴板粘贴链路（JS → v2 请求 → 壳落盘 → 内核插入）
                     let pastePath = ProcessInfo.processInfo.environment["MDP_PASTE_IMAGE"]
                     if let pastePath {
                         self.runPasteEndToEnd(pastePath)
                         // 等粘贴往返（请求→落盘→插入）打印完再截图退出
                         DispatchQueue.main.asyncAfter(deadline: .now() + 2.2) { self.capture() }
-                    } else if importPath != nil || editMode {
+                    } else if importPath != nil || editMode || hoverLink || editLink {
                         if let importPath {
                             controller.importImage(at: URL(fileURLWithPath: importPath))
                         }
@@ -64,7 +67,19 @@ final class ScreenshotRunner: NSObject {
                                 print("SCREENSHOT editbox:", r ?? "nil")
                             }
                         }
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { self.capture() }
+                        if hoverLink {
+                            controller.evaluateForDiagnostics(
+                                "(function(){var a=document.querySelector('.md-link');if(!a)return 'no-link';a.dispatchEvent(new MouseEvent('mouseenter'));return 'hovered'})()") { r in
+                                print("SCREENSHOT link-hover:", r ?? "nil")
+                            }
+                        }
+                        if editLink {
+                            controller.evaluateForDiagnostics(
+                                "(function(){var a=document.querySelector('.md-link');if(!a)return 'no-link';var r=a.getBoundingClientRect();a.dispatchEvent(new MouseEvent('click',{bubbles:true,cancelable:true,clientX:r.left+20,clientY:r.top+r.height/2}));var s=document.querySelector('.md-link.md-link-editing .md-link-src');return JSON.stringify({editing:!!s,text:s?s.textContent.slice(0,120):''})})()") { r in
+                                print("SCREENSHOT link-edit:", r ?? "nil")
+                            }
+                        }
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) { self.capture() }
                     } else {
                         self.capture()
                     }

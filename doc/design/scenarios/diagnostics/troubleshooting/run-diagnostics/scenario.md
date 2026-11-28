@@ -52,7 +52,7 @@ tests:
 3. 截图：等编辑器就绪→打开文档→渲染→`takeSnapshot`→写 PNG；阶段失败 2–7。
 4. 多窗口：打开 A/B，断言窗口数与标题；表格定位/行列操作状态；退出 0/1。
 5. 右键定位：临时受控文档 + 合成右键 → 真实监视器/坐标换算 → 捕获菜单 → 执行菜单项，断言作用在点击行；退出 0/1。
-6. 环境钩子 `MDP_IMPORT_IMAGE` / `MDP_EDIT_IMAGE` 仅服务截图/诊断。
+6. 环境钩子 `MDP_IMPORT_IMAGE` / `MDP_EDIT_IMAGE` / `MDP_HOVER_LINK` / `MDP_EDIT_LINK` 仅服务截图/诊断。
 
 失败路径：
 

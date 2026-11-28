@@ -32,7 +32,7 @@ updated: 2026-11-10
 - `--screenshot`：`SCREENSHOT …`；0=成功，2–7=阶段失败。
 - `--multiwindow-test`：`[MULTIWINDOW] PASS/FAIL`；0=全过/1=有失败。
 - `--context-menu-test`：`[CONTEXTMENU] PASS/FAIL`；0=全过/1=有失败；只生成临时受控文档，不改用户文档。
-- 环境钩子 `MDP_IMPORT_IMAGE` / `MDP_EDIT_IMAGE` 只服务诊断，不进入正常用户路径。
+- 环境钩子 `MDP_IMPORT_IMAGE` / `MDP_EDIT_IMAGE` / `MDP_HOVER_LINK` / `MDP_EDIT_LINK` 只服务诊断，不进入正常用户路径。
 
 ## 5. 影响场景
 

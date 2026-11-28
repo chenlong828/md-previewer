@@ -3,7 +3,7 @@ layer: design
 module: kernel
 component: CMP-kernel-contract
 status: active
-updated: 2026-11-04
+updated: 2026-11-28
 ---
 
 # CMP-kernel-contract 组件规格
@@ -21,11 +21,11 @@ updated: 2026-11-04
 - 变化轴：协议版本（v3 起重开握手语义）、op 清单增删、错误码集合、payload 校验宽度。
 - 公开契约（含能力 ID）：
   - `CMP-kernel-contract#envelope`：请求 `{v,op,id,payload}`／成功响应 `{v,id,ok:true,payload}`／失败响应 `{v,id,ok:false,error}`／通知 `{v,op,payload}`（无 id）。
-  - `CMP-kernel-contract#op-inventory`：41 个 host op、7 个通知、2 个内核请求；`HOST_OPS` 同时是握手响应 `ops[]` 的来源，壳与测试都读这一处。
+  - `CMP-kernel-contract#op-inventory`：41 个 host op、7 个通知、3 个内核请求；`HOST_OPS` 同时是握手响应 `ops[]` 的来源，壳与测试都读这一处。
   - `CMP-kernel-contract#dispatch`：`unknown_op`/`bad_payload`/`not_ready` 三种拒绝都显式应答（带原 id），不静默丢弃。
   - `CMP-kernel-contract#handshake`：`init.payload.opts.protocolVersion` 必须为 2；缺失 → `bad_payload`，不等 → `unsupported_version`，两种失败都置 `disabled`，此后一切请求回 `unsupported_version`。
   - `CMP-kernel-contract#error-codes`：`unknown_op` / `bad_payload` / `not_ready` / `unsupported_version` / `internal`。
-  - `CMP-kernel-contract#host-requests`：内核→壳请求走 `callHost(op,payload)`，按 `h<n>` id 关联；未知 id 的响应进协议错误通道，不污染其它 pending。
+  - `CMP-kernel-contract#host-requests`：内核→壳请求走 `callHost(op,payload)`，按 `h<n>` id 关联；未知 id 的响应进协议错误通道，不污染其它 pending。当前三个：`resolveResources` / `importImage` / `openLink`。
   - `CMP-kernel-contract#json-guard`：payload 递归校验为 JSON 原语；handler 返回函数/Map/undefined/类实例 → `internal`。
 - 入口：
   - `CMP-kernel-contract/web/src/kernel/contract/ops.js#HOST_OPS`（权威清单，另有 `NOTIFICATIONS`/`KERNEL_REQUESTS`/`validatePayload`）
@@ -52,11 +52,11 @@ updated: 2026-11-04
 
 | 契约 | 测试（`web/test/contract.test.js`） |
 |---|---|
-| `#op-inventory` | 「契约清单：41 个 host op、7 个通知、2 个内核请求，且不重复」 |
+| `#op-inventory` | 「契约清单：41 个 host op、7 个通知、3 个内核请求，且不重复」 |
 | `#handshake` | 「握手：init{protocolVersion:2} → 回显…」「握手拒绝：protocolVersion 1 → unsupported_version，之后内核停用」「握手缺字段…」 |
 | `#envelope` | 「信封版本错配：v1 消息 → unsupported_version 响应（带原 id）」「id 回显：两个并发请求各得各的响应」 |
 | `#dispatch` | 「unknown_op…」「bad_payload…」「缩略图 op：setMinimapVisible 必须带 boolean…」「not_ready：握手前的 gated op 显式报错；init 后可调用」「handler 抛普通异常 → internal…」 |
-| `#host-requests` | 「内核 → 壳请求：callHost 按 id 关联，响应回填到调用方」「…请求失败：错误响应 → callHost reject」「无主响应：未知 id…不污染 pending」 |
+| `#host-requests` | 「内核 → 壳请求：callHost 按 id 关联，响应回填到调用方」「…请求失败：错误响应 → callHost reject」「无主响应：未知 id…不污染 pending」；`openLink` 属于同一 id 表（壳侧应答复 `{ok}`） |
 | `#json-guard` | 「handler 返回非 JSON 值 → internal」「JSON 原语守门：函数 / Map / undefined / 类实例一律拒绝」 |
 | 通知 | 「通知无响应：changed 只进通知通道」「通知 payload 非法：内核侧直接抛错」 |
 | 健壮性 | 「畸形输入：非法 JSON 与非对象信封进协议错误通道，内核不崩」 |

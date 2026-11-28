@@ -156,6 +156,61 @@ hr {
 
 a { color: var(--link-color); }
 
+/* 链接 MarkView(link-view.js):渲染态仍是指向地址的 <a>;点击展开行内源码。
+   源码以 contenteditable 层覆盖渲染文字,不改文档直到提交。 */
+.md-link { color: var(--link-color); text-decoration: none; cursor: pointer; }
+.md-link:hover { text-decoration: underline; }
+.md-link.md-link-editing { cursor: text; text-decoration: none; }
+.md-link-src { display: none; }
+.md-link.md-link-editing .md-link-content { display: none; }
+.md-link.md-link-editing .md-link-src {
+    display: inline;
+    font-family: inherit;
+    font-size: inherit;
+    line-height: inherit;
+    color: var(--link-color);
+    background: rgba(65, 131, 196, 0.10);
+    border-radius: 3px;
+    padding: 0 2px;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    outline: none;
+    caret-color: var(--link-color);
+}
+html[data-theme="dark"] .md-link.md-link-editing .md-link-src {
+    background: rgba(92, 159, 232, 0.16);
+}
+
+/* 悬停弹层:编辑 / 访问链接。挂在 body 上,不参与正文排版。 */
+.md-link-popup {
+    position: fixed;
+    z-index: 60;
+    display: flex;
+    gap: 2px;
+    padding: 4px;
+    background: var(--bg-color);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.16);
+    font-family: var(--body-font);
+    font-size: 12px;
+    line-height: 1.4;
+}
+.md-link-popup[hidden] { display: none; }
+.md-link-popup button {
+    appearance: none;
+    border: 0;
+    margin: 0;
+    padding: 4px 8px;
+    border-radius: 4px;
+    background: transparent;
+    color: var(--text-color);
+    font: inherit;
+    cursor: pointer;
+}
+.md-link-popup button:hover { background: var(--code-bg); }
+.md-link-popup button:disabled { color: var(--text-secondary); opacity: 0.6; }
+
 img, [data-type="image"] img {
     max-width: 100%;
     vertical-align: middle;

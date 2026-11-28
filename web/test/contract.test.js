@@ -28,11 +28,11 @@ function registerAll(registry) {
   for (const op of HOST_OPS) registry.register(op, () => ({}));
 }
 
-test('契约清单：41 个 host op、7 个通知、2 个内核请求，且不重复', () => {
+test('契约清单：41 个 host op、7 个通知、3 个内核请求，且不重复', () => {
   assert.equal(HOST_OPS.length, 41);
   assert.equal(new Set(HOST_OPS).size, 41);
   assert.deepEqual([...NOTIFICATIONS], ['boot', 'ready', 'changed', 'stats', 'sourceMode', 'selinfo', 'jserror']);
-  assert.deepEqual([...KERNEL_REQUESTS], ['resolveResources', 'importImage']);
+  assert.deepEqual([...KERNEL_REQUESTS], ['resolveResources', 'importImage', 'openLink']);
 });
 
 test('握手：init{protocolVersion:2} → 回显 kernelVersion/protocolVersion/ops（与注册表全等）', async () => {

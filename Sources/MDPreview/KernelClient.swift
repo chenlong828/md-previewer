@@ -30,7 +30,7 @@ final class KernelClient {
 
     /// 内核通知（boot/ready/changed/stats/sourceMode/selinfo/jserror）
     var onNotification: ((String, [String: Any]) -> Void)?
-    /// 内核发起的请求（resolveResources / importImage），实现方必须 reply 一次
+    /// 内核发起的请求（resolveResources / importImage / openLink），实现方必须 reply 一次
     var onRequest: ((String, [String: Any], @escaping (Result<[String: Any], KernelError>) -> Void) -> Void)?
 
     /// 握手结果：kernelVersion / protocolVersion / ops[]

@@ -632,8 +632,8 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
 
     // MARK: - 内核发起的请求（v2）
 
-    /// 内核请求分发：resolveResources（装载前问真实文件）、importImage（粘贴落盘）。
-    /// 两个请求都不进编辑主路径——失败只影响一次装载/一次粘贴，壳负责提示。
+    /// 内核请求分发：resolveResources（装载前问真实文件）、importImage（粘贴落盘）、
+    /// openLink（链接访问意图）。三者都不进编辑主路径——失败只影响一次装载/粘贴/访问。
     private func handleKernelRequest(
         op: String,
         payload: [String: Any],
@@ -644,9 +644,70 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
             reply(.success(resolveResources(payload)))
         case "importImage":
             reply(performImport(payload))
+        case "openLink":
+            reply(.success(performOpenLink(payload)))
         default:
             reply(.failure(KernelClient.KernelError(code: "unknown_op", message: "未实现的请求 \(op)")))
         }
+    }
+
+    /// 链接访问：网页/邮件/电话交给系统默认应用；本地 md/代码仍在应用内新窗口打开，
+    /// 其他本地文件交给系统默认应用。未知协议与不存在的本地文件返回 ok=false，不弹错误。
+    private func performOpenLink(_ payload: [String: Any]) -> [String: Any] {
+        guard let raw = payload["href"] as? String else { return ["ok": false] }
+        let href = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !href.isEmpty, !href.hasPrefix("#") else { return ["ok": false] }
+
+        var candidate = href
+        if candidate.hasPrefix("//") { candidate = "https:" + candidate }
+
+        if candidate.lowercased().hasPrefix("file://") {
+            return ["ok": openLocalLink(fileURL(fromLink: candidate))]
+        }
+        if let url = URL(string: candidate), let scheme = url.scheme?.lowercased() {
+            switch scheme {
+            case "http", "https", "mailto", "tel":
+                return ["ok": NSWorkspace.shared.open(url)]
+            default:
+                return ["ok": false]
+            }
+        }
+
+        // 相对路径按内核带来的 baseDir 解析，缺省用当前文档目录；
+        // 字面路径不存在时再试百分比解码口径。
+        let requestedBase = payload["baseDir"] as? String
+        guard let base = requestedBase.map({ URL(fileURLWithPath: $0, isDirectory: true) })
+            ?? fileURL?.deletingLastPathComponent() else { return ["ok": false] }
+        let literal = URL(fileURLWithPath: candidate, relativeTo: base).standardizedFileURL
+        var target = literal
+        if !FileManager.default.fileExists(atPath: literal.path) {
+            let decoded = candidate.split(separator: "/", omittingEmptySubsequences: false)
+                .map { $0.removingPercentEncoding ?? String($0) }
+                .joined(separator: "/")
+            target = URL(fileURLWithPath: decoded, relativeTo: base).standardizedFileURL
+        }
+        guard FileManager.default.fileExists(atPath: target.path) else { return ["ok": false] }
+        return ["ok": openLocalLink(target)]
+    }
+
+    /// file:// 链接 → 文件 URL：整段解码路径段，兼容未编码空格/中文的写法
+    private func fileURL(fromLink link: String) -> URL {
+        let afterScheme = String(link.dropFirst("file://".count))
+        let path = afterScheme.split(separator: "/", omittingEmptySubsequences: false)
+            .map { $0.removingPercentEncoding ?? String($0) }
+            .joined(separator: "/")
+        return URL(fileURLWithPath: path)
+    }
+
+    /// 本地链接打开策略与 EditorWebView 的文档链接拦截同源：可打开文件在应用内开新窗，
+    /// 其余交给系统默认应用（目录按可打开入口处理，交给 openInNewWindow 进目录模式）。
+    private func openLocalLink(_ url: URL) -> Bool {
+        guard FileManager.default.fileExists(atPath: url.path) else { return false }
+        if FileSupport.isOpenable(url) || url.pathExtension.isEmpty {
+            AppDelegate.shared?.openInNewWindow(at: url)
+            return true
+        }
+        return NSWorkspace.shared.open(url)
     }
 
     /// 资源问答：每个引用给出可加载 URL（字面写法存在才算）与全部存在的候选绝对路径。

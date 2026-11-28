@@ -19,6 +19,7 @@ import { scheduleStats } from './stats.js'
 import { selInfoProse } from './selinfo.js'
 import { getMermaidView } from './mermaid-view.js'
 import { getImageView } from './image-view.js'
+import { getLinkView } from './link-view.js'
 import { cloneReadonly } from '../../shared/readonly-clone.js'
 
 import { fourSpaceListItem } from './list-indent.js'
@@ -94,6 +95,7 @@ export async function createEditor() {
         .use(useDiagram ? diagram : [])
         .use(useDiagram ? getMermaidView() : [])
         .use(getImageView())
+        .use(getLinkView())
         .use(clipboard)
         .use(trailing)
         .use(use('findService').findProsePlugin)

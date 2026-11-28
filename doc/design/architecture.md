@@ -2,7 +2,7 @@
 layer: design
 module: global
 status: current
-updated: 2026-11-10
+updated: 2026-11-28
 ---
 
 # 系统架构与设计取舍
@@ -25,7 +25,7 @@ flowchart TB
         L1["L1 领域组件（八）· 依赖为声明式<br/>editor · code-view · drawer · document-io<br/>image · export · diagnostics · minimap"]
         APP -->|"编排"| L1
     end
-    BR["v2 桥 · 单通道（JSON 帧）<br/>window.__mdHostChannel.post ⇄ mdbridge<br/>41 host op · 7 通知 · 2 内核请求"]
+    BR["v2 桥 · 单通道（JSON 帧）<br/>window.__mdHostChannel.post ⇄ mdbridge<br/>41 host op · 7 通知 · 3 内核请求"]
     subgraph WEB["web 内核 · WKWebView · 本地 web/dist（无网络依赖）"]
         direction TB
         ROOT["L2 组合根 · 唯一装配点<br/>assemble.js（端口接线）· ops.js（op 汇总）· main.js（bootKernel）"]
@@ -349,6 +349,28 @@ Milkdown 7.7（ProseMirror）及其插件装配归 `components/editor`，明细�
 - **边界**：单元格内边距点击已覆盖；共享 1px 分隔线恰好压线的归属仍由
   `posAtCoords` 就近决定，未新增启发式重定位。
 
+### 2.9 链接：悬停弹层与行内源码编辑（2026-11-28）
+
+- **决策**：链接在渲染态仍是 `<a href>`（可复制、可被导出），但单击的默认导航被拦截：
+  普通单击把该链接在正文中原地展开为 Markdown 源码 `[文字](地址)`，Enter/失焦提交、
+  Esc 取消；Command+单击直接访问。悬停时 120ms 后弹出「编辑 / 访问链接」，
+  移出 180ms 收起（移入弹层不收起）。正文其余部分保持渲染态。
+- **理由**：改一个链接不必切到全文源码模式（⌘/）再定位；访问网页也不要求先复制地址。
+  交互与图片/Mermaid 的「点选进源码编辑、失焦提交」同一口径，降低不同元素的记忆成本。
+- **实现单点**：`web/src/kernel/components/editor/link-view.js`（链接 MarkView、弹层、
+  源码层、区间与提交）；`editor.js` 只注册它。源码的生成为编辑器 serializer 的一段，
+  提交解析用编辑器 parser（`parserCtx`），不引入第二套 Markdown 解析。
+  访问意图经 `openLink` 内核请求交给壳；`DocumentWindowController.performOpenLink`
+  是 URL 类型判定的单点。
+- **不变量**：展开源码本身不改文档、不产生脏标记；提交只在源码改变且解析为单个段落时
+  发生（一次可撤销事务）；空源码提交只删除该链接；非法/多块源码不破坏文档。
+  源码编辑层的事件不进入 ProseMirror；`ignoreMutation` 隔离源码层的 DOM 变化。
+- **失效条件**：若未来引入浏览器内嵌预览或链接预览卡片，弹层不再只是「编辑/访问」两动作，
+  需重排交互；若链接改为自定义 inline 节点（而非 mark），本 MarkView 需要同步迁移。
+- **边界**：`#anchor` 只在本文档内按标题文本 slug 滚动，不生成标题 id；指向本地文件的
+  相对链接仍受「未保存文档无目录」限制（壳返回 `ok:false`，不弹错误）。
+
+
 ## 3. 桥协议（v2，2026-11-04 落地）
 
 - **帧形状**（`web/src/kernel/contract/envelope.js`，v 恒为 2）：
@@ -368,12 +390,16 @@ Milkdown 7.7（ProseMirror）及其插件装配归 `components/editor`，明细�
   缩略图 `setMinimapVisible/minimapInfo`；资源 `getResourceRefs`；
   诊断 `hasCommands/debugFocusTable/tableInfo/testImagePayload`。
 - **通知（7 个）**：`boot/ready/changed/stats/sourceMode/selinfo/jserror`。
-- **内核发起的请求（2 个）**：
+- **内核发起的请求（3 个）**：
   - `resolveResources {refs[], baseDir}` → `{resources:{ref:[{url,exists,isImage,paths}]}}`：
     装载前问「这个引用指向哪个真实文件」。请求**自包含**（带 baseDir），壳不猜当前文档目录
     ——未保存/另存场景曾因此把引用误判为缺失。
   - `importImage {kind:'blob'|'file', mime?, data?|path?}` → `{ok, src?}`：粘贴落盘。
     取代 v1 的 `onImageImported` 反向回灌，选区快照在核内闭环。
+  - `openLink {href, baseDir?}` → `{ok}`：链接访问意图（2026-11-28 随 REQ-0016 增加）。
+    内核只上报 href，网页/邮件/电话交给系统默认应用（网页即默认浏览器）；本地
+    Markdown/代码文件与目录仍走 `openInNewWindow`，其他本地文件交给系统默认应用；
+    未知协议与不存在的本地文件返回 `ok:false`。`#anchor` 由内核本地滚动，不发请求。
 - **命令转发**：菜单/右键 → `performEditorAction` → spec.jsCommand → `formatCommand`/
   `tableCommand` op，payload 直接作为 op payload（不再拼 JS 字面量）。
 - **异步消息**：markdownUpdated listener 的 200ms debounce 与「过期过滤 + 同步基线」不变
@@ -399,7 +425,7 @@ Milkdown 7.7（ProseMirror）及其插件装配归 `components/editor`，明细�
 | 组件 | 业务能力 | 行数 | op 归属 |
 |---|---|---|---|
 | `components/document` | 会话与文档：建编辑器、装载/取回、基线、主题、缩放、状态、GC 引用收集 | ~139 | init/setMarkdown/getMarkdown/getSaveMarkdown/markClean/setBaseDir/setTitle/setTheme/setZoom/getState/toggleSource/getResourceRefs |
-| `components/editor` | 编辑面：Milkdown 装配、命令与表格、统计、选区、NodeView、焦点、撤销重做；Markdown 缩略投影 | ~1117 | focus/focusAt/undo/redo/requestStats/formatCommand/tableCommand/insertTable/insertMarkdown/insertImage + 诊断 4 个 |
+| `components/editor` | 编辑面：Milkdown 装配、命令与表格、统计、选区、NodeView、链接交互、焦点、撤销重做；Markdown 缩略投影 | ~1600 | focus/focusAt/undo/redo/requestStats/formatCommand/tableCommand/insertTable/insertMarkdown/insertImage + 诊断 4 个 |
 | `components/code` | 代码面：只读源码视图、语言与行号、代码内查找；代码行缩略投影 | ~672 | setCode/setCodeLanguage/setCodeLineNumbers/codeInfo/hasLanguages |
 | `components/find` | 查找：查找栏、命中遍历、ProseMirror 装饰 | ~304 | openFindBar/closeFindBar/findNext/findPrev/findInfo |
 | `components/output` | 输出：独立 HTML 导出、打印、内容几何 | ~104 | exportStandaloneHTML/print/getContentSize |

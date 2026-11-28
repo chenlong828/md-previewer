@@ -8,7 +8,10 @@ import { bootCore, notificationsOf } from './support/dom.js'
 const DOC = '# 标题\n\n正文一。\n\n![图](img/a.png)\n\n| a | b |\n| - | - |\n| 1 | 2 |\n'
 
 test('core 组：jsdom 内核（无 WebView）', async (t) => {
-    const core = await bootCore({ files: ['img/a.png', 'img/a b.png'] })
+    const core = await bootCore({
+        files: ['img/a.png', 'img/a b.png'],
+        answers: { openLink: () => ({ ok: true }) },
+    })
     const { ops } = core
 
     await t.test('init 建编辑器并上报 ready', async () => {
@@ -118,6 +121,58 @@ test('core 组：jsdom 内核（无 WebView）', async (t) => {
         assert.equal(info.mode, true)
         assert.equal(info.language, 'javascript')
         assert.deepEqual(ops.hasLanguages({ ids: ['javascript', 'no-such-lang'] }).supported, ['javascript'])
+    })
+
+    await t.test('链接 MarkView：渲染与行内源码提交走编辑器 parser/serializer', async () => {
+        await ops.setMarkdown({ md: '前文 [示例](https://example.com) 后文\n' })
+        const link = core.document.querySelector('a.md-link[href="https://example.com"]')
+        assert.ok(link, '链接应渲染为 a.md-link')
+        assert.equal(link.textContent, '示例')
+
+        link.dispatchEvent(new core.window.MouseEvent('click', { bubbles: true, cancelable: true }))
+        const editor = core.document.querySelector('.md-link.md-link-editing .md-link-src')
+        assert.ok(editor, '单击后应展开行内源码层')
+        assert.equal(editor.textContent, '[示例](https://example.com)')
+        assert.match(ops.getMarkdown().md, /\[示例\]\(https:\/\/example\.com\)/, '展开源码不改文档')
+
+        editor.textContent = '[新示例](https://example.org "标题")'
+        editor.dispatchEvent(new core.window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }))
+        const md = ops.getMarkdown().md
+        assert.match(md, /\[新示例\]\(https:\/\/example\.org "标题"\)/)
+        assert.equal(core.document.querySelector('.md-link.md-link-editing'), null, '提交后退出源码态')
+    })
+
+    await t.test('链接 MarkView：悬停弹层出现与收起', async () => {
+        await ops.setMarkdown({ md: '悬停 [示例](https://example.com)\n' })
+        const link = core.document.querySelector('a.md-link[href="https://example.com"]')
+        assert.ok(link)
+        link.dispatchEvent(new core.window.MouseEvent('mouseenter'))
+        await new Promise((resolve) => setTimeout(resolve, 160))
+        const popup = core.document.querySelector('.md-link-popup')
+        assert.ok(popup, '弹层节点应存在')
+        assert.equal(popup.hidden, false, '悬停 120ms 后弹层可见')
+        assert.deepEqual(
+            Array.from(popup.querySelectorAll('button')).map((button) => button.textContent),
+            ['编辑', '访问链接'],
+        )
+        link.dispatchEvent(new core.window.MouseEvent('mouseleave'))
+        await new Promise((resolve) => setTimeout(resolve, 220))
+        assert.equal(popup.hidden, true, '移出 180ms 后弹层收起')
+    })
+
+    await t.test('链接访问：弹层「访问链接」经 openLink 请求上报', async () => {
+        await ops.setMarkdown({ md: '访问 [示例](https://example.com)\n' })
+        const link = core.document.querySelector('a.md-link[href="https://example.com"]')
+        assert.ok(link)
+        link.dispatchEvent(new core.window.MouseEvent('mouseenter'))
+        await new Promise((resolve) => setTimeout(resolve, 160))
+        const popup = core.document.querySelector('.md-link-popup')
+        popup.querySelector('button[data-action="visit"]').click()
+        const call = core.hostCalls.findLast((item) => item.op === 'openLink')
+        assert.ok(call, '应发起 openLink 内核请求')
+        assert.equal(call.payload.href, 'https://example.com')
+        assert.equal(call.payload.baseDir, core.baseDir)
+        assert.equal(popup.hidden, true, '访问后弹层收起')
     })
 
     t.after(() => core.cleanup())

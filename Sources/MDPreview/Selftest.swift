@@ -27,6 +27,8 @@ final class SelftestRunner: NSObject {
     /// 桥消息观测:changed 上报计数(D1 误报守门用)
     private var changedTrueCount = 0
     private var changedTotalCount = 0
+    /// 链接访问请求观测:openLink 的 href 序列(自动断言不真的拉起浏览器)
+    private var openLinkRequests: [String] = []
     /// 轻量模式检查页(OQ-1)的加载标志
     private var lightBootReceived = false
     private var lightReadyReceived = false
@@ -1089,6 +1091,9 @@ func greet() -> String {
         //    修复前 opts 在创建之后才赋值,条件分支不可达,这里恒红。
         runPluginSetCheck()
 
+        // ── 链接交互(REQ-0016 / SCN-0022):悬停弹层、行内源码编辑、访问请求边界
+        testLinkInteraction()
+
         print("SELFTEST \(failed ? "FAILED" : "PASSED")")
         exit(failed ? 1 : 0)
     }
@@ -1216,6 +1221,11 @@ func greet() -> String {
             reply(.success(["resources": resources]))
         case "importImage":
             reply(.success(["ok": false]))
+        case "openLink":
+            if let href = payload["href"] as? String {
+                openLinkRequests.append(href)
+            }
+            reply(.success(["ok": true]))
         default:
             reply(.failure(KernelClient.KernelError(code: "unknown_op", message: "自检未实现 \(op)")))
         }
@@ -1849,6 +1859,174 @@ func greet() -> String {
     }
 
     // MARK: - 图片节点渲染与编辑框(web 行为往返)
+
+    // MARK: - 链接交互(REQ-0016 / SCN-0022)
+
+    /// 悬停弹层 → 单击展开源码 → Enter/失焦提交 / Esc 取消 → Command+单击访问请求。
+    /// 自动断言只覆盖 DOM 与请求边界；真实系统浏览器弹出由人工点验。
+    private func testLinkInteraction() {
+        let linkDoc = "前文 [示例](https://example.com) 后文\n\n## 目标标题\n"
+        evaluate("window.mdbridge.setMarkdown(\(JSArgs.string(linkDoc)))") { _ in }
+        var before = ""
+        evaluate("window.mdbridge.getMarkdown()") { result in before = result as? String ?? "" }
+
+        func object(_ value: Any?) -> [String: Any]? {
+            guard let json = value as? String, let data = json.data(using: .utf8) else { return nil }
+            return (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
+        }
+
+        // R1: 悬停出现「编辑 / 访问链接」，移出收起
+        evaluate(#"(function(){var a=document.querySelector('a[href="https://example.com"]');if(!a)return 'no-link';a.dispatchEvent(new MouseEvent('mouseenter'));return 'ok'})()"#) { _ in }
+        waitForValue("链接 悬停弹层出现(编辑/访问链接)", timeout: 5,
+            script: #"(function(){var p=document.querySelector('.md-link-popup');if(!p||p.hidden)return null;return JSON.stringify({buttons:Array.prototype.map.call(p.querySelectorAll('button'),function(b){return b.textContent})})})()"#,
+            test: { value in
+                guard let d = object(value) else { return false }
+                return (d["buttons"] as? [String]) == ["编辑", "访问链接"]
+            })
+        evaluate(#"(function(){var a=document.querySelector('a[href="https://example.com"]');a.dispatchEvent(new MouseEvent('mouseleave'));return true})()"#) { _ in }
+        waitForValue("链接 悬停弹层收起", timeout: 5,
+            script: "document.querySelector('.md-link-popup').hidden === true",
+            test: { ($0 as? Bool) == true })
+
+        // R2: 单击展开源码，提交前文档不变
+        evaluate(#"""
+        (function(){
+            var a=document.querySelector('a[href="https://example.com"]');
+            if(!a)return JSON.stringify({error:'no-link'});
+            a.dispatchEvent(new MouseEvent('click',{bubbles:true,cancelable:true}));
+            var s=document.querySelector('.md-link.md-link-editing .md-link-src');
+            return JSON.stringify({editing:!!s,text:s?s.textContent:'',md:window.mdbridge.getMarkdown()});
+        })()
+        """#) { value in
+            guard let d = object(value),
+                  (d["editing"] as? Bool) == true,
+                  d["text"] as? String == "[示例](https://example.com)",
+                  d["md"] as? String == before else {
+                self.fail("链接 单击展开源码 → \(String(describing: value))")
+                return
+            }
+            self.pass("链接 单击展开源码(文档不变)")
+        }
+
+        // Esc 取消：改源码但不提交，文档保持原样
+        evaluate(#"""
+        (function(){
+            var s=document.querySelector('.md-link.md-link-editing .md-link-src');
+            if(!s)return JSON.stringify({error:'no-editor'});
+            s.textContent='[取消](https://cancel.example)';
+            s.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true,cancelable:true}));
+            return JSON.stringify({editing:!!document.querySelector('.md-link.md-link-editing'),md:window.mdbridge.getMarkdown()});
+        })()
+        """#) { value in
+            guard let d = object(value),
+                  (d["editing"] as? Bool) == false,
+                  d["md"] as? String == before else {
+                self.fail("链接 Esc 取消还原 → \(String(describing: value))")
+                return
+            }
+            self.pass("链接 Esc 取消还原")
+        }
+
+        // R3: Enter 提交源码
+        evaluate(#"""
+        (function(){
+            var a=document.querySelector('a[href="https://example.com"]');
+            if(!a)return JSON.stringify({error:'no-link'});
+            a.dispatchEvent(new MouseEvent('click',{bubbles:true,cancelable:true}));
+            var s=document.querySelector('.md-link-src');
+            s.textContent='[新示例](https://example.org "标题")';
+            s.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true}));
+            return JSON.stringify({editing:!!document.querySelector('.md-link.md-link-editing'),md:window.mdbridge.getMarkdown()});
+        })()
+        """#) { value in
+            guard let d = object(value),
+                  (d["editing"] as? Bool) == false,
+                  let md = d["md"] as? String,
+                  md.contains("[新示例](https://example.org \"标题\")") else {
+                self.fail("链接 Enter 提交生效 → \(String(describing: value))")
+                return
+            }
+            self.pass("链接 Enter 提交生效")
+        }
+
+        // Command+单击 = 访问（只断言请求到达壳，不真的拉起浏览器）
+        evaluate(#"(function(){var a=document.querySelector('a[href="https://example.org"]');if(!a)return 'no-link';a.dispatchEvent(new MouseEvent('click',{bubbles:true,cancelable:true,metaKey:true}));return 'ok'})()"#) { _ in }
+        waitFor("链接 Command+单击访问请求", timeout: 5, condition: {
+            self.openLinkRequests.contains("https://example.org")
+        })
+        evaluate("!!document.querySelector('.md-link.md-link-editing')") { value in
+            if (value as? Bool) == false {
+                self.pass("链接 访问不进入编辑")
+            } else {
+                self.fail("链接 访问不进入编辑")
+            }
+        }
+
+        // 失焦提交（真实焦点事件路径的同一处理函数）
+        evaluate(#"""
+        (function(){
+            var a=document.querySelector('a[href="https://example.org"]');
+            if(!a)return JSON.stringify({error:'no-link'});
+            a.dispatchEvent(new MouseEvent('click',{bubbles:true,cancelable:true}));
+            var s=document.querySelector('.md-link-src');
+            s.textContent='[失焦](https://blur.example)';
+            s.dispatchEvent(new Event('blur'));
+            return window.mdbridge.getMarkdown();
+        })()
+        """#) { value in
+            if let md = value as? String, md.contains("[失焦](https://blur.example)") {
+                self.pass("链接 失焦提交生效")
+            } else {
+                self.fail("链接 失焦提交生效 → \(String(describing: value))")
+            }
+        }
+
+        // N1: 非法源码（解析成块级标题）不破坏文档
+        evaluate(#"""
+        (function(){
+            var a=document.querySelector('a[href="https://blur.example"]');
+            if(!a)return JSON.stringify({error:'no-link'});
+            a.dispatchEvent(new MouseEvent('click',{bubbles:true,cancelable:true}));
+            var s=document.querySelector('.md-link-src');
+            s.textContent='# 标题';
+            s.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true}));
+            return JSON.stringify({editing:!!document.querySelector('.md-link.md-link-editing'),md:window.mdbridge.getMarkdown()});
+        })()
+        """#) { value in
+            guard let d = object(value),
+                  (d["editing"] as? Bool) == false,
+                  let md = d["md"] as? String,
+                  md.contains("https://blur.example"), !md.contains("# 标题") else {
+                self.fail("链接 非法源码不破坏文档 → \(String(describing: value))")
+                return
+            }
+            self.pass("链接 非法源码不破坏文档")
+        }
+
+        // N1: 空源码提交 = 只删除该链接
+        evaluate(#"""
+        (function(){
+            var a=document.querySelector('a[href="https://blur.example"]');
+            if(!a)return JSON.stringify({error:'no-link'});
+            a.dispatchEvent(new MouseEvent('click',{bubbles:true,cancelable:true}));
+            var s=document.querySelector('.md-link-src');
+            s.textContent='';
+            s.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true}));
+            return window.mdbridge.getMarkdown();
+        })()
+        """#) { value in
+            if let md = value as? String, !md.contains("https://blur.example"), md.contains("前文") {
+                self.pass("链接 空源码只删除该链接")
+            } else {
+                self.fail("链接 空源码只删除该链接 → \(String(describing: value))")
+            }
+        }
+
+        // 恢复标准样例，避免影响后续(当前已处于测试尾段，仍保持收尾干净)
+        evaluate("window.mdbridge.setMarkdown(\(JSArgs.string(SelftestRunner.sampleMarkdown)))") { _ in }
+    }
+
+    // MARK: - 图片 NodeView
 
     private func testImageNodeView() {
         // 注入带图文档并断言 NodeView 生效(渲染 img + 预置隐藏编辑框)

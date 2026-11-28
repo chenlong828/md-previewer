@@ -26,7 +26,7 @@ export const NOTIFICATIONS = Object.freeze([
   'boot', 'ready', 'changed', 'stats', 'sourceMode', 'selinfo', 'jserror',
 ]);
 
-export const KERNEL_REQUESTS = Object.freeze(['resolveResources', 'importImage']);
+export const KERNEL_REQUESTS = Object.freeze(['resolveResources', 'importImage', 'openLink']);
 
 const REQUIRED = {
   init: [['markdown', 'string'], ['opts', 'object']],

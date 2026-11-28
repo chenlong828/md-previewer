@@ -3,7 +3,7 @@ layer: design
 module: kernel
 component: CMP-kernel-editor
 status: active
-updated: 2026-11-10
+updated: 2026-11-28
 ---
 
 # CMP-kernel-editor 组件规格
@@ -14,12 +14,13 @@ updated: 2026-11-10
 - 单元：组件
 - 层 / 类型：L1b 能力组件；编辑面
 - 业务价值：把 Markdown 编辑器本身（Milkdown 装配、命令、表格、NodeView）收在一处，其它组件经 op 与端口使用。
-- 负责：Milkdown 装配与插件、源码模式、命令与表格实现、统计与选区上报、图片/mermaid NodeView、焦点与撤销重做、诊断 4 op；提供 Markdown 缩略投影的**内部工厂**（不新增 host op）。
+- 负责：Milkdown 装配与插件、源码模式、命令与表格实现、统计与选区上报、图片/mermaid NodeView、链接 MarkView（悬停弹层/行内源码编辑）、焦点与撤销重做、诊断 4 op；提供 Markdown 缩略投影的**内部工厂**（不新增 host op）。
 - 不负责：文档装载与基线（document）、查找 UI（find）、代码只读面（code）、导出（output）、粘贴监听（media）、缩略图挂载/缩放/定位（minimap）。
 - 内部逻辑：`editor.js` 装配与端口实现（editorSurface/renderSurface/imageInsertion/focusEditorView）及 `createMarkdownMinimapSource`；`commands.js`/`tables.js` 命令表；`stats.js`/`selinfo.js` 上报；`ops.js`＋`diagnostics-ops.js` 14 个 op。
 - 拥有的数据：编辑器实例与 ProseMirror 文档（经 state.editor）；命令表与表格实现；序列化钩子 state.serialize。
 - 变化轴：op 集合增删（须同步 `contract/ops.js`）、编辑面内的交互细节、引擎版本升级。
 - 公开契约（含能力 ID）：
+  - `CMP-kernel-editor#link-view`（实现内部）：链接 MarkView + 悬停弹层「编辑 / 访问链接」+ 行内 Markdown 源码编辑；`getLinkView` 由 `editor.js` 用 `.use()` 注册，不是 host op；访问意图经 `openLink` 内核请求上报。
   - `CMP-kernel-editor#commands`：formatCommand/tableCommand/insertTable/insertMarkdown/insertImage：编辑命令与插入；表格行/列插入后选区进入新单元格（连续插入沿同方向累积）
   - `CMP-kernel-editor#focus-at`：focusAt：右键定位——把选区放到点击处并聚焦编辑器（DOM caret 与 state 选区一致），返回 `{ok, inTable}`
   - `CMP-kernel-editor#source-mode`：toggleSource：源码/渲染切换（代码文档 no-op）
@@ -28,6 +29,7 @@ updated: 2026-11-10
   - `CMP-kernel-editor#minimap-source`（实现内部）：`createMarkdownMinimapSource` 返回 `{root, measure(), scrollTo(), snapshot()}`；`snapshot()` 把 `#app` 的页面宽度/内边距/缩放/背景/颜色内联到页面容器，并挂载 `.ProseMirror` 的只读 DOM 副本（由 `shared/readonly-clone` 脱敏）；经 `assemble.js` 的 `minimapSources.markdown` 注入，不是 host op、不是跨组件公开面。
 - 入口：
   - `components/editor/editor.js#createEditor`
+  - `components/editor/link-view.js#getLinkView`
   - `components/editor/editor.js#createEditorSurface`
   - `components/editor/editor.js#createMarkdownMinimapSource`（内部导出，只由组合根消费）
   - `components/editor/ops.js#createEditorOps`
@@ -39,8 +41,8 @@ updated: 2026-11-10
 
 ## 验证计划
 
-- selftest 编辑/表格/源码模式/统计各组；新增「右键定位 窗口坐标=页面坐标」「右键定位 换算点命中同一单元格」「右键定位 光标在点击行」「表格-插入行后光标进入新行」「表格-删除的是新行（原行保留）」「表格外 no-op」。
+- selftest 编辑/表格/源码模式/统计各组；新增「右键定位 窗口坐标=页面坐标」「右键定位 换算点命中同一单元格」「右键定位 光标在点击行」「表格-插入行后光标进入新行」「表格-删除的是新行（原行保留）」「表格外 no-op」；链接组「悬停弹层出现/收起」「单击展开源码」「Enter/失焦提交」「Esc 取消」「Command+单击访问请求」「非法源码不破坏文档」「空源码只删除该链接」。
 - Node core 组 `requestStats`、`debugFocusTable`、`tableInfo.row/col` 与「插入后光标进入新行/新列」断言（`web/test/core.test.js`）。
 - 缩略图：`--selftest`「缩略图 默认显示」验证快照可被消费（`mode=fit|crop`、顶左、内容矩形有效）；Node surface 用例验证 Markdown source 生命周期。
 - 禁边：`node check-kernel.mjs` 校验「组件只 import 自身 + shared + semantics」。
-- 回归门：Node 87 项 + selftest 135 项 + `--context-menu-test` 全绿，断言数只增不减。
+- 回归门：Node 92 项 + selftest 146 项 + `--context-menu-test` 全绿，断言数只增不减。

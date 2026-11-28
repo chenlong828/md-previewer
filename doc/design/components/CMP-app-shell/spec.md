@@ -3,7 +3,7 @@ layer: design
 module: shell
 component: CMP-app-shell
 status: active
-updated: 2026-11-20
+updated: 2026-11-28
 ---
 
 # CMP-app-shell 组件规格
@@ -14,7 +14,7 @@ updated: 2026-11-20
 - 单元：组件
 - 层 / 类型：L2 整合；技术边界 + 应用编排
 - 业务价值：为使用者提供「一个进程、一个 Dock 图标、多个文档窗口」的 macOS 应用外壳；没有它，文件无法被打开到正确的窗口，菜单/快捷键/最近文件也没有统一入口。
-- 负责：应用启动与参数路由、窗口创建/替换/关闭、菜单与快捷键、最近文件、缩放与外观的应用、退出前的脏文档确认；**壳侧 v2 协议客户端 `KernelClient`**（帧编解码、id→completion 表、超时、内核请求应答）；「视图 → 高亮语言」菜单只做入口与勾选同步，语言判定归 `CMP-code-view`；「视图 → 显示行号」菜单只做入口/勾选与全局广播，偏好判定归 `CMP-code-view`；「视图 → 显示文档缩略图」菜单只做入口/勾选、偏好存储与全局广播，快照/交互归 `CMP-minimap`；Dock 右键菜单只列已打开窗口并负责切换，不提供关闭/批量管理动作。
+- 负责：应用启动与参数路由、窗口创建/替换/关闭、菜单与快捷键、最近文件、缩放与外观的应用、退出前的脏文档确认；**壳侧 v2 协议客户端 `KernelClient`**（帧编解码、id→completion 表、超时、内核请求应答）；「视图 → 高亮语言」菜单只做入口与勾选同步，语言判定归 `CMP-code-view`；「视图 → 显示行号」菜单只做入口/勾选与全局广播，偏好判定归 `CMP-code-view`；「视图 → 显示文档缩略图」菜单只做入口/勾选、偏好存储与全局广播，快照/交互归 `CMP-minimap`；Dock 右键菜单只列已打开窗口并负责切换，不提供关闭/批量管理动作；链接访问策略：网页/邮件/电话交系统默认应用，本地 Markdown/代码在应用内开新窗、其他本地文件交系统默认应用。
 - 不负责：文件内容读写（`CMP-document-io`）、编辑器内部行为（`CMP-editor`）、抽屉树（`CMP-drawer`）、导出实现（`CMP-export`）、缩略图快照/内容投影/滚动定位（`CMP-minimap` / `CMP-kernel-minimap`）、帧格式与 op 校验（`CMP-kernel-contract`）、编辑与导出能力实现（`CMP-kernel-editor` / `CMP-kernel-output` 等七组件）、注入脚本（v2 起产品路径为零）。
 - 内部逻辑：`AppDelegate` 维护文档窗口集合与打开路由；`DocumentWindowController` 承载单文档窗口并把菜单动作翻成 op（`kernel.send`）；`EditorCommands` 是菜单/右键共用的命令表；`KernelClient` 是协议客户端（`installScript` 注入 channel → `attach` → `send`/`receive`/`respond`，`info` 存握手结果）。
 - 拥有的数据：窗口 frame、最近文件列表、缩放比例、外观锁定；不拥有文档正文。
@@ -36,7 +36,7 @@ updated: 2026-11-20
   - `CMP-app-shell#zoom`：⌘+ / ⌘− / ⌘0，比例持久化。
   - `CMP-app-shell#appearance`：跟随系统或锁定浅/深色。
   - `CMP-app-shell#quit`：有脏文档时先确认，取消则不退出。
-  - `CMP-app-shell#protocol-client`：`KernelClient.send(op, payload, timeout, completion)` 发请求并按 `id` 回填；`receive(body)` 判别 v2 帧（`v==2` 才认）并分流为响应/通知/内核请求；内核请求由壳应答 `resolveResources`/`importImage`；握手响应记入 `info`。产品路径不执行注入脚本，诊断取数限 `evaluateForDiagnostics`。
+  - `CMP-app-shell#protocol-client`：`KernelClient.send(op, payload, timeout, completion)` 发请求并按 `id` 回填；`receive(body)` 判别 v2 帧（`v==2` 才认）并分流为响应/通知/内核请求；内核请求由壳应答 `resolveResources`/`importImage`/`openLink`；握手响应记入 `info`。产品路径不执行注入脚本，诊断取数限 `evaluateForDiagnostics`。
 - 入口：
   - `CMP-app-shell/Sources/MDPreview/main.swift#args`
   - `CMP-app-shell/Sources/MDPreview/AppDelegate.swift#applicationDidFinishLaunching`
@@ -59,6 +59,7 @@ updated: 2026-11-20
   - `CMP-app-shell/Sources/MDPreview/KernelClient.swift#KernelClient`（`installScript`/`send`/`receive`/`respond`/`info`）
   - `CMP-app-shell/Sources/MDPreview/DocumentWindowController.swift#resolveResources`（内核 `resolveResources` 请求的应答方）
   - `CMP-app-shell/Sources/MDPreview/DocumentWindowController.swift#performImport`（内核 `importImage` 请求的应答方）
+  - `CMP-app-shell/Sources/MDPreview/DocumentWindowController.swift#performOpenLink`（内核 `openLink` 请求的应答方：URL 类型判定与打开策略单点）
   - `CMP-app-shell/Sources/MDPreview/EditorWebView.swift#makeConfiguration`（注入 channel；`testFacade` 才装 `__MDP_TEST__` 门面）
   - `CMP-app-shell/Sources/MDPreview/EditorWebView.swift#pagePoint`（右键窗口坐标 → 页面视口坐标）
   - `CMP-app-shell/Sources/MDPreview/EditorWebView.swift#presentContextMenu`（菜单呈现注入点）
@@ -104,7 +105,7 @@ updated: 2026-11-20
 | `#drawer-hidden-toggle` | `--multiwindow-test`：「抽屉显示隐藏开关跨窗口同步(开)」「…(关)」；偏好落盘与按钮状态归 `CMP-drawer` 的 selftest/drawer-test |
 | `#reveal-in-finder` | `--multiwindow-test`：「文档右键菜单含 Finder 定位(2/2)」「Finder 定位位于拷贝路径之后」「右键在 Finder 中定位文件」「未保存文档不显示/不拷贝/不定位」；`--selftest`：「命令注册表完整」；实际 Finder 弹窗复用文件菜单既有命令 |
 | `#open-document` / `#quit` | 人工：CLI/拖放/⌘O/最近 + 脏文档退出 |
-| `#protocol-client` | `--selftest`：「v2 握手响应」「v2 握手(protocolVersion=2, ops=41)」「v2 op 往返(getState)」「缩略图诊断(minimapInfo)」「装载改写(内核改写+壳作答)」「保存口径(内核还原相对路径)」；协议层本身由 `web/test/contract.test.js` 19 项覆盖（不依赖 WebView） |
+| `#protocol-client` | `--selftest`：「v2 握手响应」「v2 握手(protocolVersion=2, ops=41)」「v2 op 往返(getState)」「缩略图诊断(minimapInfo)」「装载改写(内核改写+壳作答)」「保存口径(内核还原相对路径)」「链接 Command+单击访问请求」；协议层本身由 `web/test/contract.test.js` 19 项覆盖（不依赖 WebView） |
 
 ## 数据所有权与预算
 

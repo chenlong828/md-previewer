@@ -56,9 +56,9 @@ updated: 2026-11-10
 
 ## 环境钩子与 web 侧留痕
 
-- 截图模式环境钩子 `MDP_IMPORT_IMAGE=<图片路径>` / `MDP_EDIT_IMAGE=1`:
-  加载文档后执行一次「导入→落盘→插入」全链路 / 打开第一张图片的源码编辑块
-  再截图(图片导入与编辑框几何的 e2e 验证口)。
+- 截图模式环境钩子 `MDP_IMPORT_IMAGE=<图片路径>` / `MDP_EDIT_IMAGE=1` /
+  `MDP_HOVER_LINK=1` / `MDP_EDIT_LINK=1`: 加载文档后执行一次「导入→落盘→插入」全链路 /
+  打开第一张图片的源码编辑块 / 悬停第一个链接 / 打开第一个链接的行内源码编辑，再截图。
 - web 侧诊断留痕：`window.__exportedHTML`（自检轮询用，页面级临时变量）、
   `mdbridge.testImagePayload(data)`(剪贴板载荷识别,自检断言用)。
 - WebLocator（`#filePath` 唯一用点）仅服务于诊断/开发定位，W3 已限定在
